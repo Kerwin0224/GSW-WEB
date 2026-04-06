@@ -1,0 +1,18 @@
+{
+  "id": "04-06-teacher-page",
+  "title": "Build Teacher Page",
+  "status": "planning",
+  "priority": "P0",
+  "owner": "shixiangliu",
+  "assignee": "shixiangliu",
+  "created_at": "2026-04-06",
+  "updated_at": "2026-04-06",
+  "summary": "Teacher page has not started its current redesign and remains a future page-level workbench task covering queue, intervention, Bloom adjustment, and release state.",
+  "source_of_truth": [
+    "docs/PRODUCT_SOURCE_OF_TRUTH.md",
+    "docs/prd_decision_v1.md",
+    "docs/demo_scope_v1.md"
+  ],
+  "parent": "04-05-frontend-demo-delivery",
+  "children": []
+}

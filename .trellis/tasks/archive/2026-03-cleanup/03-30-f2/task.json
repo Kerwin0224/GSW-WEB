@@ -1,0 +1,53 @@
+{
+  "id": "f2",
+  "name": "f2",
+  "title": "模块 F2：学习轨迹与布鲁姆掌握度",
+  "description": "实现学习轨迹、掌握度推断、挑战记录与教师修正视图，为学生成长路径和教师学情页提供数据基础。",
+  "status": "ready",
+  "dev_type": "fullstack",
+  "scope": "app/db.py app/main.py frontend/app/trajectory/ frontend/components/trajectory/",
+  "priority": "P1",
+  "creator": "shixiangliu",
+  "assignee": "shixiangliu",
+  "createdAt": "2026-03-30",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "03-30-v1-complete-app",
+  "relatedFiles": [
+    ".trellis/spec/domain/challenge-and-mastery.md",
+    ".trellis/spec/domain/data-models.md",
+    ".trellis/spec/frontend/directory-structure.md"
+  ],
+  "notes": "掌握度和轨迹是学生/教师双视图共享数据，不应拆成两套模型。",
+  "meta": {
+    "routes": [
+      "/trajectory",
+      "/trajectory/class"
+    ]
+  }
+}

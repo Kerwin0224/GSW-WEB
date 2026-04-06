@@ -1,0 +1,54 @@
+{
+  "id": "04-03-admin-audit-and-export",
+  "name": "04-03-admin-audit-and-export",
+  "title": "Build Admin Overview And Audit Surfaces",
+  "description": "Build the admin overview page, audit list-detail flow, and first export entry for frontend review.",
+  "status": "planning",
+  "dev_type": "fullstack",
+  "scope": null,
+  "priority": "P0",
+  "creator": "shixiangliu",
+  "assignee": "shixiangliu",
+  "createdAt": "2026-04-03",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "04-05-frontend-demo-delivery",
+  "relatedFiles": [
+    "frontend/components/dashboard/AdminTraceWorkspace.tsx",
+    "frontend/lib/api.ts",
+    "backend/app/main.py",
+    "backend/app/exporter.py",
+    "backend/app/langfuse_client.py"
+  ],
+  "notes": "This is the first admin review surface in the frontend demo track. It should read as a school governance console, not a thin technical shell.",
+  "meta": {
+    "demo_flows": [
+      "Flow E"
+    ]
+  }
+}

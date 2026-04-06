@@ -1,0 +1,57 @@
+{
+  "id": "auth-accounts",
+  "name": "auth-accounts",
+  "title": "模块 I：认证与账号体系",
+  "description": "补齐 v1 认证、角色权限、教师批量创建学生、remember me，并将学生冷启动定位对齐为不阻塞登录主流程的柔性首轮推断。",
+  "status": "completed",
+  "dev_type": "fullstack",
+  "scope": "app/main.py app/db.py app/models.py frontend/app/ frontend/lib/",
+  "priority": "P0",
+  "creator": "shixiangliu",
+  "assignee": "shixiangliu",
+  "createdAt": "2026-03-30",
+  "completedAt": "2026-03-31",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "03-30-v1-complete-app",
+  "relatedFiles": [
+    ".trellis/spec/domain/auth-and-accounts.md",
+    ".trellis/spec/domain/data-models.md",
+    ".trellis/spec/domain/product-scope.md",
+    ".trellis/spec/backend/database-guidelines.md",
+    ".trellis/spec/frontend/state-management.md"
+  ],
+  "notes": "没有认证与账号体系，其余模块无法形成可运行完整应用。",
+  "meta": {
+    "requires": [
+      "users 表",
+      "JWT 或等价会话机制",
+      "teacher -> student 批量创建",
+      "学生首次登录柔性首轮推断"
+    ]
+  }
+}

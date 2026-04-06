@@ -1,0 +1,48 @@
+﻿{
+  "id": "system-delivery",
+  "name": "system-delivery",
+  "title": "fullstack: 涓夌鑱旇皟銆侀〉闈㈡敹鏁涗笌绯荤粺浜や粯",
+  "description": "鑱旈€氬鐢熴€佹暀甯堛€佺鐞嗗憳涓夌鏍稿績鍔熻兘锛岄噸鐐归獙璇佸鐢?鏁欏笀鑱婂ぉ锛屾敹鏁涙暀甯堜笌绠＄悊鍛樼晫闈紝骞跺悓姝?Trellis 涓庨」鐩粨鏋勩€?,
+  "status": "completed",
+  "dev_type": "fullstack",
+  "scope": "frontend+backend+trellis",
+  "priority": "P0",
+  "creator": "shixiangliu",
+  "assignee": "shixiangliu",
+  "createdAt": "2026-04-01",
+  "completedAt": "2026-04-01",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 3,
+  "next_action": [],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "backend/app/db.py",
+    "backend/app/main.py",
+    "backend/app/schemas.py",
+    "backend/scripts/smoke_admin_visibility.py",
+    "frontend/components/dashboard/TeacherWorkspace.tsx",
+    "frontend/components/dashboard/AdminSkillsWorkspace.tsx",
+    "frontend/components/dashboard/AdminTraceWorkspace.tsx",
+    "frontend/components/dashboard/AccountsWorkspace.tsx",
+    "frontend/components/shared/AppShell.tsx",
+    "frontend/lib/api.ts"
+  ],
+  "notes": "宸蹭慨澶嶆棫 SQLite schema 婕傜Щ瀵艰嚧鐨勮亰澶╁け璐ワ紝绠＄悊鍛樿处鎴风淮鎶よˉ榻愭暀甯堢粦瀹氾紝鏁欏笀/绠＄悊鍛橀〉闈㈡敼涓哄崟宸ヤ綔鍙伴鏍硷紝骞跺畬鎴?smoke + 娴忚鍣ㄥ洖褰掋€?,
+  "meta": {
+    "verified": [
+      "frontend typecheck",
+      "frontend lint",
+      "smoke_backend_v1",
+      "smoke_challenge_flow",
+      "smoke_admin_visibility",
+      "browser regression for student/teacher/admin"
+    ]
+  }
+}
+

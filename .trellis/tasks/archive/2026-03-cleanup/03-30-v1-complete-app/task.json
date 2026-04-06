@@ -1,0 +1,65 @@
+{
+  "id": "v1-complete-app",
+  "name": "v1-complete-app",
+  "title": "V1 完整应用交付",
+  "description": "将 PRD v1.0 和 .trellis/spec 拆解成可直接执行的完整交付任务树，覆盖认证、管线、教师链路、学生链路、学习轨迹、导出、管理后台与运行指标，目标是后续 Trellis 代理可直接实现并产出可运行应用。",
+  "status": "ready",
+  "dev_type": "fullstack",
+  "scope": "app/ frontend/ data/ exports/ .trellis/spec/ .trellis/tasks/",
+  "priority": "P0",
+  "creator": "shixiangliu",
+  "assignee": "shixiangliu",
+  "createdAt": "2026-03-30",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "03-28-a",
+    "03-30-b",
+    "03-30-c",
+    "03-30-d",
+    "03-30-e",
+    "03-30-f",
+    "03-30-f2",
+    "03-30-g",
+    "03-30-h",
+    "03-30-auth-accounts",
+    "03-30-03-30-v1-backend-delivery"
+  ],
+  "parent": null,
+  "relatedFiles": [
+    ".trellis/spec/domain/index.md",
+    ".trellis/spec/backend/index.md",
+    ".trellis/spec/frontend/index.md",
+    "docs/中小学古诗词教学轻量模型PRD.md"
+  ],
+  "notes": "父任务只负责完整交付边界与验收，具体实现由子任务承担。",
+  "meta": {
+    "acceptance_target": "fresh install 后可启动 FastAPI + Next.js，主链路可运行",
+    "runtime_goal": "llama-cpp-python + SQLite + ChromaDB + python-docx + FastMCP",
+    "ui_goal": "学生、教师、管理员三类视图在同一应用中可用"
+  }
+}

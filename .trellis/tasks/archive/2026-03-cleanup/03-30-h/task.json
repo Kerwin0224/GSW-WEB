@@ -1,0 +1,53 @@
+{
+  "id": "h",
+  "name": "h",
+  "title": "模块 H：运行记录、指标与专业模式",
+  "description": "实现 trace、运行指标、管理员配置面板和专业模式，确保应用可观测、可追踪、可维护。",
+  "status": "ready",
+  "dev_type": "fullstack",
+  "scope": "app/main.py app/config.py frontend/app/admin/ frontend/components/admin/ .trellis/spec/domain/",
+  "priority": "P2",
+  "creator": "shixiangliu",
+  "assignee": "shixiangliu",
+  "createdAt": "2026-03-30",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "03-30-v1-complete-app",
+  "relatedFiles": [
+    ".trellis/spec/domain/admin-and-config.md",
+    ".trellis/spec/domain/runtime-and-observability.md",
+    ".trellis/spec/backend/logging-guidelines.md"
+  ],
+  "notes": "专业模式和 trace 面板是 admin 能力，不得向普通角色泄露内部调试细节。",
+  "meta": {
+    "routes": [
+      "/admin/traces",
+      "/admin/skills"
+    ]
+  }
+}

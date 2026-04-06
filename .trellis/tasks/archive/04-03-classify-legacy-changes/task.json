@@ -1,0 +1,63 @@
+﻿{
+  "id": "classify-legacy-changes",
+  "name": "classify-legacy-changes",
+  "title": "Classify Legacy Changes And Cleanup Noise",
+  "description": "Classify old repo changes into historical direction, still-valid implementation base, and cleanup noise before any destructive cleanup work is attempted.",
+  "status": "completed",
+  "dev_type": "fullstack",
+  "scope": null,
+  "priority": "P1",
+  "creator": "shixiangliu",
+  "assignee": "shixiangliu",
+  "createdAt": "2026-04-03",
+  "completedAt": "2026-04-03",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "04-03-prd-spec-reset",
+  "relatedFiles": [
+    ".trellis/",
+    "backend/",
+    "frontend/",
+    "docs/"
+  ],
+  "notes": "Classification accepted as the cleanup-framing record for the current reset. In the original mono-workspace, root-level `.trellis` and `backend` were historical path-migration noise, while the app-layer paths became the active product roots. This extracted repo preserves the active roots as `.trellis`, `backend`, `frontend`, and `docs`. Cleanup stays separate from feature work, and this task remains unarchived as a live reference.",
+  "meta": {
+    "goal": "prepare safe cleanup decisions without mixing cleanup into product implementation tasks",
+    "round_1_summary": [
+      "Historical direction and path-migration noise exists at repo root",
+      "Active implementation foundation is inside this repo plus repo docs",
+      "Cleanup should proceed in a dedicated follow-up instead of inside feature tasks"
+    ],
+    "round_2_summary": [
+      ".trellis/tasks/archive/* is valid active archival structure, not cleanup noise by default",
+      "Current backend and frontend modifications align with the active product path and should be preserved",
+      "Only the source-of-truth trio in repo docs should drive product direction; other docs remain supporting context",
+      "Repository entry instructions and Trellis instructions can coexist with different scope"
+    ]
+  }
+}
+

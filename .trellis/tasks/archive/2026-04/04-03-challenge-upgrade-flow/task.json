@@ -1,0 +1,55 @@
+{
+  "id": "04-03-challenge-upgrade-flow",
+  "name": "04-03-challenge-upgrade-flow",
+  "title": "Build Challenge Surface And Upgrade Feedback",
+  "description": "Build the student challenge surface and post-challenge upgrade feedback for frontend review.",
+  "status": "planning",
+  "dev_type": "fullstack",
+  "scope": null,
+  "priority": "P0",
+  "creator": "shixiangliu",
+  "assignee": "shixiangliu",
+  "createdAt": "2026-04-03",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "04-05-frontend-demo-delivery",
+  "relatedFiles": [
+    "frontend/components/dashboard/StudentWorkspace.tsx",
+    "frontend/components/dashboard/TeacherWorkspace.tsx",
+    "frontend/lib/api.ts",
+    "backend/app/main.py",
+    "backend/app/pipeline.py",
+    "backend/app/schemas.py"
+  ],
+  "notes": "This task is reviewed as a distinct student challenge surface, even when the challenge is implemented inside a larger workspace.",
+  "meta": {
+    "demo_flows": [
+      "Flow C"
+    ]
+  }
+}

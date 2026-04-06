@@ -1,0 +1,55 @@
+{
+  "id": "f",
+  "name": "f",
+  "title": "模块 F：学生提示梯度链路",
+  "description": "实现学生提问页、引导讲解、提示梯度升级与挑战入口，让学生端默认走受控引导而不是直接给答案。",
+  "status": "ready",
+  "dev_type": "fullstack",
+  "scope": "app/graph/ frontend/app/page.tsx frontend/components/chat/ frontend/components/trajectory/",
+  "priority": "P0",
+  "creator": "shixiangliu",
+  "assignee": "shixiangliu",
+  "createdAt": "2026-03-30",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "03-30-v1-complete-app",
+  "relatedFiles": [
+    ".trellis/spec/domain/challenge-and-mastery.md",
+    ".trellis/spec/domain/pipeline.md",
+    ".trellis/spec/frontend/component-guidelines.md"
+  ],
+  "notes": "学生端必须默认停留在 hint_1，不得把 answer 当默认输出。",
+  "meta": {
+    "ui": [
+      "ChatInput",
+      "HintLadder",
+      "BloomBadge",
+      "TaskSwitcher"
+    ]
+  }
+}

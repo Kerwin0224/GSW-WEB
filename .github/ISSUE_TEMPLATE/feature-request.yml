@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose a product or implementation improvement
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem are we trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should the system do?
+    validations:
+      required: true
+  - type: textarea
+    id: product_context
+    attributes:
+      label: Product context
+      description: Which surface does this affect? Student, teacher, admin, or shared runtime?
+    validations:
+      required: true
+  - type: textarea
+    id: task_context
+    attributes:
+      label: Trellis context
+      description: Link the active or related Trellis task if known.

@@ -1,0 +1,55 @@
+{
+  "id": "04-03-student-entry-routing",
+  "name": "04-03-student-entry-routing",
+  "title": "Build Student Home And Unified Entry Page",
+  "description": "Build the first student page after login with unified question entry and visible routing outcomes.",
+  "status": "planning",
+  "dev_type": "fullstack",
+  "scope": null,
+  "priority": "P0",
+  "creator": "shixiangliu",
+  "assignee": "shixiangliu",
+  "createdAt": "2026-04-03",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "04-05-frontend-demo-delivery",
+  "relatedFiles": [
+    "frontend/components/dashboard/StudentWorkspace.tsx",
+    "frontend/lib/api.ts",
+    "backend/app/main.py",
+    "backend/app/pipeline.py",
+    "backend/app/schemas.py"
+  ],
+  "notes": "This is the first student-facing review task. It should prove the student home is a product page, not a generic chat landing screen.",
+  "meta": {
+    "demo_flows": [
+      "Flow A",
+      "Flow B"
+    ]
+  }
+}

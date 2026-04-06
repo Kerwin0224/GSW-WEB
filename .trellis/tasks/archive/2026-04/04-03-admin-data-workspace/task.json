@@ -1,0 +1,54 @@
+{
+  "id": "04-03-admin-data-workspace",
+  "name": "04-03-admin-data-workspace",
+  "title": "Build Admin Data Workspace Page",
+  "description": "Build the admin data-factory workspace page for sample typing, dataset state, and training-data export review.",
+  "status": "planning",
+  "dev_type": "fullstack",
+  "scope": null,
+  "priority": "P2",
+  "creator": "shixiangliu",
+  "assignee": "shixiangliu",
+  "createdAt": "2026-04-03",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "04-05-frontend-demo-delivery",
+  "relatedFiles": [
+    "frontend/lib/api.ts",
+    "backend/app/exporter.py",
+    "backend/app/main.py",
+    "backend/app/langfuse_client.py"
+  ],
+  "notes": "This is the last admin review page in the frontend demo track. It should visually prove the data-factory direction after audit and settings are already legible.",
+  "meta": {
+    "references": [
+      "Label Studio data-factory patterns",
+      "Argilla feedback dataset patterns"
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "id": "04-06-student-page",
+  "title": "Build Student Page",
+  "status": "in_progress",
+  "priority": "P0",
+  "owner": "shixiangliu",
+  "assignee": "shixiangliu",
+  "created_at": "2026-04-06",
+  "updated_at": "2026-04-06",
+  "summary": "Student page is the current active page-level workbench task, covering entry, routing, Bloom state, resources, and challenge state.",
+  "source_of_truth": [
+    "docs/PRODUCT_SOURCE_OF_TRUTH.md",
+    "docs/prd_decision_v1.md",
+    "docs/demo_scope_v1.md"
+  ],
+  "parent": "04-05-frontend-demo-delivery",
+  "children": []
+}

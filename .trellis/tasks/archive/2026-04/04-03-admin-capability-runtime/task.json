@@ -1,0 +1,59 @@
+{
+  "id": "04-03-admin-capability-runtime",
+  "name": "04-03-admin-capability-runtime",
+  "title": "Build Admin Settings And Capability Control Page",
+  "description": "Build the admin settings and capability-control page for providers, tools, skills, MCP, and policy state.",
+  "status": "planning",
+  "dev_type": "fullstack",
+  "scope": null,
+  "priority": "P1",
+  "creator": "shixiangliu",
+  "assignee": "shixiangliu",
+  "createdAt": "2026-04-03",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "04-05-frontend-demo-delivery",
+  "relatedFiles": [
+    "frontend/app/admin/skills/page.tsx",
+    "frontend/components/dashboard/AdminSkillsWorkspace.tsx",
+    "frontend/lib/api.ts",
+    "frontend/lib/types.ts",
+    "frontend/lib/validators.ts",
+    "backend/app/main.py",
+    "backend/app/pipeline.py",
+    "backend/app/mcp/"
+  ],
+  "notes": "This is a reviewable admin settings page in the frontend demo track. Runtime coupling matters, but the task is judged first as a visible control surface.",
+  "meta": {
+    "references": [
+      "Langfuse trace and diagnostics hierarchy",
+      "Open WebUI provider and control-card patterns",
+      "AnythingLLM capability-control patterns"
+    ]
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "id": "04-03-student-resource-workspace",
+  "name": "04-03-student-resource-workspace",
+  "title": "Build Student Resource Workspace Surface",
+  "description": "Build the student resource dock, upload state, and citation surface as a reviewable part of the learning workbench.",
+  "status": "planning",
+  "dev_type": "fullstack",
+  "scope": null,
+  "priority": "P1",
+  "creator": "shixiangliu",
+  "assignee": "shixiangliu",
+  "createdAt": "2026-04-03",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "04-05-frontend-demo-delivery",
+  "relatedFiles": [
+    "frontend/components/dashboard/StudentWorkspace.tsx",
+    "frontend/lib/api.ts",
+    "backend/app/file_extract.py",
+    "backend/app/graph/retrieve.py",
+    "backend/app/main.py"
+  ],
+  "notes": "This is a student-side review surface in the frontend demo track. It should make learning materials and source treatment visible instead of implicit.",
+  "meta": {
+    "references": [
+      "DeepStudent workbench layout",
+      "AnythingLLM resource and citation patterns"
+    ]
+  }
+}

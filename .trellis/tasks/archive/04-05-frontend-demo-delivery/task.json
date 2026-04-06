@@ -1,0 +1,23 @@
+{
+  "id": "04-05-frontend-demo-delivery",
+  "title": "Frontend Demo Delivery Track",
+  "status": "in_progress",
+  "priority": "P0",
+  "owner": "shixiangliu",
+  "assignee": "shixiangliu",
+  "created_at": "2026-04-05",
+  "updated_at": "2026-04-05",
+  "summary": "Drive the current product line as a frontend-only demo organized around reviewable pages and surfaces, with mock data, a presentable role-entry front door, and no dependency on full backend completion.",
+  "source_of_truth": [
+    "docs/PRODUCT_SOURCE_OF_TRUTH.md",
+    "docs/prd_decision_v1.md",
+    "docs/demo_scope_v1.md"
+  ],
+  "parent": "04-03-prd-spec-reset",
+  "children": [
+    "04-06-login-page",
+    "04-06-student-page",
+    "04-06-teacher-page",
+    "04-06-admin-page"
+  ]
+}

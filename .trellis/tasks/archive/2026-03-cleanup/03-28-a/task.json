@@ -1,0 +1,44 @@
+{
+  "id": "a",
+  "name": "a",
+  "title": "模块A：内容识别与基础枚举",
+  "description": "",
+  "status": "completed",
+  "dev_type": "backend",
+  "scope": "app/config.py app/graph/state.py app/graph/grounding.py app/db.py app/main.py",
+  "priority": "P2",
+  "creator": "shixiangliu",
+  "assignee": "shixiangliu",
+  "createdAt": "2026-03-28",
+  "completedAt": "2026-03-28",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "03-30-v1-complete-app",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

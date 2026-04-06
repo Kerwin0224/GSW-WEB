@@ -1,0 +1,18 @@
+{
+  "id": "04-06-admin-page",
+  "title": "Build Admin Page",
+  "status": "planning",
+  "priority": "P0",
+  "owner": "shixiangliu",
+  "assignee": "shixiangliu",
+  "created_at": "2026-04-06",
+  "updated_at": "2026-04-06",
+  "summary": "Admin page family has not started its current redesign and remains a future page-level task covering overview, audit, settings, capability control, and data workspace.",
+  "source_of_truth": [
+    "docs/PRODUCT_SOURCE_OF_TRUTH.md",
+    "docs/prd_decision_v1.md",
+    "docs/demo_scope_v1.md"
+  ],
+  "parent": "04-05-frontend-demo-delivery",
+  "children": []
+}

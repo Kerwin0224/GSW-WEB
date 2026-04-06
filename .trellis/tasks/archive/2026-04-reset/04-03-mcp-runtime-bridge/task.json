@@ -1,0 +1,68 @@
+﻿{
+  "id": "mcp-runtime-bridge",
+  "name": "mcp-runtime-bridge",
+  "title": "Build MCP Runtime Bridge",
+  "description": "Turn the current admin MCP config layer into a real runtime bridge with provider registry, tool discovery, validation, health, and execution wiring.",
+  "status": "planning",
+  "dev_type": "backend",
+  "scope": null,
+  "priority": "P0",
+  "creator": "shixiangliu",
+  "assignee": "shixiangliu",
+  "createdAt": "2026-04-03",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "04-03-prd-spec-reset",
+  "relatedFiles": [
+    "backend/app/main.py",
+    "backend/app/pipeline.py",
+    "backend/app/skills/registry.py",
+    "backend/app/mcp/"
+  ],
+  "notes": "This task started too early relative to the user's preferred sequence. Keep the landed backend bridge work as groundwork, but resume this task only after the admin capability workspace is the visible active line. A first runnable bridge is already in place: admin MCP status is runtime-backed, reload refreshes provider and tool health, task execution applies bridge-controlled web_search gating without replacing LangGraph, and the project runtime provider strategy is now centered on grok-search and UltraRAG while Context7 stays development-only.",
+  "meta": {
+    "references": [
+      "LangChain MCP adapters",
+      "Open WebUI capability control patterns",
+      "AnythingLLM provider and tool-management patterns"
+    ],
+    "implemented_now": [
+      "Added backend/app/mcp/provider_registry.py and backend/app/mcp/runtime_bridge.py",
+      "Switched /admin/skills and /admin/skills/reload to runtime-backed MCP snapshots",
+      "Applied runtime controls to /tasks/run and the internal LearnHouse bridge",
+      "Added backend/scripts/smoke_mcp_runtime_bridge.py and verified it passes",
+      "Added grok-search and UltraRAG to the default MCP provider set, kept Context7 as development-only guidance in Trellis, and wired UltraRAG into retrieve.py as an optional retrieval backend with safe fallback"
+    ],
+    "provider_targets": [
+      "context7 for development-time documentation lookup guidance only",
+      "grok-search as the runtime web-search MCP provider",
+      "ultrarag as the runtime RAG-oriented MCP provider"
+    ]
+  }
+}
+
