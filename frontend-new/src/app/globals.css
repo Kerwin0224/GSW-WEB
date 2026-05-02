@@ -1,0 +1,195 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-heading);
+
+  /* shadcn standard tokens */
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Chart colors */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+
+  /* Sidebar */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Bloom six-level tokens (custom) */
+  --color-bloom-1: var(--bloom-1);
+  --color-bloom-2: var(--bloom-2);
+  --color-bloom-3: var(--bloom-3);
+  --color-bloom-4: var(--bloom-4);
+  --color-bloom-5: var(--bloom-5);
+  --color-bloom-6: var(--bloom-6);
+
+  /* Radius scale */
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /* ── 墨韵学堂 · 浅色主题 ── */
+  --radius: 0.75rem; /* 12px — PRD 卡片圆角 */
+
+  /* 基础 */
+  --background: oklch(0.980 0.005 95);    /* 米白 #FAF8F1 — 宣纸质感 */
+  --foreground: oklch(0.220 0.000 0);      /* 墨色 #2D2D2D */
+  --card: oklch(1.000 0.000 0);            /* 白 */
+  --card-foreground: oklch(0.220 0.000 0);
+  --popover: oklch(1.000 0.000 0);
+  --popover-foreground: oklch(0.220 0.000 0);
+
+  /* 主色: 黛蓝 #4A6FA5 */
+  --primary: oklch(0.510 0.110 255);
+  --primary-foreground: oklch(0.985 0.000 0);
+
+  /* 次要 */
+  --secondary: oklch(0.940 0.010 95);      /* 浅灰 #F0EDE5 */
+  --secondary-foreground: oklch(0.220 0.000 0);
+
+  /* 静音 */
+  --muted: oklch(0.940 0.010 95);
+  --muted-foreground: oklch(0.550 0.010 80); /* 灰字 #8B8680 */
+
+  /* 强调色: 紫金 #B7A57A */
+  --accent: oklch(0.720 0.090 90);
+  --accent-foreground: oklch(0.985 0.000 0);
+
+  /* 破坏/强调: 朱砂 #C04851 */
+  --destructive: oklch(0.550 0.160 22);
+  --destructive-foreground: oklch(0.985 0.000 0);
+
+  /* 边框/输入 */
+  --border: oklch(0.850 0.020 85);         /* 浅褐 #D9D0C1 */
+  --input: oklch(0.850 0.020 85);
+  --ring: oklch(0.510 0.110 255);           /* 聚焦环: 黛蓝 */
+
+  /* 图表 (对应布鲁姆六层) */
+  --chart-1: oklch(0.510 0.110 255);  /* L1 黛蓝 */
+  --chart-2: oklch(0.560 0.060 195);  /* L2 天青 */
+  --chart-3: oklch(0.580 0.080 140);  /* L3 竹青 */
+  --chart-4: oklch(0.580 0.150 60);   /* L4 赭石 */
+  --chart-5: oklch(0.550 0.160 22);   /* L5 朱砂 */
+  --chart-6: oklch(0.720 0.090 90);   /* L6 紫金 */
+
+  /* 侧边栏: 墨色底 + 米白字 */
+  --sidebar: oklch(0.220 0.000 0);
+  --sidebar-foreground: oklch(0.980 0.005 95);
+  --sidebar-primary: oklch(0.510 0.110 255);
+  --sidebar-primary-foreground: oklch(0.985 0.000 0);
+  --sidebar-accent: oklch(0.280 0.000 0);
+  --sidebar-accent-foreground: oklch(0.980 0.005 95);
+  --sidebar-border: oklch(0.280 0.000 0);
+  --sidebar-ring: oklch(0.510 0.110 255);
+
+  /* 布鲁姆六层自定义令牌 */
+  --bloom-1: oklch(0.510 0.110 255);  /* L1 记忆 — 黛蓝 */
+  --bloom-2: oklch(0.560 0.060 195);  /* L2 理解 — 天青 */
+  --bloom-3: oklch(0.580 0.080 140);  /* L3 应用 — 竹青 */
+  --bloom-4: oklch(0.580 0.150 60);   /* L4 分析 — 赭石 */
+  --bloom-5: oklch(0.550 0.160 22);   /* L5 评价 — 朱砂 */
+  --bloom-6: oklch(0.720 0.090 90);   /* L6 创造 — 紫金 */
+
+  /* 字体 */
+  --font-sans: "Source Han Sans SC", "Noto Sans SC", sans-serif;
+  --font-heading: "LXGW WenKai", "霞鹜文楷", serif;
+}
+
+.dark {
+  /* ── 墨韵学堂 · 深色主题 ── */
+  --background: oklch(0.150 0.030 280);    /* 墨灰 #1A1A2E */
+  --foreground: oklch(0.980 0.005 95);
+  --card: oklch(0.180 0.030 280);
+  --card-foreground: oklch(0.980 0.005 95);
+  --popover: oklch(0.180 0.030 280);
+  --popover-foreground: oklch(0.980 0.005 95);
+
+  /* 浅黛蓝 */
+  --primary: oklch(0.620 0.100 255);
+  --primary-foreground: oklch(0.150 0.030 280);
+
+  --secondary: oklch(0.250 0.020 280);
+  --secondary-foreground: oklch(0.980 0.005 95);
+
+  --muted: oklch(0.250 0.020 280);
+  --muted-foreground: oklch(0.650 0.010 85);
+
+  --accent: oklch(0.650 0.080 90);
+  --accent-foreground: oklch(0.150 0.030 280);
+
+  --destructive: oklch(0.580 0.150 22);
+  --destructive-foreground: oklch(0.980 0.005 95);
+
+  --border: oklch(0.280 0.020 280);
+  --input: oklch(0.280 0.020 280);
+  --ring: oklch(0.620 0.100 255);
+
+  --chart-1: oklch(0.620 0.100 255);
+  --chart-2: oklch(0.650 0.050 195);
+  --chart-3: oklch(0.670 0.070 140);
+  --chart-4: oklch(0.670 0.130 60);
+  --chart-5: oklch(0.580 0.150 22);
+  --chart-6: oklch(0.650 0.080 90);
+
+  --sidebar: oklch(0.180 0.030 280);
+  --sidebar-foreground: oklch(0.980 0.005 95);
+  --sidebar-primary: oklch(0.620 0.100 255);
+  --sidebar-primary-foreground: oklch(0.985 0.000 0);
+  --sidebar-accent: oklch(0.250 0.020 280);
+  --sidebar-accent-foreground: oklch(0.980 0.005 95);
+  --sidebar-border: oklch(0.280 0.020 280);
+  --sidebar-ring: oklch(0.620 0.100 255);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+  }
+}
