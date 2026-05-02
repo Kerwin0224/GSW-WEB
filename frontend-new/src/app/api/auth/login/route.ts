@@ -1,65 +1,42 @@
-import { SignJWT } from 'jose';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
+import type { AppRole } from '@/lib/supabase/database.types';
 
-const JWT_SECRET = new Uint8Array([
-  0xef, 0xe9, 0x0a, 0x5b, 0x14, 0xc8, 0x9a, 0x1b,
-  0x31, 0x54, 0xef, 0x36, 0xb1, 0xa7, 0xc4, 0x04,
-  0x74, 0x3e, 0xa7, 0x0d, 0x81, 0x91, 0x71, 0x51,
-  0x06, 0xb6, 0xf8, 0xef, 0x22, 0xf7, 0x0d, 0x25,
-]);
+const roleHome: Record<AppRole, string> = { student: '/student', teacher: '/teacher', admin: '/admin' };
 
 export async function POST(req: Request) {
-  const { loginId, password } = await req.json() as { loginId?: string; password?: string };
-
-  if (!loginId || !password) {
-    return Response.json({ error: '请输入学号/工号和密码' }, { status: 400 });
+  let body: { loginId?: string; password?: string };
+  try {
+    body = (await req.json()) as { loginId?: string; password?: string };
+  } catch {
+    return NextResponse.json({ error: '请求格式无效' }, { status: 400 });
   }
+
+  const { loginId, password } = body;
+  if (!loginId || !password) return NextResponse.json({ error: '请输入学号/工号和密码' }, { status: 400 });
 
   const supabase = await createClient();
+  const normalized = loginId.trim();
+  let email = normalized;
 
-  // Use SECURITY DEFINER function to bypass RLS during login
-  const { data: profile, error } = await supabase.rpc('authenticate_user', {
-    p_login_id: loginId,
-  });
-
-  if (error || !profile || profile.length === 0) {
-    return Response.json({ error: '账号或密码错误' }, { status: 401 });
+  if (!normalized.includes('@')) {
+    const { data, error } = await supabase.rpc('find_login_email', { p_login_id: normalized });
+    if (error) return NextResponse.json({ error: `登录查询失败：${error.message}` }, { status: 500 });
+    email = data?.[0]?.email ?? '';
   }
 
-  const user = profile[0] as { id: string; role: string; display_name: string; password_hash: string };
+  if (!email) return NextResponse.json({ error: '账号或密码错误' }, { status: 401 });
 
-  // Verify password
-  const { data: verified } = await supabase.rpc('verify_password', {
-    input_password: password,
-    stored_hash: user.password_hash,
-  });
+  const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+  if (signInError || !authData.user) return NextResponse.json({ error: '账号或密码错误' }, { status: 401 });
 
-  if (!verified) {
-    return Response.json({ error: '账号或密码错误' }, { status: 401 });
+  const { data: profileRow, error: profileError } = await supabase.from('profiles').select('*').eq('id', authData.user.id).maybeSingle();
+  const profile = profileRow as { role: 'admin' | 'teacher' | 'student'; display_name: string; status: string } | null;
+  if (profileError) return NextResponse.json({ error: `角色资料读取失败：${profileError.message}` }, { status: 500 });
+  if (!profile || profile.status !== 'active') {
+    await supabase.auth.signOut();
+    return NextResponse.json({ error: '账号缺少可用角色资料，请联系管理员完成配置' }, { status: 403 });
   }
 
-  const token = await new SignJWT({
-    sub: user.id,
-    role: user.role,
-    // Store only ASCII-safe values; fetch display name from DB when needed
-  })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime('24h')
-    .sign(JWT_SECRET);
-
-  const cookieStore = await cookies();
-  cookieStore.set('cwb_token', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 60 * 60 * 24,
-  });
-
-  return Response.json({
-    role: user.role,
-    displayName: user.display_name,
-  });
+  return NextResponse.json({ role: profile.role, displayName: profile.display_name, redirectTo: roleHome[profile.role] });
 }

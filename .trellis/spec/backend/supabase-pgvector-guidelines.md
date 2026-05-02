@@ -295,3 +295,126 @@ The MVP retrieval and persistence path is Supabase Postgres + pgvector only.
 - Missing Supabase URL/key, RPC, embedding provider, or embedding model configuration must fail clearly and be visible to the caller.
 - Returning an empty context is valid only when Supabase and embedding generation succeeded and the authorized RPC found no matching rows.
 
+
+---
+
+## Scenario: Fullstack Refactor Supabase Data Contracts
+
+### 1. Scope / Trigger
+
+- Trigger: `frontend-new` data integration for auth/profile roles, role workspaces, provider capabilities, prompt presets, conversations, audit records, exports, and pgvector RAG.
+- Applies to `frontend-new/supabase/migrations/**`, `frontend-new/src/lib/supabase/database.types.ts`, and server-only data helpers under `frontend-new/src/lib/data/**`.
+
+### 2. Signatures
+
+Migration file:
+
+```text
+frontend-new/supabase/migrations/202605020001_fullstack_refactor.sql
+```
+
+Core tables:
+
+```sql
+public.profiles(id, login_id, display_name, email, role, status)
+public.classes(id, name, grade, status)
+public.class_memberships(class_id, profile_id, role)
+public.provider_configs(id, name, provider_type, base_url, secret_ref, secret_last_four, is_enabled, health_status)
+public.provider_capabilities(provider_id, capability, model_id, is_enabled, metadata)
+public.prompt_presets(id, title, scenario, system_instruction, target_role, status, version)
+public.text_projects(id, owner_id, class_id, title, author, classification_state, highest_bloom_level)
+public.conversations(id, owner_id, class_id, project_id, source, prompt_preset_id, title)
+public.conversation_messages(id, conversation_id, role, content, parts, bloom_level, bloom_state, model_id)
+public.practice_records(id, student_id, project_id, target_bloom_level, answer, feedback, evaluation_state)
+public.audit_records(id, source_message_id, auditor_id, kind, status, prompt, original_answer, corrected_answer, chosen_answer, rejected_answer, rationale)
+public.export_batches(id, kind, status, record_count, jsonl_payload)
+public.documents(id, owner_id, class_id, project_id, title, source_uri, metadata)
+public.document_chunks(id, document_id, owner_id, class_id, project_id, chunk_index, content, metadata, embedding)
+```
+
+RAG helper:
+
+```ts
+retrieveDocumentChunks({ query, matchCount, matchThreshold, projectId })
+  -> Promise<DataResult<DocumentChunkMatch[]>>
+```
+
+Audit actions:
+
+```ts
+submitSftAudit(sourceMessageId, previousState, formData) -> Promise<AuditSubmissionState>
+submitDpoAudit(sourceMessageId, previousState, formData) -> Promise<AuditSubmissionState>
+```
+
+### 3. Contracts
+
+- Every protected data helper must require a verified Supabase profile/role before returning private data.
+- `profiles.role` is the authority for workspace routing; do not infer role from login input or URL.
+- School login IDs must resolve through the `find_login_email(p_login_id)` security-definer RPC before `signInWithPassword`; direct pre-auth `profiles` selects are blocked by RLS and must not be used as a fallback.
+- Provider secrets are not stored/displayed as raw client-visible values. Store `secret_ref` + `secret_last_four`; server runtime keys (`OPENAI_API_KEY` or `AI_GATEWAY_API_KEY`) perform model calls.
+- Provider readiness is capability-specific: `student_chat`, `teacher_chat`, `bloom_classification`, `project_classification`, `practice_generation`, `practice_evaluation`, `audit_assist`, `embedding`.
+- Teacher audit inserts only after source assistant message is accessible and SFT/DPO required fields validate.
+- Export batches are admin-only and must be generated only from approved audit records.
+- RAG retrieval must generate a real embedding before calling `match_document_chunks`; missing embedding provider/key is a blocked state, not a fallback.
+- `document_chunks.embedding` dimension is `1536`; changing embedding model/dimension requires migration + re-index.
+- Migration application requires live/local Supabase execution (`supabase db push` or `supabase db reset`) before production use.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior | Assertion |
+| --- | --- | --- |
+| Missing profile | `missing_profile` DataResult | no workspace data returned |
+| Wrong role | `forbidden` DataResult | no cross-role data leakage |
+| Login by school ID before auth | `find_login_email` RPC | no direct RLS-blocked `profiles` query |
+| Missing provider capability | blocked state | no model call |
+| Missing server model key | blocked state | no canned AI output |
+| Missing embedding key | blocked state | no RAG fallback |
+| Invalid SFT fields | action returns field errors | no audit row inserted |
+| Invalid DPO fields | action returns field errors | no audit row inserted |
+| No approved audit records | export disabled/blocked | no empty fake export |
+| User queries other user's chunks | zero rows | RLS/RPC scope enforced |
+| Teacher queries unassigned class chunks | zero rows | teacher scope enforced |
+
+### 5. Good/Base/Bad Cases
+
+- Good: student chat verifies profile, checks `student_chat`, persists user/assistant messages, and returns AI SDK UI message stream.
+- Good: teacher audit reads eligible assistant messages, resolves the latest source user prompt, and inserts SFT/DPO rows through server actions.
+- Good: `retrieveDocumentChunks()` calls `embed()` with a real configured embedding model before RPC.
+- Base: Supabase migration is authored and typechecked locally but still needs live DB application.
+- Bad: `catch { return [] }` for private data loaders.
+- Bad: `secret_ref` treated as a usable API key in client code.
+
+### 6. Tests Required
+
+- Local code: `cd frontend-new && npm run lint`.
+- Local code: `cd frontend-new && npm run build`.
+- Local code: `cd frontend-new && ./node_modules/.bin/tsc --noEmit --pretty false`.
+- Static grep: no legacy/scaffold/fallback patterns in `frontend-new/src` and `frontend-new/supabase`.
+- SQL static inspection: extension, RLS, policies, HNSW index, `match_document_chunks` RPC.
+- Auth static inspection: `login_id` login path calls `find_login_email`, then verifies `profiles.role` only after Supabase Auth succeeds.
+- External DB smoke (required before deploy): run migration against local/live Supabase, generate types, verify RLS + RPC with at least student, teacher, admin fixtures.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+const provider = configuredProvider ?? { model: 'mock', apiKey: 'demo' };
+const chunks = await supabase.rpc('match_document_chunks', { query_embedding: [] });
+```
+
+#### Correct
+
+```ts
+const capability = await getCapability('embedding');
+if (!capability.ok || !capability.data.ready) {
+  return fail('blocked', '缺少 embedding 真实模型能力配置。');
+}
+
+const { embedding } = await embed({
+  model: resolveEmbeddingModel(capability.data.modelId, capability.data.providerType, capability.data.baseUrl),
+  value: query,
+});
+
+return matchDocumentChunks({ queryEmbedding: embedding, matchCount, matchThreshold, projectId });
+```

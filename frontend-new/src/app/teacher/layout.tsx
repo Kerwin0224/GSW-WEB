@@ -1,18 +1,15 @@
-import { getUser } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
 import { AppShell } from '@/components/app-shell';
+import { getProfile } from '@/lib/auth';
 
 export default async function TeacherLayout({ children }: { children: React.ReactNode }) {
-  const user = await getUser();
-  if (!user || user.role !== 'teacher') redirect('/login');
+  const profile = await getProfile();
+  if (!profile) redirect('/login');
+  if (profile.role !== 'teacher') redirect('/login?error=role_denied');
+  if (profile.status !== 'active') redirect('/login?error=account_disabled');
 
-  const supabase = await createClient();
-  const { data } = await supabase.rpc('get_profile', { p_user_id: user.sub });
-
-  const profile = (data as Array<{ display_name?: string }> | null)?.[0];
   return (
-    <AppShell role="teacher" displayName={profile?.display_name ?? '老师'} breadcrumbs={[{ label: '教师工作台' }]}>
+    <AppShell role="teacher" displayName={profile.display_name ?? '老师'} breadcrumbs={[{ label: '教师工作台' }]}>
       {children}
     </AppShell>
   );

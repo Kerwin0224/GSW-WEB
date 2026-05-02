@@ -286,3 +286,84 @@ new ScaffoldLanguageModel('mvp-scaffold-model')
 if (!apiKey) return cannedAnswer
 ```
 
+
+---
+
+## Scenario: Role AI Routes With Persistence
+
+### 1. Scope / Trigger
+
+- Trigger: `frontend-new/src/app/api/student/chat/route.ts` and `frontend-new/src/app/api/teacher/chat/route.ts`.
+
+### 2. Signatures
+
+```ts
+const ChatRequestSchema = z.object({
+  messages: z.array(z.unknown()),
+  conversationId: z.string().uuid().optional(),
+  projectId: z.string().uuid().optional(),
+  projectTitle: z.string().trim().min(1).optional(),
+  presetId: z.string().uuid().optional(),
+});
+```
+
+AI SDK response:
+
+```ts
+return result.toUIMessageStreamResponse({
+  originalMessages,
+  consumeSseStream: consumeStream,
+});
+```
+
+### 3. Contracts
+
+- Validate malformed JSON and UI messages before auth/model/provider work.
+- Require verified role profile before model calls.
+- Require capability-specific provider readiness before model calls.
+- Student chat may create/select a real project only from provided real project title or configured classifier output; never fake classification.
+- Teacher chat must require a published teacher prompt preset; no generic default system prompt fallback.
+- Persist user message parts and assistant output where feasible; do not persist private tool metadata to client-visible fields.
+- Use server-only model keys; never derive provider secrets from `NEXT_PUBLIC_*`.
+- Login route must parse malformed JSON explicitly and resolve non-email school login IDs with the Supabase `find_login_email` RPC before `signInWithPassword`; it must verify `profiles.role` only after Auth returns a user.
+
+### 4. Validation & Error Matrix
+
+| Condition | Response |
+| --- | --- |
+| Malformed JSON | `400 Invalid request` |
+| Invalid UI messages | `400 Invalid request` |
+| Missing profile/wrong role | `401/403` safe JSON error |
+| School login ID under RLS | `find_login_email` RPC then sign-in | 
+| Missing provider capability/key | `503` blocked/config error |
+| Missing teacher preset | `400/404` preset error |
+| Stream abort | consume/cleanup stream without secret leakage |
+
+### 5. Good/Base/Bad Cases
+
+- Good: student route persists user message, streams assistant reply, and keeps Bloom/project classification pending when classifier is unavailable.
+- Good: teacher route loads the selected published preset and creates audit candidates from assistant interactions.
+- Bad: route silently uses a hardcoded generic prompt if `presetId` is missing.
+
+### 6. Tests Required
+
+- Route parser rejects bad body before model call.
+- Missing provider/key returns config error before model call.
+- Lint/build pass.
+- Static grep finds no `message.content` or legacy `tool-invocation` rendering.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+const system = preset?.system_instruction ?? 'You are a helpful teacher.';
+```
+
+#### Correct
+
+```ts
+if (!preset) {
+  return Response.json({ error: 'Published teacher preset required' }, { status: 400 });
+}
+```

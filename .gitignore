@@ -15,7 +15,7 @@ frontend/*.log
 frontend/tsconfig.tsbuildinfo
 
 # Data / exports / models
-data/
+/data/
 exports/
 models/*
 !models/.gitkeep
