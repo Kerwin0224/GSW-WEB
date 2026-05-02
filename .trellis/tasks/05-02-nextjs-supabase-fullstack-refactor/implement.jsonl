@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/frontend/next-ai-sdk-guidelines.md", "reason": "AI SDK streaming route contracts, tool definitions, data boundaries"}
+{"file": ".trellis/spec/backend/supabase-pgvector-guidelines.md", "reason": "Supabase Auth/RLS, pgvector schema/RPC, migrations"}
+{"file": ".trellis/spec/frontend/ui-ux-guidelines.md", "reason": "Role workspace UX, Bloom student experience, states"}
+{"file": ".trellis/tasks/05-02-nextjs-supabase-fullstack-refactor/research/context7-api-verification-2026-05-02.md", "reason": "Context7 verified AI SDK v6 API changes - tool defs, stepCountIs, DefaultChatTransport"}
+{"file": ".trellis/tasks/05-02-nextjs-supabase-fullstack-refactor/research/next-ai-supabase-rag-best-practices.md", "reason": "Tavily + Context7 best practices for the locked stack"}
+{"file": ".trellis/tasks/05-02-nextjs-supabase-fullstack-refactor/research/ui-design-spec-shadcn.md", "reason": "Complete UI/UX design spec: CSS vars, shadcn component mapping per role/page, Bloom design system, states, responsive, animations"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "shadcn/ui component ownership, composition, accessibility conventions"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Zod, UIMessage, Supabase type safety conventions"}
+{"file": ".trellis/tasks/05-02-nextjs-supabase-fullstack-refactor/research/ui-ux-best-practices-2026-05-02.md", "reason": "Tavily + Context7 UI/UX best-practice research for role workspaces, AI states, accessibility"}
+{"file": ".trellis/tasks/05-02-nextjs-supabase-fullstack-refactor/info.md", "reason": "UI/UX-first design lock and implementation sequence"}
+{"file": ".trellis/tasks/05-02-nextjs-supabase-fullstack-refactor/ui-ux-design.md", "reason": "Final UI/UX design lock: IA, page designs, states, components, no-fallback UX, accessibility"}

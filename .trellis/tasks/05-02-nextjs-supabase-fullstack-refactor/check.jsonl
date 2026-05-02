@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/frontend/next-ai-sdk-guidelines.md", "reason": "Verify AI SDK patterns: stepCountIs, plain tool objects, parameters, DefaultChatTransport, parts[]"}
+{"file": ".trellis/spec/backend/supabase-pgvector-guidelines.md", "reason": "Verify RLS, pgvector RPC, getUser() vs getSession(), cookie handling per environment"}
+{"file": ".trellis/spec/frontend/ui-ux-guidelines.md", "reason": "Verify UI/UX: role workspaces, Bloom visualization, states"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Verify shadcn/ui component patterns, Tailwind theming"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify Zod validation, Supabase generated types, UIMessage generics"}
+{"file": ".trellis/tasks/05-02-nextjs-supabase-fullstack-refactor/research/ui-ux-best-practices-2026-05-02.md", "reason": "Verify UI/UX implementation against researched role workspace and accessibility requirements"}
+{"file": ".trellis/tasks/05-02-nextjs-supabase-fullstack-refactor/info.md", "reason": "Verify implementation follows UI/UX-first lock and no-fallback design contract"}
+{"file": ".trellis/tasks/05-02-nextjs-supabase-fullstack-refactor/ui-ux-design.md", "reason": "Verify implementation matches the final UI/UX design lock before claiming completion"}

@@ -1,65 +1,159 @@
 # Type Safety
 
-> 前端类型安全规范。
+> Type and validation contracts for the Next.js + Supabase + AI SDK refactor.
 
 ---
 
-## Type Organization
+## Scenario: End-to-End Typed UI Boundaries
 
-- 全局共享类型放在 `lib/types.ts`，必须与后端 schema 和 domain spec 对齐
-- 组件本地 Props 类型紧邻组件定义
-- API 响应统一在边界处用 Zod 校验
+### 1. Scope / Trigger
+
+- Trigger: route handlers, Server Components, Client Components, Supabase helpers, AI SDK message rendering, forms, and import/export payloads.
+
+### 2. Signatures
+
+Validation stack:
 
 ```ts
-export type ContentType = "poem" | "classical_prose" | "question_set" | "unknown"
-export type TaskType = "lesson_outline" | "question_analysis" | "guided_explain"
-export type Role = "student" | "teacher" | "admin"
-export type BloomLevel =
-  | "remember"
-  | "understand"
-  | "apply"
-  | "analyze"
-  | "evaluate"
-  | "create"
+import { z } from 'zod';
+```
 
-export type LessonOutlineResult = {
-  result_type: "lesson_outline"
-  title: string
-  teaching_goals: string[]
-  key_points: string[]
-  difficult_points: string[]
-  activity_flow: { step: string; description: string }[]
-  evidence_refs: string[]
-}
+Supabase type pattern:
 
-export type QuestionAnalysisResult = {
-  result_type: "question_analysis"
-  title: string
-  question_text: string
-  analysis_steps: string[]
-  hint_ladder: {
-    hint_1: string
-    hint_2: string
-    hint_3: string
-    answer: string
-  }
-  evidence_refs: string[]
-}
+```ts
+import type { Database } from '@/lib/supabase/database.types';
 
-export type GuidedExplainResult = {
-  result_type: "guided_explain"
-  title: string
-  current_hint_level: "hint_1" | "hint_2" | "hint_3" | "answer"
-  hint_content: string
-  evidence_refs: string[]
-}
+type ProfileRow = Database['public']['Tables']['profiles']['Row'];
+```
+
+AI SDK UI message pattern:
+
+```ts
+import type { UIMessage } from 'ai';
+
+type AppMessage = UIMessage<AppMessageMetadata, AppDataParts, AppTools>;
+```
+
+### 3. Contracts
+
+- Validate all external inputs with Zod at route/server-action boundaries.
+- Keep request/response schemas close to route/service boundary and export inferred types only when reused.
+- Use generated Supabase `Database` types for table rows/inserts/updates when available.
+- Do not use `any` for domain data, AI messages, Supabase rows, or form payloads.
+- Unknown AI SDK message parts must be safely ignored or rendered by an explicit fallback; never assume text-only messages for production AI UIs.
+- Role strings, Bloom levels, audit statuses, provider capabilities, and preset statuses must be union types/enums, not free strings.
+- Type assertions (`as`) require a nearby validation or boundary reason.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior | Assertion |
+| --- | --- | --- |
+| Invalid route JSON | `400` with validation-safe issues | model/DB not called |
+| Invalid form payload | field errors | no mutation |
+| Unknown role | auth/profile setup error | no workspace route guessed |
+| Unknown Bloom level | validation error or unclassified state | no invalid color token |
+| Unknown AI message part | safe ignore/fallback | no render crash |
+| Supabase error | typed error handling | no `data!` unsafe access |
+
+### 5. Good/Base/Bad Cases
+
+- Good: `z.enum(['student', 'teacher', 'admin'])` drives role routing after verified profile load.
+- Good: `z.union([z.literal(1), ..., z.literal(6)])` or equivalent validates Bloom level.
+- Base: local UI-only type declared next to component.
+- Bad: `const role = data.role as any` then route to `/${role}`.
+- Bad: route handler parses JSON and calls model before validating `messages`.
+
+### 6. Tests Required
+
+- Unit tests for request schemas on AI routes and admin mutations.
+- Typecheck catches role/Bloom/status mismatch.
+- Component smoke for AI messages with text and unknown/tool parts.
+- Import/export schema tests for SFT/DPO JSONL payloads.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+const body = await req.json();
+await streamStudentAnswer(body.messages as any);
+```
+
+#### Correct
+
+```ts
+const ChatRequestSchema = z.object({
+  messages: z.array(z.custom<UIMessage>()),
+  projectId: z.string().uuid().optional(),
+});
+
+const body = ChatRequestSchema.parse(await req.json());
+await streamStudentAnswer(body);
 ```
 
 ---
 
-## Forbidden Patterns
+## Scenario: No-Fallback Type Contracts
 
-- 禁止继续沿用 `poetry / wenyan / outline / explanation / exercise / qa` 这类旧枚举
-- 禁止使用 `any`
-- 禁止 `@ts-ignore`
-- 禁止对 API 响应做无校验强转
+### 1. Scope / Trigger
+
+- Trigger: missing environment, provider config, Supabase profile, class assignment, prompt preset, or audit/export record.
+
+### 2. Signatures
+
+```ts
+type Result<T, E extends string> =
+  | { ok: true; data: T }
+  | { ok: false; error: E; message: string };
+
+type BlockReason =
+  | 'missing_profile'
+  | 'missing_provider'
+  | 'missing_supabase_config'
+  | 'missing_preset'
+  | 'permission_denied'
+  | 'not_found';
+```
+
+### 3. Contracts
+
+- Missing config/data is a typed blocked/error state, not an empty object fallback.
+- Do not use placeholder IDs, placeholder provider names, mock model responses, or fake rows to satisfy types.
+- Optional fields are optional only when product behavior accepts absence; otherwise validate as required before mutation/action.
+
+### 4. Validation & Error Matrix
+
+| Missing item | Correct typed state |
+| --- | --- |
+| profile/role | `missing_profile` |
+| provider capability | `missing_provider` |
+| Supabase env/client | `missing_supabase_config` |
+| teacher preset | `missing_preset` |
+| record outside scope | `permission_denied` or `not_found` |
+
+### 5. Good/Base/Bad Cases
+
+- Good: student chat route returns provider setup error before model call.
+- Base: UI disables action with blocked reason.
+- Bad: model call falls back to canned text.
+
+### 6. Tests Required
+
+- Missing provider test asserts no model call.
+- Missing profile test asserts no workspace data fetch.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+const provider = configuredProvider ?? { name: 'demo', model: 'mock' };
+```
+
+#### Correct
+
+```ts
+if (!configuredProvider) {
+  return { ok: false, error: 'missing_provider', message: 'Configure a provider for student_chat.' };
+}
+```
