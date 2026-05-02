@@ -4,20 +4,20 @@
 
 ---
 
-## Scenario: `frontend-new` App Router Ownership
+## Scenario: `web` App Router Ownership
 
 ### 1. Scope / Trigger
 
 - Trigger: adding, moving, or refactoring frontend files for the new MVP.
-- Applies to `frontend-new/**` as the target refactor surface.
-- Legacy `frontend/**` may remain during transition, but new MVP UI/API work must target `frontend-new/**` unless explicitly scoped otherwise.
+- Applies to `web/**` as the target refactor surface.
+- The deleted legacy `frontend/**` tree is not a product surface. New MVP UI/API work must target `web/**` unless a future task explicitly creates a replacement path.
 
 ### 2. Signatures
 
 Target structure:
 
 ```text
-frontend-new/
+web/
   src/
     app/
       layout.tsx
@@ -48,7 +48,7 @@ frontend-new/
 Route handler signature:
 
 ```text
-frontend-new/src/app/api/<domain>/<action>/route.ts
+web/src/app/api/<domain>/<action>/route.ts
 ```
 
 ### 3. Contracts
@@ -58,7 +58,7 @@ frontend-new/src/app/api/<domain>/<action>/route.ts
 - Keep copied shadcn primitives under `components/ui`; domain components under `components/workbench` or future feature folders.
 - Supabase browser/server clients live under `lib/supabase` and must not be duplicated in pages.
 - Server-only AI/provider/retrieval logic belongs under `lib/ai/**` or route handlers, not Client Components.
-- Do not import legacy `frontend/lib/api.ts` or FastAPI clients into `frontend-new`.
+- Do not import legacy `frontend/lib/api.ts` or FastAPI clients into `web`.
 - Do not add broad `utils.ts` dumping grounds beyond simple generic utilities; create focused modules when behavior has a domain.
 
 ### 4. Validation & Error Matrix
@@ -75,15 +75,15 @@ frontend-new/src/app/api/<domain>/<action>/route.ts
 
 ### 5. Good/Base/Bad Cases
 
-- Good: `frontend-new/src/app/student/projects/[projectId]/page.tsx` renders project detail from server-loaded data.
-- Good: `frontend-new/src/lib/ai/student-chat.ts` contains server-only model composition used by `/api/student/chat`.
+- Good: `web/src/app/student/projects/[projectId]/page.tsx` renders project detail from server-loaded data.
+- Good: `web/src/lib/ai/student-chat.ts` contains server-only model composition used by `/api/student/chat`.
 - Base: one route-local component in a page file before reuse is proven.
 - Bad: new MVP page calls `NEXT_PUBLIC_API_BASE_URL` FastAPI endpoint.
 - Bad: provider secrets stored in a Client Component.
 
 ### 6. Tests Required
 
-- Static grep/check: `frontend-new` must not depend on legacy FastAPI client paths for new MVP surfaces.
+- Static grep/check: `web` must not depend on legacy FastAPI client paths for new MVP surfaces.
 - Typecheck confirms aliases from `components.json` resolve.
 
 ### 7. Wrong vs Correct
@@ -91,14 +91,14 @@ frontend-new/src/app/api/<domain>/<action>/route.ts
 #### Wrong
 
 ```ts
-// frontend-new/src/app/student/page.tsx
+// web/src/app/student/page.tsx
 fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/student/chat`)
 ```
 
 #### Correct
 
 ```ts
-// frontend-new/src/app/student/page.tsx client component
+// web/src/app/student/page.tsx client component
 new DefaultChatTransport({ api: '/api/student/chat' })
 ```
 
@@ -108,15 +108,15 @@ new DefaultChatTransport({ api: '/api/student/chat' })
 
 ### 1. Scope / Trigger
 
-- Trigger: adding or changing `frontend-new/src/proxy.ts`, protected route auth, root redirects, or public route allowlists.
-- Applies to Next.js 16 `proxy.ts` in `frontend-new`; use the local Next docs before editing because proxy replaced middleware in this version.
+- Trigger: adding or changing `web/src/proxy.ts`, protected route auth, root redirects, or public route allowlists.
+- Applies to Next.js 16 `proxy.ts` in `web`; use the local Next docs before editing because proxy replaced middleware in this version.
 
 ### 2. Signatures
 
 Proxy file and config signature:
 
 ```ts
-// frontend-new/src/proxy.ts
+// web/src/proxy.ts
 export default async function proxy(request: NextRequest) {
   // auth and redirect logic
 }
@@ -132,13 +132,20 @@ Public route allowlist:
 const publicPaths = ['/login', '/auth/callback', '/api/auth'];
 ```
 
+Supabase SSR proxy session check:
+
+```ts
+const { data: { user } } = await supabase.auth.getUser();
+if (!user && !isPublic(pathname)) redirect('/login');
+```
+
 ### 3. Contracts
 
 - The exported matcher object must be named `config`; names such as `proxyConfig` are ignored by Next.js and make proxy run on static assets.
 - The matcher must exclude `api`, `_next/static`, `_next/image`, favicon, metadata files, and file-extension assets.
 - Public auth surfaces include `/login`, `/auth/callback`, and `/api/auth/**`.
-- Protected pages without `cwb_token` redirect to `/login`.
-- Root redirects must only use known roles (`student`, `teacher`, `admin`). Unknown JWT roles clear the cookie and redirect to a setup/login error; never default to `/student`.
+- Protected pages without a Supabase Auth session redirect to `/login`.
+- Role routing must only use verified `profiles.role` in server components/layouts; never infer role from login input and never default to `/student`.
 - Server actions and route handlers still perform their own authorization. Proxy is a request boundary, not the only security boundary.
 
 ### 4. Validation & Error Matrix
@@ -148,9 +155,7 @@ const publicPaths = ['/login', '/auth/callback', '/api/auth'];
 | `/_next/static/**` CSS/JS asset requested | `200` with `text/css` or `application/javascript`; no redirect |
 | Login page requested | `200` without auth token |
 | `/auth/callback` requested | allowed through proxy |
-| Protected role page without token | `307` to `/login` |
-| Root path with known role token | redirect to that role home |
-| Root path with unknown role token | delete `cwb_token`; redirect to `/login?error=role_required` |
+| Protected role page without Supabase session | `307` to `/login` |
 | Matcher export name is wrong | blocking bug: static assets may redirect to login HTML and browser reports `Unexpected token '<'` |
 
 ### 5. Good/Base/Bad Cases
@@ -164,7 +169,7 @@ const publicPaths = ['/login', '/auth/callback', '/api/auth'];
 - Required after proxy edits:
   - `curl -fsSI http://127.0.0.1:3000/_next/static/...css` shows `200` and `text/css`.
   - `curl -fsSI http://127.0.0.1:3000/_next/static/...js` shows `200` and `application/javascript`.
-  - `curl -sSI http://127.0.0.1:3000/student` without cookies shows `307` to `/login`.
+  - `curl -sSI http://127.0.0.1:3000/student` without Supabase Auth cookies shows `307` to `/login`.
 - Run `npm run lint` and `npm run build` after changing proxy or auth boundaries.
 
 ### 7. Wrong vs Correct

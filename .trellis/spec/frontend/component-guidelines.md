@@ -8,7 +8,7 @@
 
 ### 1. Scope / Trigger
 
-- Trigger: creating or modifying React components in `frontend-new/src/components/**` or route-local components in `frontend-new/src/app/**`.
+- Trigger: creating or modifying React components in `web/src/components/**` or route-local components in `web/src/app/**`.
 - Applies to shadcn primitives, app shell components, workbench components, AI message renderers, forms, tables, dialogs, and state components.
 
 ### 2. Signatures
@@ -16,11 +16,11 @@
 Directory signatures:
 
 ```text
-frontend-new/src/components/ui/**          copied shadcn primitives
-frontend-new/src/components/workbench/**   domain/product components
-frontend-new/src/components/app-shell.tsx  protected workspace shell
-frontend-new/src/components/app-sidebar.tsx role navigation
-frontend-new/src/lib/utils.ts              cn/class utilities
+web/src/components/ui/**          copied shadcn primitives
+web/src/components/workbench/**   domain/product components
+web/src/components/app-shell.tsx  protected workspace shell
+web/src/components/app-sidebar.tsx role navigation
+web/src/lib/utils.ts              cn/class utilities
 ```
 
 Component prop signatures:

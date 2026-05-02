@@ -14,18 +14,18 @@ This task is active for the full Next.js + Tailwind CSS + shadcn/ui + Vercel AI 
 
 ## Current Repo Reality
 
-Target app root is `frontend-new/`, not the older `frontend/` surface.
+Target app root is `web/`, not the older `frontend/` surface.
 
 Observed target files:
 
-- App Router: `frontend-new/src/app/**`
-- shadcn config: `frontend-new/components.json`
-- Global theme: `frontend-new/src/app/globals.css`
-- Shared shell: `frontend-new/src/components/app-shell.tsx`, `frontend-new/src/components/app-sidebar.tsx`
-- Workbench components: `frontend-new/src/components/workbench/bloom-badge.tsx`, `frontend-new/src/components/workbench/bloom-ladder.tsx`, `frontend-new/src/components/workbench/role-badge.tsx`
-- Supabase helpers: `frontend-new/src/lib/supabase/browser.ts`, `frontend-new/src/lib/supabase/server.ts`
+- App Router: `web/src/app/**`
+- shadcn config: `web/components.json`
+- Global theme: `web/src/app/globals.css`
+- Shared shell: `web/src/components/app-shell.tsx`, `web/src/components/app-sidebar.tsx`
+- Workbench components: `web/src/components/workbench/bloom-badge.tsx`, `web/src/components/workbench/bloom-ladder.tsx`, `web/src/components/workbench/role-badge.tsx`
+- Supabase helpers: `web/src/lib/supabase/browser.ts`, `web/src/lib/supabase/server.ts`
 
-Target package versions observed in `frontend-new/package.json`:
+Target package versions observed in `web/package.json`:
 
 - Next.js `16.2.4`
 - React `19.2.4`

@@ -8,7 +8,7 @@
 
 ### 1. Scope / Trigger
 
-- Trigger: any page or component in `frontend-new/**` that renders async data, auth/role checks, AI provider readiness, form submission, audit/export state, or empty operational data.
+- Trigger: any page or component in `web/**` that renders async data, auth/role checks, AI provider readiness, form submission, audit/export state, or empty operational data.
 - Applies to Student, Teacher, Admin, login, and shared workbench components.
 
 ### 2. Signatures
@@ -109,7 +109,7 @@ const users = fetchedUsers.length ? fetchedUsers : [{ id: 'demo', name: '示例�
 
 ### 1. Scope / Trigger
 
-- Trigger: deciding where to store UI state in `frontend-new/**`.
+- Trigger: deciding where to store UI state in `web/**`.
 
 ### 2. Signatures
 

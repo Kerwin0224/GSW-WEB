@@ -1,132 +1,120 @@
-# Demo Scope v1
+# Demo Scope v2
 
-This file defines the first demo scope.
-The goal is not full completion. The goal is a directionally correct and clearly role-separated demo.
+This file defines the next demo scope after the four-module product reset.
+The goal is to prove the narrowed product spine before broader learning analytics or Bloom features return.
 
 ## Demo Goals
 
-The first demo should prove:
+The demo should prove:
 
-1. The student, teacher, and admin surfaces are clearly separated
-2. The system is actually centered on Bloom progression
-3. The three surfaces interact through real product flows
-4. The system already shows the beginnings of a training-data loop
+1. Login routes student, teacher, and admin into clearly separated workspaces.
+2. Student has only the required `ask` and `practice` flows.
+3. Student questions are automatically filed under poem/text-title projects.
+4. Teacher has only the required `ask` and `audit` flows.
+5. Teacher audit produces DPO and SFT candidate data.
+6. Admin manages teachers, classes, students, provider config, MCP config, and audited dataset export.
 
 ## Demo Principles
 
-- Do the right subset, not the full product
-- Build the main stage first
-- Do not over-separate backend intents in the frontend yet
-- Avoid heavy second-level screens unless necessary for the demo
+- Build the four-module spine first.
+- Avoid broad dashboards unless they directly support the four current modules.
+- Avoid resurrecting Bloom/challenge navigation as a demo requirement.
+- Keep role boundaries visible and hard to confuse.
+- Prefer complete core flows over many shallow pages.
+
+## Login Demo Must-Haves
+
+- Role-aware login entry.
+- Student route.
+- Teacher route.
+- Admin route.
+- Clear post-login workspace separation.
 
 ## Student Demo Must-Haves
 
-- Unified new conversation entry
-- System decides:
-  - normal chat
-  - poem project
-- Poem project shows:
-  - poem title
-  - current Bloom level
-  - recommended Bloom level
-  - challenge entry
-- Input supports:
-  - web search
-  - file upload
-- Student can see teacher feedback
-- Student can launch a challenge
+- `Ask` entry.
+- `Practice` entry.
+- Project list grouped by poem/text title.
+- Asking a question creates or selects the correct poem/text project.
+- One project can show multiple questions.
+- Practice records attach to the selected poem/text project.
 
 ## Teacher Demo Must-Haves
 
-- Left navigation:
-  - learning status
-  - new conversation
-  - my projects
-  - student projects
-- Default home:
-  - school-wide / class learning-status view
-- Teacher can inspect school-wide and class-level learning status
-- Teacher can enter student poem projects and:
-  - write comments
-  - write review conclusions
-  - correct AI answers
-  - adjust Bloom levels
-- Teacher queue can surface challenge-review items that require formal handling
+- `Ask` entry for teacher-to-LLM interaction.
+- `Audit` entry for dataset production.
+- Class/student scope visible enough to show teacher ownership.
+- Audit detail can mark or prepare:
+  - SFT record
+  - DPO record
+- Audit detail preserves original prompt and model answer.
+- Audit detail supports corrected or preferred answer data.
 
 ## Admin Demo Must-Haves
 
-- School overview dashboard
-- Bloom distribution focus
-- Teacher filtering
-- Audit page with at least:
-  - Bloom adjustments
-  - answer corrections
-  - review conclusions
-  - challenge upgrades
-  - think records
-- Settings page with:
-  - model-related configuration
-  - web-search switch
-  - file-upload switch
-  - skills / MCP entry
-- Data production / labeling mode with:
-  - sample-type entry
-  - sample list
-  - sample detail
-  - reward labels
-  - JSONL export
+- Teacher management.
+- Class management.
+- Student management.
+- Teacher-to-class assignment.
+- Class-to-student membership.
+- Provider configuration.
+- MCP configuration.
+- Export audited SFT data.
+- Export audited DPO data.
 
 ## Required Demo Flows
 
-### Flow A: Student normal conversation
+### Flow A: Login Routing
 
-- Student starts unified conversation
-- System routes it to normal chat
-- Conversation gets a generated title
+- User logs in as student, teacher, or admin.
+- System routes to the matching workspace.
 
-### Flow B: Student poem-project conversation
+### Flow B: Student Ask To Project
 
-- Student starts unified conversation
-- System recognizes poem-related content
-- System matches or creates poem project
-- Project shows current and recommended Bloom level and stores the interaction
+- Student asks about a poem or classical text.
+- System identifies the poem/text title.
+- System creates or selects the matching project.
+- The question appears under that project.
 
-### Flow C: Student challenge
+### Flow C: Student Practice
 
-- Student launches challenge inside poem project
-- System generates the challenge from current level, recommended level, and grade signals
-- Student answers
-- System updates Bloom level
+- Student opens a poem/text project.
+- Student starts practice.
+- Practice result is stored under the same project.
 
-### Flow D: Teacher intervention
+### Flow D: Teacher Ask
 
-- Teacher enters a student poem project
-- Teacher corrects AI output and/or adjusts Bloom level
-- Student later sees the final visible version and feedback signal
+- Teacher asks the LLM for teaching support.
+- The interaction is stored in the teacher workspace.
 
-### Flow E: Admin audit and export
+### Flow E: Teacher Audit
 
-- Admin inspects Bloom distribution
-- Admin opens one audit record or think trace
-- Admin enters data-production mode
-- Admin exports one JSONL training-data batch
+- Teacher opens an auditable record.
+- Teacher marks it as SFT or DPO data.
+- Teacher adds corrected/preferred answer data where needed.
+- Record moves into audited state.
+
+### Flow F: Admin Configure And Export
+
+- Admin manages teacher/class/student relationships.
+- Admin configures provider and MCP settings.
+- Admin exports audited SFT and DPO JSONL batches.
 
 ## Explicitly Deferred
 
-- Fully detailed guided-explanation / analysis / outline result objects
-- Full classical-Chinese chain details
-- Full cold-start 3-question positioning strategy
-- Complex resource library
-- Full export center
-- Fully mature training-data governance UI
-- Complex class-management flows
-- Final technical spec completeness
+- Bloom progression as primary navigation.
+- Challenge workflow.
+- School-wide learning dashboards.
+- Complex teacher intervention queues.
+- Full LMS/course shell.
+- Mature dataset governance beyond audited SFT/DPO export.
+- Complex multi-school tenancy.
 
 ## Frontend Design Rules
 
-- Student surface must not feel like an admin panel
-- Teacher surface must not feel like a generic chat site
-- Admin surface must not feel like a shallow table template
-- Avoid long explanatory copy
-- Avoid course-platform shell language
-- Avoid marketing/demo-course framing
+- Student surface must feel like a learning workbench, not an admin panel.
+- Teacher surface must feel like an ask-and-audit workbench, not a generic chat site.
+- Admin surface must feel like an operations console, not a student-facing product.
+- Avoid long explanatory copy.
+- Avoid course-platform shell language.
+- Avoid marketing/demo-course framing.

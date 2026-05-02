@@ -172,7 +172,7 @@ Prompt 预设     /admin/presets
 
 ### 5.2 Token contract
 
-Use `frontend-new/src/app/globals.css` as source of truth.
+Use `web/src/app/globals.css` as source of truth.
 
 | Token | Meaning | Usage |
 | --- | --- | --- |
@@ -207,7 +207,7 @@ Accessibility rule: Bloom UI always displays `Lx + Chinese label + hint/descript
 
 ### 6.1 shadcn/ui primitives
 
-Use existing shadcn primitives in `frontend-new/src/components/ui/**`:
+Use existing shadcn primitives in `web/src/components/ui/**`:
 
 - layout: `sidebar`, `breadcrumb`, `separator`, `sheet`, `resizable`, `scroll-area`,
 - forms: `input`, `textarea`, `label`, `select`, `checkbox`, `radio-group`, `switch`,
@@ -313,7 +313,7 @@ Contracts:
 - Use visible labels.
 - Error `Alert` uses `role="alert"`.
 - Button shows loading state and prevents duplicate submit.
-- Role routing must use verified backend/profile result, not user-entered role.
+- Role routing must use verified Supabase profile result, not user-entered role.
 
 ### 7.3 `/student` Learning Ask Workspace
 
@@ -759,7 +759,7 @@ Correct UI patterns:
 6. Build project card/detail design and Bloom ladder accessibility.
 7. Build teacher preset metadata and audit master/detail validation design.
 8. Build admin setup checklist and provider capability matrix design.
-9. Verify no mock/legacy/fallback UI remains in `frontend-new` MVP pages.
+9. Verify no mock/legacy/fallback UI remains in `web` MVP pages.
 
 ---
 

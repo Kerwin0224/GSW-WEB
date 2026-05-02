@@ -9,7 +9,7 @@
 ### 1. Scope / Trigger
 
 - Trigger: any route, layout, navigation, page, state component, or design-system component in the Next.js + Tailwind CSS + shadcn/ui refactor.
-- Applies to `frontend-new/src/app/**`, `frontend-new/src/components/**`, `frontend-new/src/lib/**`, and any future UI package replacing the legacy `frontend/` surface.
+- Applies to `web/src/app/**`, `web/src/components/**`, `web/src/lib/**`, and any future UI package replacing the legacy `frontend/` surface.
 - This is a product contract: UI/UX quality is required before feature implementation is considered complete.
 
 ### 2. Signatures

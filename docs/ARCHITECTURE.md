@@ -1,200 +1,141 @@
 # Architecture Overview
 
-## System Architecture
+## Current Architecture
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    Frontend (Browser)                │
-│  Next.js 16 + React 19 + Tailwind CSS + SWR         │
-│                                                      │
-│  /login        /student      /teacher     /admin     │
-│  /question     /challenge    /trajectory  /accounts  │
-└──────────────────────┬──────────────────────────────┘
-                       │ HTTP / JSON
-                       ▼
-┌─────────────────────────────────────────────────────┐
-│                    Backend (FastAPI)                 │
-│                                                      │
-│  Auth ─── Login, JWT, role guards                    │
-│  API  ─── Users, Projects, Sessions, Results         │
-│         Challenges, Feedback, Admin Config           │
-│                                                      │
-│  ┌────────────────────────────────────────────┐     │
-│  │           LangGraph Pipeline               │     │
-│  │  routing → retrieve → validate → generate  │     │
-│  │  → grounding → pruning → sediment          │     │
-│  └────────────────────────────────────────────┘     │
-│                                                      │
-│  Skills ─── lesson_outline, question_analysis,       │
-│             guided_explain, general_chat             │
-│                                                      │
-│  MCP ───── Provider registry, runtime bridge,        │
-│             UltraRAG bridge                          │
-│                                                      │
-│  Export ─── PDF, Word, JSONL (training data)         │
-└──────────┬──────────────────────┬────────────────────┘
-           │                      │
-           ▼                      ▼
-┌──────────────────┐   ┌──────────────────────┐
-│  SQLite (db)     │   │  Chroma (vectors)    │
-│  Users, sessions,│   │  Embeddings for      │
-│  projects, events│   │  retrieval           │
-└──────────────────┘   └──────────────────────┘
+`web/` is the only product implementation. The product is a Next.js App Router application with Supabase-backed identity/data access and server-side AI route handlers.
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│ web/                                                │
+│ Next.js App Router + React + Tailwind/shadcn                 │
+│                                                              │
+│ Routes:                                                      │
+│   /login                                                     │
+│   /student, /student/projects, /student/projects/[projectId] │
+│   /teacher, /teacher/audit                                   │
+│   /admin, /admin/classes, /admin/providers, /admin/mcp       │
+│                                                              │
+│ Route handlers:                                              │
+│   /api/auth/login                                            │
+│   /api/student/chat                                          │
+│   /api/teacher/chat                                          │
+└───────────────────────────────┬──────────────────────────────┘
+                                │ Supabase SSR/browser clients
+                                ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Supabase                                                     │
+│ Auth + Postgres + RLS + pgvector migrations                  │
+│ School-managed accounts, role profiles, project records,     │
+│ audit/export records, provider/admin configuration           │
+└───────────────────────────────┬──────────────────────────────┘
+                                │ server-only AI credentials
+                                ▼
+┌──────────────────────────────────────────────────────────────┐
+│ AI provider routes                                           │
+│ Vercel AI SDK-compatible server route handlers.              │
+│ Missing provider configuration fails clearly; there is no     │
+│ fake answer or deleted backend fallback.                     │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ## Directory Structure
 
-```
-classical-chinese-workbench/
-├── backend/
+```text
+web/
+├── src/
 │   ├── app/
-│   │   ├── main.py              # FastAPI entry, all routes
-│   │   ├── auth.py              # JWT auth, password hashing
-│   │   ├── db.py                # SQLite operations
-│   │   ├── schemas.py           # Pydantic request/response models
-│   │   ├── config.py            # Environment configuration
-│   │   ├── pipeline.py          # Task execution pipeline
-│   │   ├── exporter.py          # PDF/Word/JSONL export
-│   │   ├── file_extract.py      # Document text extraction
-│   │   ├── grok_client.py       # xAI Grok API client
-│   │   ├── langfuse_client.py   # Observability client
-│   │   ├── graph/               # LangGraph workflow nodes
-│   │   │   ├── workflow.py      # State machine definition
-│   │   │   ├── routing.py       # Task type routing
-│   │   │   ├── retrieve.py      # RAG retrieval
-│   │   │   ├── validate.py      # Content validation
-│   │   │   ├── generate.py      # LLM generation
-│   │   │   ├── grounding.py     # Evidence grounding
-│   │   │   ├── pruning.py       # Context pruning
-│   │   │   ├── sediment.py      # Knowledge sediment
-│   │   │   └── state.py         # Graph state definition
-│   │   ├── mcp/                 # Model Context Protocol
-│   │   │   ├── provider_registry.py
-│   │   │   ├── runtime_bridge.py
-│   │   │   └── ultrarag_bridge.py
-│   │   └── skills/              # AI skill implementations
-│   │       ├── registry.py
-│   │       ├── lesson_outline.py
-│   │       ├── question_analysis.py
-│   │       ├── guided_explain.py
-│   │       ├── practice_gen.py
-│   │       ├── review_card.py
-│   │       └── learning_summary.py
-│   ├── scripts/                 # Backend utility scripts
-│   │   ├── reset_demo_data.py   # Demo data seeding
-│   │   └── smoke_*.py           # Smoke test scripts
-│   └── requirements.txt
-├── frontend/
-│   ├── app/                     # Next.js App Router pages
-│   │   ├── layout.tsx
-│   │   ├── page.tsx             # Home/redirect
-│   │   ├── login/
-│   │   ├── student/
-│   │   ├── teacher/
-│   │   ├── admin/
-│   │   ├── question/
-│   │   ├── challenge/
-│   │   ├── trajectory/
-│   │   └── accounts/
+│   │   ├── login/page.tsx
+│   │   ├── auth/callback/route.ts
+│   │   ├── student/**
+│   │   ├── teacher/**
+│   │   ├── admin/**
+│   │   └── api/**/route.ts
 │   ├── components/
-│   │   ├── dashboard/           # Main workspace components
-│   │   │   ├── StudentWorkspace.tsx
-│   │   │   ├── TeacherWorkspace.tsx
-│   │   │   ├── AdminWorkspace.tsx
-│   │   │   ├── AdminSkillsWorkspace.tsx
-│   │   │   ├── AdminTraceWorkspace.tsx
-│   │   │   ├── AdminTemplatesWorkspace.tsx
-│   │   │   └── ...
-│   │   └── shared/              # Shared UI components
-│   │       ├── AppShell.tsx
-│   │       ├── RoleBadge.tsx
-│   │       └── StatusCard.tsx
-│   ├── hooks/                   # React hooks
-│   ├── lib/                     # Utilities
-│   │   ├── api.ts               # API client
-│   │   ├── types.ts             # TypeScript types
-│   │   ├── validators.ts        # Zod validators
-│   │   ├── format.ts            # Formatting utilities
-│   │   ├── constants.ts         # App constants
-│   │   └── storage.ts           # Local storage helpers
-│   ├── public/                  # Static assets
-│   └── package.json
-├── docs/                        # Product documentation
-├── scripts/                     # Launch scripts
-├── models/                      # Local model directory (gitignored)
-├── data/                        # Runtime data (gitignored)
-└── exports/                     # Export output (gitignored)
+│   │   ├── ui/**
+│   │   └── workbench/**
+│   ├── hooks/**
+│   └── lib/
+│       ├── auth.ts
+│       ├── school-login.ts
+│       ├── supabase/browser.ts
+│       ├── supabase/server.ts
+│       └── data/**
+└── supabase/migrations/**
 ```
+
+## Auth Boundary
+
+- Login is school-account-only.
+- Public signup, social login, email-login discovery, and legacy token cookies are not product paths.
+- Route protection belongs in the Next.js proxy/auth boundary and in server-side data helpers.
+- Role routing must use verified profile role data, not user-entered hints.
 
 ## Data Flow
 
-### Student Conversation Flow
+### Login
 
-1. Student submits input via `/question` page
-2. Frontend calls `POST /tasks/run` with input + optional files
-3. Backend routes content through LangGraph pipeline:
-   - **routing**: Determines task type (general_chat, question_analysis, guided_explain)
-   - **retrieve**: Fetches relevant context from Chroma or UltraRAG
-   - **validate**: Checks content safety and role permissions
-   - **generate**: Calls LLM (Ollama or Grok) for response
-   - **grounding**: Validates response against source evidence
-   - **pruning**: Trims context to appropriate length
-4. Result stored as `result_objects` linked to `sessions`
-5. If poem-related, system auto-creates or matches a `project`
-6. Response returned to frontend
+1. User submits school account credentials at `/login`.
+2. `web/src/app/api/auth/login/route.ts` validates the account against Supabase-backed school-account logic.
+3. The app routes to the verified role workspace.
 
-### Challenge Flow
+### Student Ask / Practice
 
-1. Student launches challenge from poem project
-2. Backend generates challenge from current Bloom level → next level
-3. Student submits answer
-4. System scores answer and determines pass/fail
-5. If passed, Bloom level auto-upgrades (pending teacher confirmation)
-6. Teacher can later review and override
+1. Student works under `/student` and project routes.
+2. Server routes/data helpers store project/question/practice records in Supabase tables.
+3. AI route handlers use server-only provider configuration.
+4. Project history remains poem/text-project based, not a generic chat archive.
 
-### Teacher Intervention Flow
+### Teacher Ask / Audit
 
-1. Teacher views student project via `/teacher` page
-2. Teacher can: write feedback, correct answers, adjust Bloom levels
-3. All teacher actions recorded as audit events
-4. Student sees teacher-corrected version as the visible default
+1. Teacher uses `/teacher` for teaching support and `/teacher/audit` for dataset review.
+2. Audit preserves source prompt/answer, teacher judgment, corrected/preferred answer, dataset type, status, and metadata.
+3. Class/student access remains teacher-scoped unless an admin policy expands it.
 
-### Admin Audit Flow
+### Admin Operations
 
-1. Admin views school-wide dashboard at `/admin`
-2. Can inspect all sessions, results, challenge attempts, Bloom overrides
-3. Can configure capabilities (web search, file upload, skills, MCP providers)
-4. Can export training data in JSONL format
+1. Admin manages teacher/class/student relationships.
+2. Admin configures providers and MCP availability.
+3. Admin exports audited SFT/DPO data only after required audit status is met.
 
-## Key Concepts
 
-### Bloom Taxonomy
+## Configuration Persistence Boundary
 
-The system tracks student progress through 6 cognitive levels:
+Configuration is split by first principles: shared product facts belong in Supabase; runtime authority and machine-local material belong in environment secrets. The app must fail closed when a required configuration record or secret is missing. It must not silently fall back to mock providers, local files, deleted services, or placeholder AI answers.
 
-| Level | Label (CN) | Description |
-|-------|-----------|-------------|
-| remember | 记忆 | Recall facts and basic concepts |
-| understand | 理解 | Explain ideas or concepts |
-| apply | 应用 | Use information in new situations |
-| analyze | 分析 | Draw connections among ideas |
-| evaluate | 评价 | Justify a stand or decision |
-| create | 创造 | Produce new or original work |
+### Store in Supabase
 
-### Project vs Session
+Supabase stores auditable, shareable, non-plaintext-secret business configuration and product records:
 
-- **Project**: A container around a specific poem/classical text for a specific user (student+poem or teacher+poem)
-- **Session**: A single interaction within a project or a standalone chat
-- **Result**: The structured output of a session (answer, analysis, outline, etc.)
-- **Evidence Event**: Individual messages/inputs/outputs within a session
+- Provider configuration metadata: provider type, display name, capability readiness, model IDs, optional base URL, `secret_ref`, `secret_last_four`, health status, and audit timestamps.
+- Provider capabilities by role/task: `student_chat`, `teacher_chat`, `bloom_classification`, `project_classification`, `practice_generation`, `practice_evaluation`, `audit_assist`, and `embedding`.
+- MCP server metadata: server ID/name, description, declared capabilities/tools, role scope, enabled status, health status, non-secret `connection_ref`, `secret_ref`, `secret_last_four`, and audit fields.
+- Prompt presets, class/user/project data, conversations/messages, audit records, and export batches.
+- Local-model metadata only when it is shareable business configuration: logical model ID, provider/runtime type, task capability, dimension/context metadata, health state, and optional environment-scoped `secret_ref`. Shared rows must not contain developer-machine absolute paths.
 
-### Role Separation
+### Store in local/deploy environment or a secret manager
 
-| Feature | Student | Teacher | Admin |
-|---------|---------|---------|-------|
-| Chat & Projects | Own only | Own + student projects | All (read-only) |
-| Bloom Adjustment | View only | Can override | View audit trail |
-| Challenge | Launch & answer | Review queue | View audit trail |
-| User Management | None | Create students | Create teachers & students |
-| System Config | None | None | Full control |
-| Data Export | Single project | All students | School-wide + training data |
+Environment variables and deployment secret stores hold runtime secrets and machine-local values:
+
+- `OPENAI_API_KEY`, `AI_GATEWAY_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, Langfuse/xAI provider keys, and other provider credentials.
+- Local model binary paths, model cache roots, runtime toggles, and machine-specific accelerator settings.
+- Local MCP bridge tokens, command paths, per-host environment variables, proxy settings, and development-only ports.
+- Any credential that can authorize a request. Real secret values must never be written to client-visible fields, normal Supabase table columns, docs, examples, or logs.
+
+### Local model rule
+
+Model binaries and absolute paths do not enter git. Environment may hold paths or enablement flags for a specific machine/deployment. Supabase may store model configuration metadata and `secret_ref`, but local absolute paths are allowed only when the row is explicitly environment-scoped and not treated as shared business configuration. If a required model path, model ID, provider capability, or API key is absent, the route returns a blocked configuration error; no fallback model is selected.
+
+### MCP rule
+
+MCP server metadata, capabilities, role scope, enabled state, non-secret connection references, health, and audit trail persist in Supabase. Connection secrets, real endpoints that expose private infrastructure, local commands, bridge tokens, and server-specific environment variables live only in server-side env or a secret manager. Admin UI may show connection refs, masked values, last four characters, and health state; it must never render plaintext secrets.
+
+## Removed Legacy Runtime
+
+The legacy split runtime has been deleted:
+
+- No `frontend/` product app.
+- No `backend/` FastAPI product API.
+- No active SQLite/Chroma data layer.
+- No `NEXT_PUBLIC_API_BASE_URL` fallback client.
+
+If a future feature needs server logic, implement it inside `web/src/app/api/**/route.ts` and shared server-only helpers under `web/src/lib/**`, or represent schema changes as Supabase migrations.

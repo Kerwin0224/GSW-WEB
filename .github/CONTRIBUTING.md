@@ -1,147 +1,101 @@
 # Contributing Guide
 
-This document covers the practical steps for contributing to Classical Chinese Workbench.
+This document covers practical steps for contributing to Classical Chinese Workbench.
+
+## Product Entry
+
+`web/` is the only product implementation. Do not add new product code under deleted legacy paths.
 
 ## Prerequisites
 
-- Python 3.11+
 - Node.js 20+
 - npm
-- (Optional) Ollama for local model inference
+- Supabase project credentials for local development
 
 ## Quick Start
-
-### 1. Clone and Install
 
 ```powershell
 git clone <repo-url>
 cd classical-chinese-workbench
-
-# Python backend
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r backend/requirements.txt
-
-# Node.js frontend
-cd frontend
+cd web
 npm install
-cd ..
-```
-
-### 2. Configure Environment
-
-```powershell
-cp .env.example .env
-```
-
-Edit `.env` to set your model provider and API keys. The defaults work for Ollama local inference.
-
-### 3. Seed Demo Data
-
-```powershell
-python backend/scripts/reset_demo_data.py
-```
-
-### 4. Start the Stack
-
-```powershell
-.\scripts\start-demo.ps1 -ResetDemoData
-```
-
-Or start services individually:
-
-```powershell
-# Backend
-python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
-
-# Frontend (in a separate terminal)
-cd frontend
+cp .env.local.example .env.local
 npm run dev
 ```
+
+Open `http://127.0.0.1:3000`.
 
 ## Development Workflow
 
 ### Branching
 
-- Branch from `main` for each feature or fix
-- Name branches descriptively: `feature/student-export`, `fix/bloom-calculation`
-- One logical change per branch
+- Branch from `main` for each feature or fix.
+- Name branches descriptively: `feature/student-practice`, `fix/school-login`.
+- Keep one logical change per branch.
 
 ### Before You Code
 
-1. Read `docs/PRODUCT_SOURCE_OF_TRUTH.md` for product direction
-2. Read `docs/prd_decision_v1.md` for design decisions
-3. Read `docs/demo_scope_v1.md` for what's in/out of scope
-4. If using Trellis, run `/trellis:start` to load task context
+1. Read `docs/PRODUCT_SOURCE_OF_TRUTH.md` for product direction.
+2. Read `docs/prd_decision_v1.md` for current product boundaries.
+3. Read `docs/demo_scope_v1.md` for current in/out-of-scope flows.
+4. Use Trellis task context and specs before implementation.
 
 ### Code Conventions
 
-**Backend (Python):**
-- Follow existing patterns in `backend/app/`
-- Use type hints on all new functions
-- New API endpoints go in `backend/app/main.py`
-- Database operations go in `backend/app/db.py`
-- Pydantic schemas go in `backend/app/schemas.py`
-
-**Frontend (TypeScript/React):**
-- Use Next.js App Router conventions
-- Components live in `frontend/components/`
-- API calls go through `frontend/lib/api.ts`
-- Types in `frontend/lib/types.ts`
-- Run `npm run typecheck` before committing
+- Use Next.js App Router conventions in `web/src/app/**`.
+- Put App Router route handlers under `web/src/app/api/**/route.ts`.
+- Put shared server-only/data behavior under `web/src/lib/**`.
+- Keep shadcn/ui primitives under `web/src/components/ui/**` and product components under `web/src/components/workbench/**` or focused feature folders.
+- Use Supabase migrations/types for schema-backed changes.
+- Login remains school-account-only; do not add email-login discovery, public signup, or legacy token fallbacks.
 
 ### Validation
 
 Before submitting a PR:
 
 ```powershell
-# Frontend
-cd frontend
-npm run typecheck
+cd web
 npm run lint
+npm run build
+```
 
-# Backend smoke tests
-python backend/scripts/smoke_admin_visibility.py
-python backend/scripts/smoke_challenge_flow.py
+Run targeted static checks when touching auth or old-stack boundaries:
+
+```powershell
+grep -R "find_login_email\|cwb_token\|NEXT_PUBLIC_API_BASE_URL" -n src
 ```
 
 ## Pull Requests
 
-- Fill in the PR template (`.github/PULL_REQUEST_TEMPLATE.md`)
-- Include what changed and why
-- List validation steps you ran
-- Update docs if behavior changed
+- Fill in the PR template (`.github/PULL_REQUEST_TEMPLATE.md`).
+- Include what changed and why.
+- List validation steps you ran.
+- Update docs if behavior changed.
 
 ## What NOT to Commit
 
-The `.gitignore` already blocks these, but double-check:
+The `.gitignore` blocks common local artifacts, but double-check:
 
-- `data/` — SQLite database and Chroma indexes
-- `exports/` — generated export files
-- `models/` — local model binaries
-- `.env` — secrets and API keys
-- `*.log` — runtime logs
-- `__pycache__/`, `node_modules/`, `.next/` — build artifacts
-- Browser profiles, Playwright screenshots
+- Local `.env*` files except checked-in examples.
+- Runtime data and generated exports.
+- Local model binaries.
+- `*.log` runtime logs.
+- `node_modules/`, `.next/`, TypeScript build info.
+- Browser profiles, Playwright screenshots, local agent/runtime state.
 
 ## Troubleshooting
 
-### Backend won't start
+### App build fails
 
-- Ensure `.venv` is activated
-- Check `data/` directory exists (the reset script creates it)
-- Look at `backend-dev-err.log` for startup errors
+- Run `npm install` in `web/`.
+- Delete `web/.next/` and retry.
+- Read the lint/build output first; do not mask build failures with fallback code.
 
-### Frontend build fails
+### Auth issues
 
-- Run `npm install` in `frontend/`
-- Delete `frontend/.next/` and retry
-- Check `npm run typecheck` for TypeScript errors
-
-### Demo data issues
-
-- Re-run `python backend/scripts/reset_demo_data.py`
-- The script is idempotent — safe to run multiple times
+- Check Supabase URL/key configuration in `web/.env.local`.
+- Confirm school account/profile data exists for the tested role.
+- Do not work around missing profile data by defaulting to a role route.
 
 ## Architecture Overview
 
@@ -149,4 +103,4 @@ See `docs/ARCHITECTURE.md` for system structure and data flow.
 
 ## API Reference
 
-See `docs/API_REFERENCE.md` for endpoint documentation.
+See `docs/API_REFERENCE.md` for route-handler documentation.

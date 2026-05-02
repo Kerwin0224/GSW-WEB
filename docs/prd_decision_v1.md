@@ -1,216 +1,195 @@
-# PRD Decision Draft v1
+# PRD Decision Draft v2
 
 This file is the stable ASCII-named working version of the current PRD decision draft.
-It consolidates the current product direction without overwriting the original PRD files.
+It replaces the earlier Bloom-first scope with a narrower four-module product scope.
 
 ## Product Identity
 
 - The product is a school-facing AI workbench for classical poetry and classical Chinese learning.
+- The current build must be constrained to four modules:
+  - login
+  - student
+  - teacher
+  - admin
 - It is not a course-platform-first product.
 - It is not a generic chat application.
-- The core product axis is Bloom cognitive level progression.
+- It is not a broad LMS shell.
 - The system is both:
-  - a teaching workbench
-  - an audit and governance backend
-  - a data factory for future post-training
+  - a student asking and practice workbench
+  - a teacher asking and audit workbench
+  - an admin governance and model-configuration console
+  - a data factory for DPO and SFT dataset production
 
-## Primary Surfaces
+## Current Module Boundary
 
-### Student
+### 1. Login Module
 
-- Question-first workbench
-- Unified new conversation entry
-- System decides whether the conversation belongs to:
-  - normal chat
-  - a poem project
-- Poem project top bar shows:
-  - poem title
-  - current Bloom level
-  - recommended Bloom level
-  - challenge entry
-- Student can:
-  - ask questions
-  - upload files
-  - use web search
-  - see current Bloom level
-  - see recommended Bloom level
-  - launch a challenge
-  - receive teacher feedback
-  - export a single poem project
+The login module owns identity entry and role routing.
 
-### Teacher
+Required responsibilities:
 
-- Default home is school-wide / class learning-status view
-- Unified new conversation entry still exists
-- Core responsibility is Bloom-level judgment, progression, and correction
-- Main areas:
-  - school-wide / class learning-status
-  - my poem projects
-  - student poem projects
-- Teacher can:
-  - prepare and ask in teacher-owned poem projects
-  - review school-wide and class-level learning status
-  - review student poem projects
-  - write comments
-  - write review conclusions
-  - correct AI answers
-  - adjust Bloom levels
-  - process challenge-review queue items
+- Support role-aware login for student, teacher, and admin.
+- Route each role to its own workspace after login.
+- Preserve clear role boundaries in frontend navigation and backend authorization.
+- Use school-managed accounts rather than open self-registration for the current scope.
 
-### Admin
+Out of scope for the current spec:
 
-- School-level highest privilege role
-- Home is a school dashboard, not a generic technical panel
-- Main concerns:
-  - school-wide Bloom distribution
-  - teacher filtering
-  - audit
-  - settings
-  - data production / labeling mode
-- Admin can inspect all chats, projects, audit records, and think records for audit purposes
-- Admin cannot directly edit teacher or student chat content
+- Public signup.
+- Social login.
+- Marketplace or multi-tenant commercial onboarding.
 
-## Account Model
+### 2. Student Module
 
-- Unified account system with separate front-end entry points
-- Student unique identifier: student number
-- Teacher unique identifier: employee number
-- Admin uses separate backend accounts
-- Admin can create teachers and students
-- Teachers can also create students
-- Support:
-  - single create
-  - Excel/CSV import
-  - paste-list import
-- In v1, one student belongs to one teacher
-- If a student changes teacher, historical projects move to the new teacher
+The student module only needs two functions in the current scope:
 
-## Normal Chat vs Poem Project
+- `ask`
+- `practice`
 
-- New conversation entry is unified
-- The user does not pre-select chat vs poem project
-- The system determines ownership after the conversation starts
-- Non-poetry content goes to normal chat
-- Poetry-related content goes to poem projects
-- Student poem projects are unique by `student + poem`
-- Teacher also has `teacher + poem` projects
+Student ask:
 
-## Bloom Levels
+- A student asks questions about classical poetry or classical Chinese text.
+- After a student asks a question, the system automatically files it under a project.
+- The project level is anchored by the poem or text title.
+- One project can contain multiple questions.
+- If a matching poem/text-title project already exists for the student, the new question is added under that project.
+- If no matching project exists, the system creates one.
 
-- Use classic 6-level Bloom progression:
-  - Remember
-  - Understand
-  - Apply
-  - Analyze
-  - Evaluate
-  - Create
-- Student surface shows the official current level and system-recommended level in poem projects
-- Teacher can expand the full ladder and adjust levels
-- System judgment uses:
-  - recent interaction
-  - whole-project history
-- Teacher overrides are first-class signals written back to the system
-- The system should not lightly auto-downgrade official Bloom level
+Student practice:
 
-## Challenge
+- Practice is the student-facing exercise flow for the current poem/text project.
+- Practice should use the project context accumulated from prior questions.
+- Practice results should be stored under the same poem/text project where they belong.
 
-- Challenge is the main upgrade path for Bloom progression
-- Student actively launches challenge
-- The system generates the challenge prompt from current level, recommended level, and grade-related signals
-- Challenge appears inline in the conversation flow
-- The system can upgrade immediately
-- Teacher can later confirm or override
+Student scope rules:
 
-## Teacher Intervention
+- Student does not manage users, classes, providers, MCP, audit exports, or teacher data.
+- Student does not need broad learning dashboards in the current scope.
+- Student project structure is `student -> poem/text project -> questions/practice records`.
 
-- Teacher can:
-  - write comments
-  - write review conclusions
-  - correct AI answers
-  - adjust Bloom levels
-- Original AI answer is preserved
-- Teacher-corrected version can become the default visible final version for the student
-- Teacher actions are part of the audit trail
+### 3. Teacher Module
 
-## Inputs and Context
+The teacher module only needs two functions in the current scope:
 
-- Web search is enabled by default
-- File upload is enabled by default
-- Admin may disable those capabilities
-- Supported files in v1:
-  - images
-  - PDF
-  - Word
-  - text
-  - Markdown
-- Files and search results are persisted into the current conversation or poem project context
+- `ask`
+- `audit`
 
-## Export
+Teacher ask:
 
-- Student, teacher, and admin all support export, but with different scopes
-- Student core export target:
-  - one poem project
-- Student export supports:
-  - PDF
-  - Word
-- Teacher core export target:
-  - all students under that teacher, organized by student
-- Admin export scope is widest and includes reports, audit, and training-data-related outputs
+- A teacher can interact with the LLM for preparation, explanation, review assistance, and teaching support.
+- Teacher questions belong to the teacher workspace, not to a student project unless explicitly attached by later product work.
 
-## Think Mode
+Teacher audit:
 
-- Think is user-controlled via manual switch
-- If think is enabled:
-  - the user can expand to view the full thinking process
-- If think is disabled:
-  - do not show full thinking content
-- Think traces do not enter the formal project history
-- Think traces can enter audit data
-- Admin can inspect think traces
-- Teachers cannot inspect student think traces
+- Audit exists to produce usable DPO and SFT data.
+- Teacher audit reviews student/LLM interaction records and teacher/LLM interaction records when they are eligible for data production.
+- Audit should preserve:
+  - original prompt
+  - original model answer
+  - teacher judgment
+  - corrected or preferred answer when present
+  - dataset type: DPO or SFT
+  - audit status
+  - source metadata
 
-## Lifecycle
+Teacher relationship model:
 
-- Student poem projects are not hard-deletable in v1
-- Old projects move into history/archive
-- Archive may be:
-  - automatic
-  - manual
-- New interaction restores archived objects back into active lists
-- Normal chat follows the same archive logic
+- One teacher can own multiple classes.
+- One class can contain multiple students.
+- A teacher audits data within the classes and students assigned to that teacher unless admin policy expands access.
 
-## Data Factory and Reward Signals
+### 4. Admin Module
 
-- The product must support future post-training
-- Data entering training pipelines must be layered:
-  - raw samples
-  - teacher-confirmed samples
-  - high-value preference samples
-  - think / reasoning audit samples
-- The system must explicitly record reward-bearing events
-- Core reward signal families:
-  - Bloom judgment accepted vs overridden
-  - challenge upgrade confirmed vs reverted
-  - answer quality accepted vs edited vs rejected
+The admin module owns governance, configuration, and export.
 
-## Data Production / Labeling Mode
+Admin user management:
 
-- Main entry lives in admin
-- First screen is sample-type entry, not a mixed queue
-- First batch of sample types in v1:
-  - Bloom judgment samples
-  - challenge-upgrade samples
-  - answer preference samples
-  - think samples
-- Support both:
-  - batch workbench
-  - single-sample detail page
-- Batch states in v1:
-  - unprocessed
-  - confirmed
-  - needs review
-  - exported
-- Admin can manually adjust reward labels
-- Training-data export supports JSONL
-- Training-data export includes source and audit metadata
-- Export must support filtering by teacher-confirmed status
+- Manage teacher accounts.
+- Manage student accounts.
+- Manage class membership.
+- Assign one teacher to multiple classes.
+- Assign multiple students to one class.
+
+Admin provider and MCP configuration:
+
+- Configure model providers.
+- Configure provider credentials and endpoints where applicable.
+- Configure default provider/model selection.
+- Configure MCP servers and capability availability.
+- These settings are admin-only and must not leak into student or teacher workspaces.
+
+Admin audit export:
+
+- Export teacher-audited DPO data.
+- Export teacher-audited SFT data.
+- Export only records that pass the required audit status.
+- Preserve enough metadata for later training and traceability.
+
+Admin scope rules:
+
+- Admin can inspect governance and audit data needed for operations.
+- Admin does not directly rewrite student or teacher conversations as ordinary content.
+- Admin is responsible for operational configuration, not daily teaching workflow.
+
+## Organization Model
+
+The current organization hierarchy is:
+
+`admin -> teachers -> classes -> students`
+
+Rules:
+
+- One teacher has many classes.
+- One class has many students.
+- A student belongs to a class for the current scope.
+- Teacher permissions are class-scoped by default.
+- Admin can manage all teachers, classes, and students.
+
+## Project Model
+
+The current student learning object hierarchy is:
+
+`student -> poem/text project -> questions/practice records`
+
+Rules:
+
+- A project is anchored by the poem or classical text title.
+- A project can contain many questions.
+- A project can contain many practice records.
+- Student ask flow automatically creates or selects the correct project.
+- Project history is not a generic chat archive; it is a learning and data-production source.
+
+## Audit And Dataset Model
+
+The current data factory target is DPO and SFT.
+
+SFT candidate records should preserve:
+
+- source role
+- source project or teacher workspace
+- prompt
+- accepted/corrected answer
+- audit status
+- teacher auditor
+- timestamps and source metadata
+
+DPO candidate records should preserve:
+
+- source role
+- source project or teacher workspace
+- prompt
+- chosen answer
+- rejected answer
+- preference rationale or label when present
+- audit status
+- teacher auditor
+- timestamps and source metadata
+
+Only audited records should be available for admin export.
+
+## Legacy Scope Treatment
+
+Earlier specs used Bloom progression, challenge, school-wide learning dashboards, and complex intervention queues as the main product axis.
+Those concepts are no longer the current scope driver.
+
+They may return later as implementation details inside practice, audit, or teacher review, but current work must not depend on them as primary navigation, data model, or demo requirements.

@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Check frontend compliance after deleting old entrypoints."}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"Verify web remains sole product implementation."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Run required quality checks and forbidden pattern review."}
+{"file":".trellis/spec/backend/supabase-pgvector-guidelines.md","reason":"Ensure backend contract references are not regressed by legacy backend deletion."}

@@ -5,7 +5,7 @@ Sources: Tavily search + Context7 docs queries for `/vercel/ai`, `/vercel/next.j
 
 ## Executive Recommendation
 
-Refactor toward a single Next.js App Router application deployed on Vercel, with Supabase as the system of record (Auth + Postgres + Storage + Realtime) and pgvector for RAG. Keep AI streaming endpoints in `frontend/app/api/**/route.ts` using the Vercel AI SDK. Use LangChain.js or LlamaIndex.TS only behind a narrow internal orchestration boundary, not directly in React components.
+Refactor toward a single Next.js App Router application deployed on Vercel, with Supabase as the system of record (Auth + Postgres + Storage + Realtime) and pgvector for RAG. Keep AI streaming endpoints in `web/src/app/api/**/route.ts` using the Vercel AI SDK. Use LangChain.js or LlamaIndex.TS only behind a narrow internal orchestration boundary, not directly in React components.
 
 Recommended MVP architecture:
 
@@ -217,7 +217,7 @@ const { data, error } = await supabase.rpc('match_document_chunks', {
 - Create migrations with `supabase migration new <name>`.
 - Generate diffs with `supabase db diff -f <name>` only after reviewing local changes.
 - Push migrations with `supabase db push`; use `--dry-run` before remote changes.
-- Generate TypeScript database types with `supabase gen types --local > frontend/lib/supabase/database.types.ts` or `supabase gen types --linked > ...`.
+- Generate TypeScript database types with `supabase gen types --local > web/src/lib/supabase/database.types.ts` or `supabase gen types --linked > ...`.
 - Keep migrations, seed data, generated DB types, and `.env.example` in sync.
 
 ## LangChain.js vs LlamaIndex.TS

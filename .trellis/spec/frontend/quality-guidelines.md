@@ -8,14 +8,14 @@
 
 ### 1. Scope / Trigger
 
-- Trigger: any implementation change in `frontend-new/**`, especially role pages, shared components, AI chat, provider/admin surfaces, or state components.
+- Trigger: any implementation change in `web/**`, especially role pages, shared components, AI chat, provider/admin surfaces, or state components.
 
 ### 2. Signatures
 
 Required commands:
 
 ```bash
-cd frontend-new
+cd web
 npm run lint
 npm run build
 ```
@@ -30,7 +30,7 @@ grep -R "NEXT_PUBLIC_API_BASE_URL\|FastAPI\|SQLite\|Chroma\|To get started\|Depl
 
 - `npm run lint` must pass before claiming UI completion.
 - `npm run build` must pass; this covers TypeScript and Next.js route compilation.
-- No Next.js scaffold copy, old FastAPI API client, SQLite/Chroma UI dependency, legacy AI SDK `message.content`, or `tool-invocation` rendering pattern may remain in `frontend-new/src`.
+- No Next.js scaffold copy, old FastAPI API client, SQLite/Chroma UI dependency, legacy AI SDK `message.content`, or `tool-invocation` rendering pattern may remain in `web/src`.
 - Every primary page must expose empty/loading/error/blocked/permission/success/streaming state where applicable.
 - Provider secrets are never shown in full; only password inputs or masked values.
 - UI must be honest: no mock-success operational rows, no canned AI answers, no fake Bloom labels.

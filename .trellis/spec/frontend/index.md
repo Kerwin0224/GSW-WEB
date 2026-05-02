@@ -14,7 +14,7 @@ This directory contains guidelines for frontend development. Fill in each file w
 
 | Guide | Description | Status |
 |-------|-------------|--------|
-| [Directory Structure](./directory-structure.md) | `frontend-new` App Router ownership, route/component/lib layout, no legacy API dependency | Active |
+| [Directory Structure](./directory-structure.md) | `web` App Router ownership, route/component/lib layout, no legacy API dependency | Active |
 | [Component Guidelines](./component-guidelines.md) | shadcn/ui ownership, component composition, state components, accessibility | Active |
 | [Hook Guidelines](./hook-guidelines.md) | Client hook boundaries, AI SDK `useChat`, SSR-safe responsive hooks, data hook state contracts | Active |
 | [State Management](./state-management.md) | Explicit empty/loading/error/blocked/permission/success/streaming states and state boundaries | Active |

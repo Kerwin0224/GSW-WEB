@@ -8,7 +8,7 @@
 
 ### 1. Scope / Trigger
 
-- Trigger: creating or using hooks in `frontend-new/src/hooks/**`, Client Components, AI chat surfaces, responsive UI, dialogs, forms, or browser-only behavior.
+- Trigger: creating or using hooks in `web/src/hooks/**`, Client Components, AI chat surfaces, responsive UI, dialogs, forms, or browser-only behavior.
 
 ### 2. Signatures
 

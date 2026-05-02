@@ -36,27 +36,6 @@ grep -r "keyword" .
 | Could this be a shared utility? | Create it in the right place |
 | Am I copying code from another file? | **STOP** - extract to shared |
 
-### Step 3: Check External Starting Points
-
-Sometimes the best reuse target is outside the repository.
-
-Ask these questions:
-
-| Question | If Yes... |
-|----------|-----------|
-| Does an open-source module already solve this interaction well? | Consider fork-and-modify at module level |
-| Is the external reference only useful as a layout or workflow model? | Recreate it in-project instead of copying the shell |
-| Would borrowing this page pull the product toward a wrong identity? | Do not use it |
-| Can this be borrowed as a small, bounded module? | Prefer that over whole-page cloning |
-
-For development research:
-
-| Question | If Yes... |
-|----------|-----------|
-| Is this a framework or SDK question? | Query Context7 before generic web search |
-| Is this about recent hosted-service behavior or current product docs? | Use grok-search or official web docs |
-| Is this about a project MCP or RAG provider we actively integrate? | Prefer the provider's official docs or repo first |
-
 ---
 
 ## Common Duplication Patterns
@@ -79,12 +58,6 @@ For development research:
 
 **Good**: Single source of truth, import everywhere
 
-### Pattern 4: Reinventing Strong Existing Modules
-
-**Bad**: Designing a complex panel from scratch when a proven open-source module already solves it better
-
-**Good**: Start from the strong module, then adapt it to the product's own structure and language
-
 ---
 
 ## When to Abstract
@@ -98,30 +71,6 @@ For development research:
 - Only used once
 - Trivial one-liner
 - Abstraction would be more complex than duplication
-
-## When To Fork Or Recreate External Code
-
-Fork or recreate external code when:
-
-- The module is visually or behaviorally hard to design well from scratch
-- The module boundary is small and clear
-- Adapting it will be faster than inventing and polishing a weaker in-house version
-- The final product still keeps its own role identity
-
-Do not fork external code when:
-
-- You are really trying to copy a full page or shell
-- The borrowed module carries the wrong business model
-- The module would force a second design system into the app
-- The same outcome is already solved cleanly inside the repo
-
-## Current Project Heuristic
-
-For this project:
-
-- Student and admin surfaces may directly borrow small external modules
-- Teacher surface should usually borrow workflow structure more than raw code
-- Full LMS shells and generic chat-platform shells are the wrong reuse target
 
 ---
 

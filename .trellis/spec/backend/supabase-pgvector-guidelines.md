@@ -9,7 +9,7 @@
 ### 1. Scope / Trigger
 
 - Trigger: replacing SQLite/Chroma/FastAPI persistence or adding Supabase-backed document/RAG storage.
-- Applies to Supabase migrations under `supabase/migrations/**`, generated DB types under `frontend/lib/supabase/**`, and server-only data helpers under `frontend/lib/**`.
+- Applies to Supabase migrations under `supabase/migrations/**`, generated DB types under `web/src/lib/supabase/**`, and server-only data helpers under `web/src/lib/**`.
 - This is infra and cross-layer work; code-spec depth is mandatory.
 
 ### 2. Signatures
@@ -188,7 +188,7 @@ supabase init
 supabase migration new <name>
 supabase db diff -f <name>
 supabase db push --dry-run
-supabase gen types --local > frontend/lib/supabase/database.types.ts
+supabase gen types --local > web/src/lib/supabase/database.types.ts
 ```
 
 ### 3. Contracts
@@ -272,7 +272,7 @@ If Supabase CLI is unavailable, a hand-written `Database` type scaffold is accep
 
 - Apply migrations locally or to a linked Supabase project.
 - Regenerate types with `supabase gen types --local` or `supabase gen types --linked`.
-- Replace/verify `frontend/lib/supabase/database.types.ts` against generated output.
+- Replace/verify `web/src/lib/supabase/database.types.ts` against generated output.
 
 ### Service/Admin Authorization Is A Route Contract
 
@@ -296,31 +296,77 @@ The MVP retrieval and persistence path is Supabase Postgres + pgvector only.
 - Returning an empty context is valid only when Supabase and embedding generation succeeded and the authorized RPC found no matching rows.
 
 
+
+---
+
+## Scenario: Configuration Persistence and Secret Boundaries
+
+### 1. Scope / Trigger
+
+- Trigger: adding provider config, MCP config, prompt presets, local model settings, or any server-side runtime credential for `web`.
+- Applies to Supabase tables, migrations, server-only env usage, admin UI config screens, and route handlers that resolve model/MCP/provider capabilities.
+
+### 2. Contracts
+
+- Supabase stores auditable, shareable, non-plaintext-secret business configuration: provider capability rows, model IDs, optional base URLs, `secret_ref`, `secret_last_four`, MCP server metadata/capabilities/role scope/non-secret `connection_ref`, prompt presets, class/user/project data, audit records, and export batches.
+- Local/deploy env or a secret manager stores runtime secrets and machine-local values: `OPENAI_API_KEY`, `AI_GATEWAY_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, local model file paths, local MCP bridge tokens, command paths, proxy settings, and development-only host configuration.
+- Real secrets must never be exposed through `NEXT_PUBLIC_*`, Client Components, normal table fields, logs, exported datasets, or admin UI plaintext.
+- Local model binaries and cache paths do not enter git. Env may store local paths/toggles. Supabase may store model metadata and `secret_ref`; local absolute paths are allowed only for explicitly environment-scoped rows.
+- MCP server metadata and role/capability config persist in Supabase. MCP connection keys, private endpoints, local command/env, and bridge tokens stay server-only.
+- Missing required provider capability, model ID, base URL, local model path, MCP bridge secret, or runtime API key is a blocked state. Do not fall back to mock providers, deleted FastAPI services, SQLite/Chroma, or placeholder answers.
+
+### 3. Validation & Error Matrix
+
+| Condition | Required behavior | Assertion |
+| --- | --- | --- |
+| Provider row has `secret_ref` but env secret is missing | blocked config error | no model call |
+| Local model capability lacks required path env | blocked config error | no fallback model |
+| Shared Supabase model row contains developer absolute path | review blocks migration/change | path must be env-scoped or removed |
+| MCP server metadata exists but bridge token/command env is missing | health blocked/offline | no plaintext secret in UI |
+| Admin views provider/MCP config | masked/last-four only | no raw secret rendered |
+| Client bundle references service-role or provider key | build/review failure | key remains server-only |
+
+### 4. Good/Base/Bad Cases
+
+- Good: `provider_configs.secret_ref='ai/openai/default'`, `secret_last_four='1234'`, and server runtime resolves the actual key from deployment env or secret manager.
+- Good: `mcp_servers` stores role scope, non-secret `connection_ref`, masked secret metadata, and tool capability metadata while the local bridge command and token are loaded from server-only env.
+- Good: local model config stores a logical model ID and capability in Supabase, while `LOCAL_MODEL_PATH` remains in `.env.local` on the host that can run it.
+- Base: missing key/path returns a clear blocked state in admin health and route response.
+- Bad: Supabase row stores an API key, MCP bearer token, or `/Users/alice/models/foo.gguf` as shared config.
+- Bad: UI shows full secret text or route code catches missing config and selects a canned provider.
+
+### 5. Tests Required
+
+- Static grep: no `NEXT_PUBLIC_*KEY`, service-role key, provider key, MCP token, or local model path is referenced from Client Components.
+- Admin UI review: provider/MCP secret fields display masked or last-four values only.
+- Route tests/smoke: missing provider, MCP, embedding, or local model config produces blocked errors and does not call a fallback runtime.
+
 ---
 
 ## Scenario: Fullstack Refactor Supabase Data Contracts
 
 ### 1. Scope / Trigger
 
-- Trigger: `frontend-new` data integration for auth/profile roles, role workspaces, provider capabilities, prompt presets, conversations, audit records, exports, and pgvector RAG.
-- Applies to `frontend-new/supabase/migrations/**`, `frontend-new/src/lib/supabase/database.types.ts`, and server-only data helpers under `frontend-new/src/lib/data/**`.
+- Trigger: `web` data integration for auth/profile roles, role workspaces, provider capabilities, prompt presets, conversations, audit records, exports, and pgvector RAG.
+- Applies to `web/supabase/migrations/**`, `web/src/lib/supabase/database.types.ts`, and server-only data helpers under `web/src/lib/data/**`.
 
 ### 2. Signatures
 
 Migration file:
 
 ```text
-frontend-new/supabase/migrations/202605020001_fullstack_refactor.sql
+web/supabase/migrations/202605020001_fullstack_refactor.sql
 ```
 
 Core tables:
 
 ```sql
-public.profiles(id, login_id, display_name, email, role, status)
+public.profiles(id, login_id, display_name, role, status)
 public.classes(id, name, grade, status)
 public.class_memberships(class_id, profile_id, role)
 public.provider_configs(id, name, provider_type, base_url, secret_ref, secret_last_four, is_enabled, health_status)
 public.provider_capabilities(provider_id, capability, model_id, is_enabled, metadata)
+public.mcp_servers(id, name, description, connection_ref, secret_ref, secret_last_four, enabled_tools, allowed_roles, metadata, health_status, is_enabled)
 public.prompt_presets(id, title, scenario, system_instruction, target_role, status, version)
 public.text_projects(id, owner_id, class_id, title, author, classification_state, highest_bloom_level)
 public.conversations(id, owner_id, class_id, project_id, source, prompt_preset_id, title)
@@ -350,8 +396,8 @@ submitDpoAudit(sourceMessageId, previousState, formData) -> Promise<AuditSubmiss
 
 - Every protected data helper must require a verified Supabase profile/role before returning private data.
 - `profiles.role` is the authority for workspace routing; do not infer role from login input or URL.
-- School login IDs must resolve through the `find_login_email(p_login_id)` security-definer RPC before `signInWithPassword`; direct pre-auth `profiles` selects are blocked by RLS and must not be used as a fallback.
-- Provider secrets are not stored/displayed as raw client-visible values. Store `secret_ref` + `secret_last_four`; server runtime keys (`OPENAI_API_KEY` or `AI_GATEWAY_API_KEY`) perform model calls.
+- School login IDs are the only product login identifier. Reject any login input containing `@`; derive an internal Supabase Auth phone identifier from `login_id` for password auth; verify `profiles.role` only after Auth succeeds. Do not expose alternate login identifiers in UI, API, CSV import, or docs.
+- Provider secrets are not stored/displayed as raw client-visible values. Store `secret_ref` + `secret_last_four`; server runtime keys (`OPENAI_API_KEY`, `AI_GATEWAY_API_KEY`, or secret-manager-resolved equivalents) perform model calls.
 - Provider readiness is capability-specific: `student_chat`, `teacher_chat`, `bloom_classification`, `project_classification`, `practice_generation`, `practice_evaluation`, `audit_assist`, `embedding`.
 - Teacher audit inserts only after source assistant message is accessible and SFT/DPO required fields validate.
 - Export batches are admin-only and must be generated only from approved audit records.
@@ -365,7 +411,7 @@ submitDpoAudit(sourceMessageId, previousState, formData) -> Promise<AuditSubmiss
 | --- | --- | --- |
 | Missing profile | `missing_profile` DataResult | no workspace data returned |
 | Wrong role | `forbidden` DataResult | no cross-role data leakage |
-| Login by school ID before auth | `find_login_email` RPC | no direct RLS-blocked `profiles` query |
+| Login input contains `@` | reject with `400` | school-account-only login path |
 | Missing provider capability | blocked state | no model call |
 | Missing server model key | blocked state | no canned AI output |
 | Missing embedding key | blocked state | no RAG fallback |
@@ -386,12 +432,12 @@ submitDpoAudit(sourceMessageId, previousState, formData) -> Promise<AuditSubmiss
 
 ### 6. Tests Required
 
-- Local code: `cd frontend-new && npm run lint`.
-- Local code: `cd frontend-new && npm run build`.
-- Local code: `cd frontend-new && ./node_modules/.bin/tsc --noEmit --pretty false`.
-- Static grep: no legacy/scaffold/fallback patterns in `frontend-new/src` and `frontend-new/supabase`.
+- Local code: `cd web && npm run lint`.
+- Local code: `cd web && npm run build`.
+- Local code: `cd web && ./node_modules/.bin/tsc --noEmit --pretty false`.
+- Static grep: no legacy/scaffold/fallback patterns in `web/src` and `web/supabase`.
 - SQL static inspection: extension, RLS, policies, HNSW index, `match_document_chunks` RPC.
-- Auth static inspection: `login_id` login path calls `find_login_email`, then verifies `profiles.role` only after Supabase Auth succeeds.
+- Auth static inspection: login path rejects `@`, derives internal phone auth identifier from `login_id`, calls Supabase password auth, then verifies `profiles.role` only after Auth succeeds.
 - External DB smoke (required before deploy): run migration against local/live Supabase, generate types, verify RLS + RPC with at least student, teacher, admin fixtures.
 
 ### 7. Wrong vs Correct

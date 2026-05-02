@@ -10,9 +10,9 @@
 
 ## Validation
 
-- [ ] `frontend: npm run typecheck`
-- [ ] `frontend: npm run lint`
-- [ ] backend smoke or targeted verification run
+- [ ] `web: npm run lint`
+- [ ] `web: npm run build`
+- [ ] targeted smoke/static verification run
 - [ ] docs updated if behavior changed
 
 ## Notes

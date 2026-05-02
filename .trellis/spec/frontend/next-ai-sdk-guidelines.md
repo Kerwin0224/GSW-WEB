@@ -9,12 +9,12 @@
 ### 1. Scope / Trigger
 
 - Trigger: any new or migrated AI endpoint that streams chat/completion output from a Next.js App Router route.
-- Applies to files under `frontend/app/api/**/route.ts` and server-only helpers under `frontend/lib/ai/**`.
+- Applies to files under `web/src/app/api/**/route.ts` and server-only helpers under `web/src/lib/ai/**`.
 - Use this pattern when replacing FastAPI AI endpoints or adding RAG/chat flows.
 
 ### 2. Signatures
 
-- Route file: `frontend/app/api/<feature>/route.ts`
+- Route file: `web/src/app/api/<feature>/route.ts`
 - HTTP signature: `POST(request: Request) -> Response`
 - Required route segment exports for AI streams:
 
@@ -293,7 +293,7 @@ if (!apiKey) return cannedAnswer
 
 ### 1. Scope / Trigger
 
-- Trigger: `frontend-new/src/app/api/student/chat/route.ts` and `frontend-new/src/app/api/teacher/chat/route.ts`.
+- Trigger: `web/src/app/api/student/chat/route.ts` and `web/src/app/api/teacher/chat/route.ts`.
 
 ### 2. Signatures
 
@@ -325,7 +325,7 @@ return result.toUIMessageStreamResponse({
 - Teacher chat must require a published teacher prompt preset; no generic default system prompt fallback.
 - Persist user message parts and assistant output where feasible; do not persist private tool metadata to client-visible fields.
 - Use server-only model keys; never derive provider secrets from `NEXT_PUBLIC_*`.
-- Login route must parse malformed JSON explicitly and resolve non-email school login IDs with the Supabase `find_login_email` RPC before `signInWithPassword`; it must verify `profiles.role` only after Auth returns a user.
+- Login route must parse malformed JSON explicitly, reject any login input containing `@`, derive the internal Supabase Auth phone identifier from the school login ID, and verify `profiles.role` only after Auth returns a user. Email login is not a product feature.
 
 ### 4. Validation & Error Matrix
 
@@ -334,7 +334,7 @@ return result.toUIMessageStreamResponse({
 | Malformed JSON | `400 Invalid request` |
 | Invalid UI messages | `400 Invalid request` |
 | Missing profile/wrong role | `401/403` safe JSON error |
-| School login ID under RLS | `find_login_email` RPC then sign-in | 
+| Login input contains `@` | `400` with school-account guidance |
 | Missing provider capability/key | `503` blocked/config error |
 | Missing teacher preset | `400/404` preset error |
 | Stream abort | consume/cleanup stream without secret leakage |
