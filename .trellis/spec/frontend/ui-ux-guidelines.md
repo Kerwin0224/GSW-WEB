@@ -190,6 +190,79 @@ Admin
   /admin/exports                audited dataset export
 ```
 
+---
+
+## Scenario: Public Entry Product Promise
+
+### 1. Scope / Trigger
+
+- Trigger: `/`, `/login`, or any unauthenticated public entry page.
+- Applies before role-specific workspaces are visible.
+
+### 2. Signatures
+
+Public entry copy hierarchy:
+
+```text
+Primary promise: 学好古诗文，教好古诗文。
+Student promise: 把古诗文真正读懂
+Teacher promise: 把古诗文真正教好
+Auth action: 开始学习或教学
+```
+
+### 3. Contracts
+
+- The public entry is a product promise, not a system architecture dashboard.
+- The unauthenticated user should understand exactly two main lines:
+  - students come here to learn classical Chinese texts better;
+  - teachers come here to teach classical Chinese texts better.
+- Do not show admin governance, provider setup, MCP, audit/export, database, or internal capability language as homepage selling points.
+- Keep operational no-fallback details in login errors and authenticated workspaces, not in the public hero.
+- Root `/` may redirect to `/login` when unauthenticated; keep one public entry surface instead of duplicating marketing pages.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| Unauthenticated user opens `/login` | sees learning/teaching promise first |
+| Unauthenticated user opens `/` | reaches the same public entry or login |
+| Authenticated user opens `/` | redirects to verified role workspace |
+| Missing role/profile on login | explicit blocked/error state; no fake success |
+| Public copy mentions admin/provider/MCP/export as primary value | reject as too information-dense |
+
+### 5. Good/Base/Bad Cases
+
+- Good: “学好古诗文，教好古诗文。” plus one student card and one teacher card.
+- Base: concise login card with school account fields and honest role verification copy.
+- Bad: homepage card grid listing student, teacher, admin, provider, MCP, export, Bloom, audit, and Supabase before login.
+
+### 6. Tests Required
+
+- Browser/curl smoke confirms public entry includes the primary promise and student/teacher promise.
+- Root unauthenticated redirect is verified when `/` no longer renders separate public content.
+- Login form keeps visible labels, `autocomplete`, and `role="alert"` for errors.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```tsx
+<Hero>
+  <Card>管理员治理 Provider / MCP / 数据导出</Card>
+  <Card>Bloom 审计与 SFT/DPO</Card>
+</Hero>
+```
+
+#### Correct
+
+```tsx
+<Hero>
+  <h1>学好古诗文，教好古诗文。</h1>
+  <StudentPromise />
+  <TeacherPromise />
+</Hero>
+```
+
 ### 3. Contracts
 
 - Role identity must be visible in the shell.

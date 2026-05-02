@@ -9,7 +9,7 @@ const JWT_SECRET = new Uint8Array([
   0x06, 0xb6, 0xf8, 0xef, 0x22, 0xf7, 0x0d, 0x25,
 ]);
 
-const publicPaths = ['/login', '/api/auth'];
+const publicPaths = ['/login', '/auth/callback', '/api/auth'];
 
 function isPublic(pathname: string) {
   return publicPaths.some((p) => pathname.startsWith(p));
@@ -25,6 +25,8 @@ interface JwtPayload {
   sub: string;
   role: string;
 }
+
+const isKnownRole = (role: string): role is keyof typeof roleHome => role in roleHome;
 
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -48,7 +50,13 @@ export default async function proxy(request: NextRequest) {
     response.headers.set('X-User-Role', jwt.role);
 
     if (pathname === '/') {
-      return NextResponse.redirect(new URL(roleHome[jwt.role] || '/student', request.url));
+      if (!isKnownRole(jwt.role)) {
+        const invalidRoleResponse = NextResponse.redirect(new URL('/login?error=role_required', request.url));
+        invalidRoleResponse.cookies.delete('cwb_token');
+        return invalidRoleResponse;
+      }
+
+      return NextResponse.redirect(new URL(roleHome[jwt.role], request.url));
     }
 
     return response;
@@ -61,6 +69,6 @@ export default async function proxy(request: NextRequest) {
   }
 }
 
-export const proxyConfig = {
-  matcher: ['/((?!_next|api|.*\\.|favicon\\.ico).*)'],
+export const config = {
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\..*).*)'],
 };
