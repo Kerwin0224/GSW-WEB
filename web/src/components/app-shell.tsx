@@ -26,6 +26,7 @@ const breadcrumbMap: Record<string, string> = {
   '/admin/mcp': 'MCP 能力',
   '/admin/presets': 'Prompt 预设',
   '/admin/exports': '数据集导出',
+  '/admin/logs': '运行日志',
 };
 
 function derivedBreadcrumbs(pathname: string, fallback: BreadcrumbSegment[]) {

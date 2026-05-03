@@ -37,9 +37,14 @@ web/.env*
 .idea/
 .VSCodeCounter/
 
+# macOS
+.DS_Store
+
 # Local agent/runtime state
 .claude/
+.codex/
 .codex-artifacts/
+.omc/
 .playwright-cli/
 .claude/worktrees/
 .claude/settings.local.json
@@ -55,6 +60,10 @@ output-*.png
 # Trellis local state
 .trellis/.template-hashes.json
 .trellis/.developer
+.trellis/workspace/
 .trellis/tasks/archive/**/check.jsonl
 .trellis/tasks/archive/**/debug.jsonl
 .trellis/tasks/archive/**/implement.jsonl
+
+# local runtime logs
+web/.logs/

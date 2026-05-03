@@ -1,12 +1,15 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
+import { createDatabaseSessionSignature, getAppSession } from '@/lib/session';
+
 function getSupabasePublishableKey() {
   return process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 }
 
 export async function createClient() {
   const cookieStore = await cookies();
+  const session = await getAppSession();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey = getSupabasePublishableKey();
   if (!supabaseUrl || !publishableKey) {
@@ -17,6 +20,15 @@ export async function createClient() {
     supabaseUrl,
     publishableKey,
     {
+      global: {
+        headers: session
+          ? {
+              'x-cwb-user-id': session.sub,
+              'x-cwb-session-signature': createDatabaseSessionSignature(session.sub),
+              Authorization: `Bearer ${publishableKey}`,
+            }
+          : undefined,
+      },
       cookies: {
         getAll: () => cookieStore.getAll(),
         setAll: (cookiesToSet) =>

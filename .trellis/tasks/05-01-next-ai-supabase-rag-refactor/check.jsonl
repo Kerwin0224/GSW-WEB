@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Check Next.js/frontend conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Check Supabase/database/API contract conventions"}
+{"file": ".trellis/tasks/05-01-next-ai-supabase-rag-refactor/research/next-ai-supabase-rag-best-practices.md", "reason": "Verify implementation against researched stack best practices"}
+{"file": ".trellis/spec/frontend/next-ai-sdk-guidelines.md", "reason": "Verify AI SDK streaming route and frontend AI boundaries"}
+{"file": ".trellis/spec/backend/supabase-pgvector-guidelines.md", "reason": "Verify Supabase RLS/pgvector/migration contracts"}
+{"file": ".trellis/spec/frontend/ui-ux-guidelines.md", "reason": "Verify role-specific UI/UX, navigation, states, and Bloom student experience"}

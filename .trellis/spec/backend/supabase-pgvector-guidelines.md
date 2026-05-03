@@ -396,7 +396,7 @@ submitDpoAudit(sourceMessageId, previousState, formData) -> Promise<AuditSubmiss
 
 - Every protected data helper must require a verified Supabase profile/role before returning private data.
 - `profiles.role` is the authority for workspace routing; do not infer role from login input or URL.
-- School login IDs are the only product login identifier. Reject any login input containing `@`; derive an internal Supabase Auth phone identifier from `login_id` for password auth; verify `profiles.role` only after Auth succeeds. Do not expose alternate login identifiers in UI, API, CSV import, or docs.
+- School login IDs/staff IDs are the only product login identifiers. Reject any login input containing `@`; accept only 8-digit numeric IDs. Student ID format is enrollment year (4) + class code (2) + sequence (2); staff ID format is hire year (4) + sequence (4). Authenticate `profiles.login_id` + password hash, with initial password equal to the login ID. Do not expose email/phone login identifiers in UI, API, CSV import, or docs.
 - Provider secrets are not stored/displayed as raw client-visible values. Store `secret_ref` + `secret_last_four`; server runtime keys (`OPENAI_API_KEY`, `AI_GATEWAY_API_KEY`, or secret-manager-resolved equivalents) perform model calls.
 - Provider readiness is capability-specific: `student_chat`, `teacher_chat`, `bloom_classification`, `project_classification`, `practice_generation`, `practice_evaluation`, `audit_assist`, `embedding`.
 - Teacher audit inserts only after source assistant message is accessible and SFT/DPO required fields validate.
@@ -437,7 +437,7 @@ submitDpoAudit(sourceMessageId, previousState, formData) -> Promise<AuditSubmiss
 - Local code: `cd web && ./node_modules/.bin/tsc --noEmit --pretty false`.
 - Static grep: no legacy/scaffold/fallback patterns in `web/src` and `web/supabase`.
 - SQL static inspection: extension, RLS, policies, HNSW index, `match_document_chunks` RPC.
-- Auth static inspection: login path rejects `@`, derives internal phone auth identifier from `login_id`, calls Supabase password auth, then verifies `profiles.role` only after Auth succeeds.
+- Auth static inspection: login path rejects `@`, accepts only 8-digit school/staff IDs, calls the Supabase-backed school-account RPC, then issues an app session from verified `profiles.role`. No email/phone login path exists.
 - External DB smoke (required before deploy): run migration against local/live Supabase, generate types, verify RLS + RPC with at least student, teacher, admin fixtures.
 
 ### 7. Wrong vs Correct

@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Next.js App Router frontend conventions for the refactor"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Database/API/backend contract conventions for Supabase and pgvector"}
+{"file": ".trellis/tasks/05-01-next-ai-supabase-rag-refactor/research/next-ai-supabase-rag-best-practices.md", "reason": "Official-doc-backed stack recommendations for implementation"}
+{"file": ".trellis/spec/frontend/next-ai-sdk-guidelines.md", "reason": "Executable Next.js App Router and Vercel AI SDK route contracts"}
+{"file": ".trellis/spec/backend/supabase-pgvector-guidelines.md", "reason": "Executable Supabase Auth/RLS/pgvector migration and RPC contracts"}
+{"file": ".trellis/spec/frontend/ui-ux-guidelines.md", "reason": "Role-specific workspace UI/UX and Bloom-centered student experience requirements"}

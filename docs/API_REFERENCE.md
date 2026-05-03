@@ -15,8 +15,8 @@ There is no separate FastAPI product server.
 
 ## Auth Contract
 
-- Login is school-account-only.
-- Email-login discovery is not supported.
+- Login is school-account-only: 8-digit student ID/staff ID plus password.
+- Email-login and phone-login discovery are not supported.
 - Legacy JWT/cookie fallbacks are not supported.
 - Role routing must use verified Supabase/profile data.
 

@@ -130,7 +130,7 @@ export default function LoginPage() {
               </div>
               <h2 className="font-heading text-3xl">进入平台</h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                使用学校配发的学号或教职工号登录，进入你的学习台或教学台。
+                使用学校配发的 8 位学号或工号登录，进入你的学习台或教学台。
               </p>
             </div>
 
@@ -143,12 +143,12 @@ export default function LoginPage() {
                 ) : null}
 
                 <div className="space-y-2.5">
-                  <Label htmlFor="loginId" className="text-sm font-medium">学号 / 教职工号</Label>
+                  <Label htmlFor="loginId" className="text-sm font-medium">学号 / 工号</Label>
                   <Input
                     id="loginId"
                     value={loginId}
                     onChange={(event) => setLoginId(event.target.value)}
-                    placeholder="例如：20260001 或 teacher01"
+                    placeholder="例如：20260101 或 20240001"
                     className="h-12 rounded-2xl border-border/80 bg-background/75 px-4 text-base shadow-inner"
                     required
                     autoFocus
@@ -188,7 +188,7 @@ export default function LoginPage() {
               </form>
 
               <p className="text-center text-xs leading-5 text-muted-foreground">
-                没有账号？请联系学校管理员开通。
+                初始密码与学号/工号相同；首次登录后按学校要求修改。
               </p>
             </CardContent>
           </Card>

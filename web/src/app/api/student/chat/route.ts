@@ -2,6 +2,7 @@ import { consumeStream, convertToModelMessages, createGateway, safeValidateUIMes
 import { createOpenAI } from '@ai-sdk/openai';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { extractTextFromParts, getCapabilities, jsonForDatabase, requireRole, resolveEnvSecret, type CapabilityStatus } from '@/lib/data/common';
 
 export const runtime = 'nodejs';
@@ -20,6 +21,7 @@ function resolveLanguageModel(capability: CapabilityStatus): LanguageModel | nul
 const bodySchema = z.object({ messages: z.unknown(), conversationId: z.string().uuid().optional(), projectId: z.string().uuid().optional(), projectTitle: z.string().trim().min(1).optional() });
 
 export async function POST(req: Request) {
+  return withApiLogging(req, { area: 'api', event: 'student_chat', route: '/api/student/chat' }, async () => {
   const role = await requireRole('student');
   if (!role.ok) return Response.json({ error: role.message }, { status: role.reason === 'forbidden' ? 403 : 401 });
   let body: unknown;
@@ -76,4 +78,5 @@ export async function POST(req: Request) {
     },
   });
   return result.toUIMessageStreamResponse({ originalMessages: messages, consumeSseStream: consumeStream });
+  });
 }

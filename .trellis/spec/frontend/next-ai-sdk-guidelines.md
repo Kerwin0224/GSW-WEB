@@ -325,7 +325,7 @@ return result.toUIMessageStreamResponse({
 - Teacher chat must require a published teacher prompt preset; no generic default system prompt fallback.
 - Persist user message parts and assistant output where feasible; do not persist private tool metadata to client-visible fields.
 - Use server-only model keys; never derive provider secrets from `NEXT_PUBLIC_*`.
-- Login route must parse malformed JSON explicitly, reject any login input containing `@`, derive the internal Supabase Auth phone identifier from the school login ID, and verify `profiles.role` only after Auth returns a user. Email login is not a product feature.
+- Login route must parse malformed JSON explicitly, reject any login input containing `@`, accept only 8-digit school IDs/staff IDs, authenticate against Supabase-backed `profiles.login_id` + password hash, and verify `profiles.role` before issuing the app session. Email/phone login is not a product feature.
 
 ### 4. Validation & Error Matrix
 

@@ -98,6 +98,10 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
+      authenticate_school_account: {
+        Args: { p_login_id: string; p_password: string };
+        Returns: { id: string; login_id: string; role: AppRole; display_name: string }[];
+      };
       get_profile: { Args: { p_user_id: string }; Returns: Database['public']['Tables']['profiles']['Row'][] };
       match_document_chunks: {
         Args: { query_embedding: Vector; match_count?: number; match_threshold?: number; project_id?: string | null };

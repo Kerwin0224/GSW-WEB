@@ -4,6 +4,7 @@ import { createGateway, embed, type EmbeddingModel } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createClient } from '@/lib/supabase/server';
 import type { Database, Vector } from '@/lib/supabase/database.types';
+import { getAppSession } from '@/lib/session';
 import { fail, getCapability, ok, resolveEnvSecret, type CapabilityStatus, type DataResult } from './common';
 
 export type DocumentChunkMatch = Database['public']['Functions']['match_document_chunks']['Returns'][number];
@@ -36,12 +37,12 @@ export async function matchDocumentChunks({
     return fail('blocked', 'queryEmbedding 不能为空；RAG 检索必须先生成真实 embedding。');
   }
 
-  const supabase = await createClient();
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError || !userData.user) {
+  const session = await getAppSession();
+  if (!session) {
     return fail('unauthenticated', '需要登录后才能检索私有文档片段。');
   }
 
+  const supabase = await createClient();
   const { data, error } = await supabase.rpc('match_document_chunks', {
     query_embedding: queryEmbedding,
     match_count: matchCount,

@@ -13,6 +13,7 @@ import {
   Puzzle,
   FileText,
   Download,
+  Activity,
   BookOpen,
   ShieldCheck,
 } from 'lucide-react';
@@ -60,6 +61,7 @@ const adminNav: NavItem[] = [
   { icon: Puzzle, label: 'MCP 能力', href: '/admin/mcp', description: '外部工具治理' },
   { icon: FileText, label: 'Prompt 预设', href: '/admin/presets', description: '全局预设生命周期' },
   { icon: Download, label: '数据集导出', href: '/admin/exports', description: '审计后 JSONL' },
+  { icon: Activity, label: '运行日志', href: '/admin/logs', description: '错误与请求追踪' },
 ];
 
 const navMap: Record<Role, NavItem[]> = { student: studentNav, teacher: teacherNav, admin: adminNav };

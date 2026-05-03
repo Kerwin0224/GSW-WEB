@@ -65,8 +65,8 @@ web/
 
 ## Auth Boundary
 
-- Login is school-account-only.
-- Public signup, social login, email-login discovery, and legacy token cookies are not product paths.
+- Login is school-account-only: 8-digit student ID/staff ID plus password.
+- Public signup, social login, email-login discovery, phone-login discovery, and legacy token cookies are not product paths.
 - Route protection belongs in the Next.js proxy/auth boundary and in server-side data helpers.
 - Role routing must use verified profile role data, not user-entered hints.
 
@@ -75,8 +75,8 @@ web/
 ### Login
 
 1. User submits school account credentials at `/login`.
-2. `web/src/app/api/auth/login/route.ts` validates the account against Supabase-backed school-account logic.
-3. The app routes to the verified role workspace.
+2. `web/src/app/api/auth/login/route.ts` validates `profiles.login_id` plus password through Supabase-backed school-account logic.
+3. The app issues a signed app session and routes to the verified role workspace.
 
 ### Student Ask / Practice
 

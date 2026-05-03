@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "dev:logged": "mkdir -p .logs && next dev 2>&1 | tee .logs/next-dev.log",
+    "logs:tail": "mkdir -p .logs && touch .logs/next-dev.log .logs/app-events.jsonl && tail -n 120 -f .logs/next-dev.log .logs/app-events.jsonl"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.58",
