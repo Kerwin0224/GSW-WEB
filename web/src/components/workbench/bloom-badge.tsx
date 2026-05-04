@@ -18,7 +18,7 @@ export function BloomBadge({ level, className }: { level: number; className?: st
   return (
     <Badge
       className={cn('font-heading tracking-wider border-2 border-current/20 shadow-sm', className)}
-      style={{ backgroundColor: `var(--bloom-${safeLevel})`, color: 'white' }}
+      style={{ backgroundColor: `var(--bloom-${safeLevel})`, color: `var(--bloom-${safeLevel}-fg)` }}
       title={`L${safeLevel} ${info.label}：${info.hint}`}
       aria-label={`布鲁姆 L${safeLevel} ${info.label}，${info.hint}`}
     >

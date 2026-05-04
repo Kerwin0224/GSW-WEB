@@ -40,21 +40,14 @@ type NavItem = {
 
 Design-token contract:
 
-```css
-:root {
-  --background: <rice-paper>;
-  --foreground: <ink>;
-  --primary: <dai-blue>;
-  --destructive: <cinnabar>;
-  --accent: <zijin-gold>;
-  --bloom-1: <memory>;
-  --bloom-2: <understand>;
-  --bloom-3: <apply>;
-  --bloom-4: <analyze>;
-  --bloom-5: <evaluate>;
-  --bloom-6: <create>;
-  --radius: 0.75rem;
-}
+```text
+Full executable token contract: .trellis/spec/frontend/design-tokens.md
+
+Required token names:
+--background, --foreground, --primary, --primary-foreground,
+--destructive, --destructive-foreground, --accent, --accent-foreground,
+--bloom-1, --bloom-2, --bloom-3, --bloom-4, --bloom-5, --bloom-6,
+--font-heading, --font-sans, --font-mono, --radius, --shadow-soft, --shadow-ink
 ```
 
 ### 3. Contracts
@@ -78,6 +71,7 @@ Design-system contracts:
 
 - Use shadcn/ui primitives as project-owned components, composed into product components.
 - Use Tailwind utilities plus CSS variables; do not scatter hardcoded brand colors through pages.
+- Treat [Design Tokens](./design-tokens.md) as the single source of truth for Tailwind v4 `@theme inline`, shadcn CSS variables, Bloom colors, fonts, radius, shadows, and dark mode.
 - Bloom colors are never the only signal. Always show level number + Chinese label + accessible description.
 - Chinese labels are required for student-facing Bloom and learning guidance.
 - Use calm academic visual language: rice-paper background, ink text, Dai blue primary, cinnabar warning/emphasis, Zijin achievement accent.
@@ -148,6 +142,85 @@ function WorkspaceNav({ role, items }: { role: WorkspaceRole; items: NavItem[] }
     </nav>
   );
 }
+```
+
+---
+
+## Scenario: Dark Mode Color Remapping
+
+### 1. Scope / Trigger
+
+- Trigger: any dark-mode styling for shadcn components, Bloom badges/ladders/charts, admin status UI, alerts, or role workspace shells.
+- Applies when `next-themes` toggles the `.dark` class strategy.
+- See also: [Design Tokens](./design-tokens.md) for the executable `globals.css` token block and WCAG contrast table.
+
+### 2. Signatures
+
+```css
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --primary: oklch(0.538 0.095 257.8); /* #4A6FA5 */
+  --destructive: oklch(0.567 0.154 19.1); /* #C04851 */
+  --accent: oklch(0.727 0.062 87.9); /* #B7A57A */
+}
+
+.dark {
+  --primary: oklch(0.703 0.073 251.4); /* #7EA3CC */
+  --destructive: oklch(0.652 0.160 17.9); /* #E0606A */
+  --accent: oklch(0.823 0.059 89.6); /* #D4C49A */
+}
+```
+
+### 3. Contracts
+
+- Dark mode is a semantic token remap, not a component-level class fork.
+- Every light semantic token that affects interaction or meaning must have an explicit `.dark` value.
+- Bloom `--bloom-1..6`, chart `--chart-1..6`, `--primary`, `--destructive`, `--accent`, `--ring`, and sidebar tokens must be remapped directly in `.dark`.
+- Text on primary/destructive/accent/Bloom surfaces must use the documented foreground pairing from [Design Tokens](./design-tokens.md), not forced `text-white`.
+- Do not add `dark:bg-*` raw palette utilities for product surfaces when a semantic token exists.
+- No inversion filters, global opacity hacks, or color-mix patches may replace explicit token values.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| `.dark` class active | background, card, sidebar, primary, destructive, accent, Bloom, chart, border, input, and ring tokens all resolve from `.dark` |
+| Bloom badge in dark mode | level number + Chinese label remain visible at AA contrast |
+| Alert in dark mode | `variant="destructive"` remains readable and keeps `role="alert"` |
+| Focus ring in dark mode | uses `--ring`, not a raw blue utility |
+| Component uses `dark:bg-slate-*` for product surface | reject; use semantic token remap |
+| Component uses `filter: invert(1)` for theme | reject; explicit token remap required |
+
+### 5. Good/Base/Bad Cases
+
+- Good: `bg-primary text-primary-foreground` changes from Dai blue on white text to moon-blue on ink text through `.dark` tokens.
+- Good: Bloom L6 uses Zijin in light mode and bright Zijin in dark mode with ink foreground.
+- Base: charts use `--chart-1..6`, which mirror Bloom tokens in both themes.
+- Bad: `.dark .bloom-badge { color: white; filter: brightness(1.2); }`.
+
+### 6. Tests Required
+
+- Visual smoke all six Bloom colors in light and dark mode.
+- Static check for `dark:bg-slate-*`, `dark:text-zinc-*`, and hardcoded dark-mode hex in source components.
+- Accessibility check that text-bearing colored badges meet WCAG 2.1 AA 4.5:1, and meaningful non-text indicators meet 3:1.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```tsx
+<Badge className="bg-[#4A6FA5] text-white dark:bg-[#7EA3CC] dark:text-white">
+  L1 记忆
+</Badge>
+```
+
+#### Correct
+
+```tsx
+<Badge className="bg-bloom-1 text-primary-foreground" aria-label="布鲁姆 L1 记忆，背诵、识记、找出处">
+  L1 记忆
+</Badge>
 ```
 
 ---
@@ -379,6 +452,8 @@ on every message before real classification exists.
 )}
 ```
 
+See also: [Student Workspace](./student-workspace.md) for the executable student chat, session Bloom stats, project card, profile radar, challenge, and route-dedup contracts.
+
 ---
 
 ## Scenario: Teacher Ask And Audit UX
@@ -457,6 +532,8 @@ without validation or source context.
 </AuditDetail>
 ```
 
+See also: [Teacher Workspace Guidelines](./teacher-workspace.md) for the dedicated three-pane audit, SFT/DPO, prompt preset editor, actionable analytics, navigation, and audit status chip contracts.
+
 ---
 
 ## Scenario: Admin Setup And Governance UX
@@ -514,6 +591,8 @@ type SetupStatus = 'ready' | 'missing' | 'invalid' | 'blocked';
 - Provider form validation and secret masking.
 - Export button disabled when no approved records.
 - Static check that service-role/provider secrets do not enter client components.
+
+See also: [Admin Workspace](./admin-workspace.md) for the executable admin cockpit, capability broken-link, provider lifecycle, log explorer, user table, CSV import, and export preview contracts.
 
 ### 7. Wrong vs Correct
 

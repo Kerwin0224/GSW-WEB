@@ -21,7 +21,11 @@ This directory contains guidelines for frontend development. Fill in each file w
 | [Quality Guidelines](./quality-guidelines.md) | Lint/build gate, forbidden legacy/scaffold patterns, no-fallback review checklist | Active |
 | [Type Safety](./type-safety.md) | Zod, Supabase generated types, AI SDK UIMessage parts, no-fallback typed states | Active |
 | [Next.js AI SDK Guidelines](./next-ai-sdk-guidelines.md) | App Router route handlers, AI SDK streaming/tools, frontend AI boundaries | Active |
+| [Design Tokens](./design-tokens.md) | Tailwind v4 + shadcn CSS variable contract, Bloom six-color tokens, fonts, radius, shadows, dark mode | Active |
 | [UI/UX Guidelines](./ui-ux-guidelines.md) | UI/UX-first role workspaces, shadcn design system, AI states, Bloom, accessibility, no-fallback UX | Active |
+| [Student Workspace](./student-workspace.md) | Student three-pane chat, Bloom realtime guidance, project cards, profile radar, challenge route contracts | Active |
+| [Admin Workspace](./admin-workspace.md) | Three-question admin cockpit, provider capability broken-link alerts, secret lifecycle, log explorer, CSV import, export preview | Active |
+| [Teacher Workspace](./teacher-workspace.md) | Teacher three-pane audit, SFT/DPO form contracts, prompt preset editor, actionable analytics, and audit status chips | Active |
 
 ---
 

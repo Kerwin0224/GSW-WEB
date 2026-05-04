@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/frontend/teacher-workspace.md", "reason": "本任务主契约 — 三栏审计、SFT/DPO 表单、preset 编辑器、可行动学情"}
+{"file": ".trellis/spec/frontend/design-tokens.md", "reason": "审计状态 chip 色统一走 token"}
+{"file": ".trellis/spec/frontend/ui-ux-guidelines.md", "reason": "Teacher Ask And Audit UX 父契约"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "三栏组合 + shadcn 表单/对话/sheet 复用规则"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "audit form 校验失败、empty queue、blocked 状态规范"}
+{"file": ".trellis/spec/frontend/next-ai-sdk-guidelines.md", "reason": "教师 chat 也走 streamText，preset 注入 system prompt"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "AuditStatus/AuditCandidateType/PromptPresetSummary 类型契约"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "lint/build 验收门"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "audit_records / prompt_presets 真实 schema 对齐"}
+{"file": ".trellis/spec/backend/supabase-pgvector-guidelines.md", "reason": "RLS / Auth — 教师只见所教班级的审计记录"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "审计写入跨 RLS / data layer / form action"}

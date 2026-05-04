@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/student-workspace.md", "reason": "对 7 个 scenario 的契约逐项检查"}
+{"file": ".trellis/spec/frontend/design-tokens.md", "reason": "色值/字体/radius 是否真走 token"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "六态完备性 + 流式 a11y"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "构建/类型/lint 通过验收"}
+{"file": ".trellis/spec/frontend/next-ai-sdk-guidelines.md", "reason": "duplicate-submit、message.parts、onFinish 行为验收"}

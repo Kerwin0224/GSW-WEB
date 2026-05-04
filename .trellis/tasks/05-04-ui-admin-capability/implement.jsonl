@@ -1,0 +1,12 @@
+{"file": ".trellis/spec/frontend/admin-workspace.md", "reason": "本任务主契约 — 三问驾驶舱、能力矩阵告警、密钥生命周期、统一 Dialog、日志/导入/导出"}
+{"file": ".trellis/spec/frontend/design-tokens.md", "reason": "alert / chip / 健康指示色都走 token"}
+{"file": ".trellis/spec/frontend/ui-ux-guidelines.md", "reason": "Admin Setup And Governance UX 父契约"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Dialog 抽象 + 表格/表单复用规则"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "blocked / setup-incomplete / health-failed 完备性"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "ProviderCapability / SetupStatus 类型契约"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "lint/build/类型门"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "provider_configs / provider_capabilities / export_batches schema"}
+{"file": ".trellis/spec/backend/supabase-pgvector-guidelines.md", "reason": "service-role 边界、密钥 server-only 验证"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "API key 缺失/无效如何在 UI 透出"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "/admin/logs 结构化日志格式契约"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Provider 配置改动跨 schema / RLS / data / UI 四层"}

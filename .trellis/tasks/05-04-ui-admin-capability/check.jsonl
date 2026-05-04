@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/admin-workspace.md", "reason": "7 个 scenario 契约逐项检查"}
+{"file": ".trellis/spec/frontend/design-tokens.md", "reason": "告警/状态色一致性"}
+{"file": ".trellis/spec/backend/supabase-pgvector-guidelines.md", "reason": "service-role 不能进客户端 bundle"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "lint/build/类型门 + secret-not-in-bundle 静态检查"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Provider/MCP 错误是否在 UI 正确透出"}
