@@ -126,7 +126,7 @@ export function TeacherChatClient({ presets, providerBlocked }: { presets: Prese
             {messages.length === 0 ? (
               <EmptyState
                 title="选择预设，开始设计一节可上好的课"
-                description="围绕篇目、年级、学生误区或练习目标提问；输出会进入可审计链路。"
+                description="围绕篇目、年级、学生误区或练习目标提问；输出会进入可核实闭环。"
                 action={(
                   <div className="flex flex-wrap justify-center gap-2">
                     {teacherPrompts.map((prompt) => (
@@ -209,7 +209,7 @@ export function TeacherInstructionEditor({ presets }: { presets: Preset[] }) {
         title="把好用的备课提示词沉淀下来。"
         description="教师可以自建草稿预设，使用 literal {{variable}} 变量语法；右侧预览只做 mock 渲染，不伪造真实 AI 回复。"
         primaryAction={{ label: '回到教学对话', href: '/teacher#teacher-chat' }}
-        secondaryAction={{ label: '查看审计队列', href: '/teacher/audit' }}
+        secondaryAction={{ label: '查看核实队列', href: '/teacher/audit' }}
         metrics={[
           { label: '我的草稿/预设', value: presets.length, hint: 'created_by 当前教师' },
           { label: '变量语法', value: '{{var}}', hint: 'literal placeholder subset' },

@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { Loader2, Upload, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -19,6 +20,7 @@ const SAMPLE = `display_name,login_id,role,class_name,last_login_at
 李老师,T2026001,teacher,高一(3)班,`;
 
 export function UserImportDialog({ trigger }: { trigger: React.ReactNode }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [csvText, setCsvText] = useState(SAMPLE);
   const [preview, setPreview] = useState<CsvUserPreview | null>(null);
@@ -42,6 +44,7 @@ export function UserImportDialog({ trigger }: { trigger: React.ReactNode }) {
       if ('imported' in data) {
         toast.success(`已导入 ${data.imported} 个账号`);
         setOpen(false);
+        router.refresh();
         return;
       }
       setPreview(data);

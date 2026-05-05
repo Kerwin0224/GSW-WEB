@@ -779,3 +779,79 @@ dpo       -> --accent / --zijin-gold accent mark
 ```tsx
 <AuditStatusChip kind={record.kind} status={record.status} />
 ```
+
+---
+
+## Scenario: Teacher-Facing Correctness Review Language
+
+### 1. Scope / Trigger
+
+- Trigger: any teacher-visible route, sidebar label, breadcrumb, empty/error state, button, toast, metric label, or client component that surfaces learning-record review.
+- Internal route names, server-action names, `audit_records`, API paths, and admin export terminology may keep audit/SFT/DPO semantics.
+- Teacher-facing UI must use domain language from `CONTEXT.md`: `教学正确性核实`, `待核实学习记录`, `学习记录核实`, `确认无误`, `修订回答`, and `本周核实覆盖`.
+
+### 2. Signatures
+
+```ts
+type TeacherVisibleReviewCopy = {
+  queueTitle: '学习记录核实';
+  candidateLabel: '待核实学习记录';
+  coverageLabel: '本周核实覆盖';
+  approveAction: '确认无误';
+  reviseAction: '修订回答';
+};
+```
+
+Static check signature:
+
+```bash
+rg -n "审计|SFT|DPO|打标" web/src/app/teacher web/src/components/workbench/teacher-audit-client.tsx web/src/components/workbench/teacher-chat-client.tsx web/src/components/app-shell.tsx
+```
+
+### 3. Contracts
+
+- Teacher-visible copy must not contain `审计`, `SFT`, `DPO`, or `打标`.
+- Teacher pages may still call internal data helpers with `audit` names; do not rename database/API internals just to change copy.
+- Admin AI 运维 and dataset export surfaces may display `SFT`, `DPO`, `Provider`, `MCP`, and backend audit terminology.
+- Error titles and blocked states count as visible copy; they must use review language too.
+- Breadcrumbs and sidebar labels count as visible copy; changing page body text alone is insufficient.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| Teacher route needs review queue label | render `学习记录核实` or `待核实学习记录` |
+| Teacher metric describes coverage | render `本周核实覆盖`, not audit coverage |
+| Teacher action approves source answer | render `确认无误` |
+| Teacher action edits answer | render `修订回答` |
+| Provider for pre-review blocked | explain `AI 预审` or `核实辅助` is unavailable, not audit pipeline failure |
+| Admin export page shows SFT/DPO | allowed; keep professional AI-native terminology |
+
+### 5. Good/Base/Bad Cases
+
+- Good: teacher dashboard CTA says `处理待核实学习记录`.
+- Good: teacher analytics card says `本周核实覆盖`.
+- Base: internal variable names remain `auditQueue` while UI labels say `学习记录核实`.
+- Bad: teacher breadcrumb says `审计详情`.
+- Bad: teacher button says `查看 SFT 队列` or `开始打标`.
+
+### 6. Tests Required
+
+- Static grep over teacher-visible routes/components for `审计|SFT|DPO|打标`.
+- Route smoke for `/teacher`, `/teacher/analytics`, and `/teacher/audit` to confirm headings/CTAs use review language.
+- Component smoke for review client empty, blocked, selected, confirm, and revise states.
+- Regression check that admin export pages still render SFT/DPO labels.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```tsx
+<Button>查看审计队列</Button>
+```
+
+#### Correct
+
+```tsx
+<Button>查看核实队列</Button>
+```

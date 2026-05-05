@@ -75,7 +75,7 @@ const adminNavGroups: NavGroup[] = [
     label: '学校管理',
     items: [
       { icon: ShieldCheck, label: '管理看板', href: '/admin', description: '学校账号、班级与权限摘要' },
-      { icon: Users, label: '用户权限', href: '/admin', description: '用户、角色、状态与活跃情况' },
+      { icon: Users, label: '用户权限', href: '/admin/users', description: '用户、角色、状态与活跃情况' },
       { icon: School, label: '班级关系', href: '/admin/classes', description: '教师与学生归属' },
     ],
   },

@@ -999,3 +999,130 @@ without preview.
   coverage={preview.coverage}
 />
 ```
+
+---
+
+## Scenario: User Permissions Page and Class Membership Management
+
+### 1. Scope / Trigger
+
+- Trigger: `/admin/users`, `/admin/classes`, admin school-management sidebar entries, CSV user import entry points, or class membership assignment UI.
+- This is cross-layer UI/data-helper work because it reads `profiles`, `classes`, and `class_memberships`, and calls the existing CSV import API.
+- Do not expand this into a full RBAC matrix; V1 is school account visibility plus class assignment operations.
+
+### 2. Signatures
+
+```ts
+type AdminUserFilters = {
+  query?: string;
+  role?: AppRole | 'all';
+  status?: ProfileStatus | 'all';
+};
+
+type AdminClassMembership = {
+  id: string;
+  classId: string;
+  profileId: string;
+  role: 'teacher' | 'student';
+  createdAt: string;
+  profile: { displayName: string; loginId: string | null; role: AppRole } | null;
+  classInfo?: { name: string; grade: string | null } | null;
+};
+
+type AdminUserListItem = {
+  id: string;
+  displayName: string;
+  loginId: string | null;
+  role: AppRole;
+  status: ProfileStatus;
+  createdAt: string;
+  updatedAt: string;
+  memberships: AdminClassMembership[];
+  assignmentSummary: string;
+};
+
+type AdminClassListItem = {
+  id: string;
+  name: string;
+  grade: string | null;
+  status: 'active' | 'archived';
+  teachers: AdminClassMembership[];
+  students: AdminClassMembership[];
+  memberCount: number;
+};
+
+export async function getAdminUsers(filters: AdminUserFilters): Promise<DataResult<AdminUserListItem[]>>;
+export async function getAdminClasses(): Promise<DataResult<AdminClassListItem[]>>;
+export async function addClassMember(formData: FormData): Promise<void>;
+export async function removeClassMember(formData: FormData): Promise<void>;
+```
+
+CSV import UI contract:
+
+```ts
+POST /api/admin/users/import
+body preview: { csvText: string, commit?: false }
+body commit:  { csvText: string, commit: true }
+```
+
+### 3. Contracts
+
+- Admin sidebar `学校管理` group must include `用户权限 -> /admin/users` and `班级关系 -> /admin/classes`.
+- `/admin/users` must read real `profiles` and show display name, login id, role, status, and class assignment summary.
+- `/admin/users` must support query search across name/login/class summary, role filter, and status filter.
+- `/admin/users` must use the real CSV import flow (`/api/admin/users/import` or the shared import dialog), not a static instruction-only dialog.
+- `/admin/classes` must show teacher count, student count, member count, and member previews for each class.
+- Class membership UI must use existing `class_memberships`; do not add a schema just for V1 assignment UI.
+- Adding a student to a class must remove existing `role='student'` memberships first so a student has one active class assignment at the app boundary.
+- Adding a teacher to a class must no-op if that teacher is already assigned to the same class.
+- Removing a member must revalidate `/admin/classes`, `/admin/users`, and `/admin` so assignment summaries refresh.
+- Admin AI 运维 pages may retain `Provider`, `MCP`, `SFT`, and `DPO`; do not sanitize professional admin terminology.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| No profiles | `/admin/users` renders empty state with CSV import CTA |
+| Query has no match | render filtered-empty state and keep filters visible |
+| Role filter selected | only matching `profiles.role` rows remain |
+| Status filter selected | only matching `profiles.status` rows remain |
+| CSV text invalid | preview returns row-level errors; commit blocked |
+| CSV import succeeds | current route revalidates/refreshes |
+| Class has no teachers | show explicit no-teacher warning/state |
+| Add existing teacher to same class | no duplicate membership inserted; show/return already-assigned behavior |
+| Add student to new class | old student-class membership removed before new one is inserted |
+| Remove last teacher | UI must warn before or during removal flow |
+
+### 5. Good/Base/Bad Cases
+
+- Good: admin searches `高一` on `/admin/users` and sees students whose assignment summary contains that class.
+- Good: admin imports CSV, previews invalid rows, fixes them, commits, and sees `/admin/users` refresh.
+- Good: assigning a student to a new class moves them from the previous class.
+- Base: class member dialog accepts a profile id with a datalist and lists current teachers/students.
+- Bad: `/admin/users` shows a static CSV format dialog but never calls the import API.
+- Bad: adding the same teacher twice creates duplicate `class_memberships` rows.
+
+### 6. Tests Required
+
+- Component/route smoke: `/admin/users` empty, populated, filtered-empty, role-filtered, and status-filtered states.
+- Integration/API: CSV preview returns valid/invalid rows and commit writes profiles/memberships.
+- Data helper: `getAdminUsers()` computes assignment summaries for admin, teacher, assigned student, and unassigned student.
+- Data helper: adding a student deletes old `student` memberships before inserting the new one.
+- Data helper: adding an existing teacher to the same class does not insert a duplicate.
+- Static check: admin school-management sidebar includes `/admin/users`.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```tsx
+<Dialog>
+  <p>CSV 格式：display_name,login_id,role,class_name</p>
+</Dialog>
+```
+
+#### Correct
+
+```tsx
+<UserImportDialog trigger={<Button>CSV 导入</Button>} />
+```

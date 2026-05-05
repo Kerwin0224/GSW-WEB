@@ -26,12 +26,12 @@ export default async function TeacherAnalyticsPage() {
       <WorkspaceHero
         eyebrow="可行动学情"
         title="下一节课先看哪里卡住。"
-        description="教师看板只呈现能行动的班级线索：低阶卡住的学生、薄弱篇目和本周审计覆盖。v1 不做热力图。"
-        primaryAction={{ label: '处理审计队列', href: '/teacher/audit' }}
+        description="教师看板只呈现能行动的班级线索：低阶卡住的学生、薄弱篇目和本周核实覆盖。v1 不做热力图。"
+        primaryAction={{ label: '处理待核实学习记录', href: '/teacher/audit' }}
         secondaryAction={{ label: '回到备课对话', href: '/teacher#teacher-chat' }}
         metrics={[
           { label: '负责班级', value: result.data.assignedClasses, hint: '由班级关系决定' },
-          { label: '审计待办', value: result.data.auditWorkload, hint: 'pending audit_records' },
+          { label: '待核实记录', value: result.data.auditWorkload, hint: '等待教师确认或修订' },
           { label: '需复盘学生', value: result.data.studentsNeedingReview, hint: 'L1-L2 未达成排行' },
         ]}
       />
@@ -94,21 +94,21 @@ export default async function TeacherAnalyticsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-heading">
               <ClipboardCheck className="size-5 text-primary" />
-              本周审计覆盖
+              本周核实覆盖
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
             <div>
               <p className="text-5xl font-semibold tracking-tight">{weeklyAuditCoverage.coveragePercent}%</p>
-              <p className="mt-2 text-sm text-muted-foreground">已处理 / 本周候选 assistant 回答</p>
+              <p className="mt-2 text-sm text-muted-foreground">已核实 / 本周候选 AI 回答</p>
             </div>
             <Progress value={weeklyAuditCoverage.coveragePercent} />
             <div className="grid grid-cols-3 gap-2 text-center text-sm">
-              <div className="rounded-lg border p-2"><p className="font-semibold">{weeklyAuditCoverage.audited}</p><p className="text-xs text-muted-foreground">已审</p></div>
-              <div className="rounded-lg border p-2"><p className="font-semibold">{weeklyAuditCoverage.pending}</p><p className="text-xs text-muted-foreground">待办</p></div>
+              <div className="rounded-lg border p-2"><p className="font-semibold">{weeklyAuditCoverage.audited}</p><p className="text-xs text-muted-foreground">已核实</p></div>
+              <div className="rounded-lg border p-2"><p className="font-semibold">{weeklyAuditCoverage.pending}</p><p className="text-xs text-muted-foreground">待核实</p></div>
               <div className="rounded-lg border p-2"><p className="font-semibold">{weeklyAuditCoverage.eligible}</p><p className="text-xs text-muted-foreground">候选</p></div>
             </div>
-            <Button nativeButton={false} render={<Link href="/teacher/audit">进入审计三栏</Link>} className="w-full" />
+            <Button nativeButton={false} render={<Link href="/teacher/audit">进入学习记录核实</Link>} className="w-full" />
           </CardContent>
         </Card>
       </section>
@@ -116,7 +116,7 @@ export default async function TeacherAnalyticsPage() {
       <section className="space-y-4">
         <SectionHeader
           title="跨页行动"
-          description="从学情进入具体审计筛选，从审计回到备课对话，保持教师的下一课准备闭环。"
+          description="从学情进入具体学习记录筛选，从学习记录核实回到教师问答，保持教师的下一课准备闭环。"
           action={<Button nativeButton={false} render={<Link href="/teacher/instructions"><BarChart3 />编辑教学预设</Link>} variant="outline" />}
         />
       </section>

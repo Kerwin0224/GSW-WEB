@@ -156,7 +156,7 @@ export async function getTeacherAnalytics() {
   if (auditError) return fail('error', `待核实统计失败：${auditError.message}`);
   if (reviewedError) return fail('error', `已核实统计失败：${reviewedError.message}`);
   if (weeklyEligibleError) return fail('error', `本周候选统计失败：${weeklyEligibleError.message}`);
-  if (weeklyAuditedError) return fail('error', `本周审计统计失败：${weeklyAuditedError.message}`);
+  if (weeklyAuditedError) return fail('error', `本周核实统计失败：${weeklyAuditedError.message}`);
   const eligible = weeklyEligible ?? 0;
   const audited = weeklyAudited ?? 0;
   const pending = Math.max(eligible - audited, 0);

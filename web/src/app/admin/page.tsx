@@ -1,10 +1,11 @@
-import { Activity, Cpu, Database, Download, FileText, Puzzle, School, ShieldCheck, Upload, UserPlus } from 'lucide-react';
+import { Activity, Cpu, Database, Download, FileText, Puzzle, School, ShieldCheck, Upload, Users } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
+import { UserImportDialog } from '@/components/workbench/user-import-dialog';
 import { WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { getAdminDashboard } from '@/lib/data/admin';
 import { getLogFileStatus, readRecentAppEvents } from '@/lib/observability/server-log-store';
@@ -44,8 +45,8 @@ export default async function AdminDashboard() {
         eyebrow="管理主线"
         title="让学校账号、模型能力、教学样本都可控。"
         description="管理端不是堆配置项。它只回答一个问题：学生能不能学，教师能不能教，系统出了问题能不能追。"
-        primaryAction={{ label: '查看模型能力', href: '/admin/providers' }}
-        secondaryAction={{ label: '查看运行日志', href: '/admin/logs' }}
+        primaryAction={{ label: '查看用户权限', href: '/admin/users' }}
+        secondaryAction={{ label: '查看模型能力', href: '/admin/providers' }}
         metrics={[
           { label: '账号', value: users.length, hint: '真实 profile 与角色' },
           { label: '班级', value: classes.length, hint: '教学范围边界' },
@@ -115,14 +116,15 @@ export default async function AdminDashboard() {
                 学校账号
               </CardTitle>
               <div className="flex gap-2">
-                <Button variant="outline" disabled>
-                  <UserPlus className="mr-2 size-4" />
-                  添加账号
-                </Button>
-                <Button disabled>
-                  <Upload className="mr-2 size-4" />
-                  CSV 导入
-                </Button>
+                <Button nativeButton={false} render={<a href="/admin/users"><Users className="mr-2 size-4" />用户权限</a>} variant="outline" />
+                <UserImportDialog
+                  trigger={(
+                    <Button>
+                      <Upload className="mr-2 size-4" />
+                      CSV 导入
+                    </Button>
+                  )}
+                />
               </div>
             </div>
           </CardHeader>
@@ -184,6 +186,7 @@ export default async function AdminDashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent className="grid gap-2 text-sm">
+              <a className="rounded-lg border p-3 hover:bg-muted" href="/admin/users"><Users className="mr-2 inline size-4" />用户权限</a>
               <a className="rounded-lg border p-3 hover:bg-muted" href="/admin/classes"><School className="mr-2 inline size-4" />班级关系</a>
               <a className="rounded-lg border p-3 hover:bg-muted" href="/admin/presets"><FileText className="mr-2 inline size-4" />Prompt 预设</a>
               <a className="rounded-lg border p-3 hover:bg-muted" href="/admin/mcp"><Puzzle className="mr-2 inline size-4" />MCP 能力</a>

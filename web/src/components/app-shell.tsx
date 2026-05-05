@@ -18,7 +18,7 @@ const breadcrumbMap: Record<string, string> = {
   '/student/challenge': '层级挑战',
   '/student/me': '我的画像',
   '/teacher': '教学对话',
-  '/teacher/audit': '审计标注',
+  '/teacher/audit': '学习记录核实',
   '/teacher/analytics': '学情线索',
   '/admin': '系统就绪/用户',
   '/admin/classes': '班级关系',
@@ -38,7 +38,7 @@ function derivedBreadcrumbs(pathname: string, fallback: BreadcrumbSegment[]) {
     return [root, { label: '篇目项目', href: '/student/projects' }, { label: '篇目详情' }];
   }
   if (pathname.startsWith('/teacher/audit/')) {
-    return [root, { label: '审计标注', href: '/teacher/audit' }, { label: '审计详情' }];
+    return [root, { label: '学习记录核实', href: '/teacher/audit' }, { label: '核实详情' }];
   }
 
   return fallback;

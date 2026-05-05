@@ -9,6 +9,37 @@ import { fail, getModelTiers, ok, requireRole, type ModelTierStatus } from './co
 export type AdminActionState = { ok: boolean; message: string; errors?: Record<string, string> };
 export type ProviderActionResult = { ok: true; message?: string } | { ok: false; message: string };
 export type AppRoleArray = AppRole[];
+export type AdminProfileStatus = Database['public']['Tables']['profiles']['Row']['status'];
+export type AdminUserFilters = { query?: string; role?: AppRole | 'all'; status?: AdminProfileStatus | 'all' };
+export type AdminClassMembership = {
+  id: string;
+  classId: string;
+  profileId: string;
+  role: 'teacher' | 'student';
+  createdAt: string;
+  profile: { displayName: string; loginId: string | null; role: AppRole } | null;
+  classInfo?: { name: string; grade: string | null } | null;
+};
+export type AdminClassListItem = {
+  id: string;
+  name: string;
+  grade: string | null;
+  status: 'active' | 'archived';
+  teachers: AdminClassMembership[];
+  students: AdminClassMembership[];
+  memberCount: number;
+};
+export type AdminUserListItem = {
+  id: string;
+  displayName: string;
+  loginId: string | null;
+  role: AppRole;
+  status: AdminProfileStatus;
+  createdAt: string;
+  updatedAt: string;
+  memberships: AdminClassMembership[];
+  assignmentSummary: string;
+};
 export type CsvUserPreviewRow = {
   rowNumber: number;
   displayName: string;
@@ -108,6 +139,53 @@ function isAppRole(value: string): value is AppRole {
   return appRoles.includes(value as AppRole);
 }
 
+function normalizeMembership(row: {
+  id: string;
+  class_id: string;
+  profile_id: string;
+  role: 'teacher' | 'student';
+  created_at: string;
+  profiles?: { display_name?: string | null; login_id?: string | null; role?: AppRole } | Array<{ display_name?: string | null; login_id?: string | null; role?: AppRole }> | null;
+  classes?: { name?: string | null; grade?: string | null } | Array<{ name?: string | null; grade?: string | null }> | null;
+}): AdminClassMembership {
+  const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+  const classInfo = Array.isArray(row.classes) ? row.classes[0] : row.classes;
+  return {
+    id: row.id,
+    classId: row.class_id,
+    profileId: row.profile_id,
+    role: row.role,
+    createdAt: row.created_at,
+    profile: profile ? {
+      displayName: profile.display_name ?? '未命名账号',
+      loginId: profile.login_id ?? null,
+      role: profile.role ?? row.role,
+    } : null,
+    classInfo: classInfo ? { name: classInfo.name ?? '未命名班级', grade: classInfo.grade ?? null } : null,
+  };
+}
+
+function getAssignmentSummary(userRole: AppRole, memberships: AdminClassMembership[]) {
+  if (userRole === 'teacher') {
+    const teacherClasses = memberships.filter((membership) => membership.role === 'teacher');
+    return teacherClasses.length > 0 ? `负责 ${teacherClasses.length} 个班级` : '暂未负责班级';
+  }
+  if (userRole === 'student') {
+    const studentClass = memberships.find((membership) => membership.role === 'student');
+    return studentClass?.classInfo?.name ? `所在班级：${studentClass.classInfo.name}` : '未分配班级';
+  }
+  return '管理员账号不绑定班级';
+}
+
+function matchesAdminUserFilters(user: AdminUserListItem, filters: AdminUserFilters) {
+  const query = filters.query?.trim().toLowerCase();
+  if (filters.role && filters.role !== 'all' && user.role !== filters.role) return false;
+  if (filters.status && filters.status !== 'all' && user.status !== filters.status) return false;
+  if (!query) return true;
+  return [user.displayName, user.loginId ?? '', user.assignmentSummary]
+    .some((value) => value.toLowerCase().includes(query));
+}
+
 function parseCsv(csvText: string): Record<string, string>[] {
   const lines = csvText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const [headerLine, ...rows] = lines;
@@ -136,13 +214,114 @@ export async function getAdminDashboard() {
   return ok({ users: users.data ?? [], classes: classes.data ?? [], readyCaps, presets: presets.data ?? [], mcp: mcp.data ?? [], exports: exports.data ?? [] });
 }
 
+export async function getAdminUsers(filters: AdminUserFilters = {}) {
+  const role = await requireRole('admin');
+  if (!role.ok) return role;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*, class_memberships(id,class_id,profile_id,role,created_at,classes(name,grade))')
+    .order('created_at', { ascending: false });
+  if (error) return fail('error', `用户权限加载失败：${error.message}`);
+  const users = ((data ?? []) as Array<Database['public']['Tables']['profiles']['Row'] & {
+    class_memberships?: Array<{
+      id: string;
+      class_id: string;
+      profile_id: string;
+      role: 'teacher' | 'student';
+      created_at: string;
+      classes?: { name?: string | null; grade?: string | null } | Array<{ name?: string | null; grade?: string | null }> | null;
+    }> | null;
+  }>).map((user): AdminUserListItem => {
+    const memberships = (user.class_memberships ?? []).map((membership) => normalizeMembership({ ...membership, profiles: { display_name: user.display_name, login_id: user.login_id, role: user.role } }));
+    return {
+      id: user.id,
+      displayName: user.display_name,
+      loginId: user.login_id,
+      role: user.role,
+      status: user.status,
+      createdAt: user.created_at,
+      updatedAt: user.updated_at,
+      memberships,
+      assignmentSummary: getAssignmentSummary(user.role, memberships),
+    };
+  });
+  return ok(users.filter((user) => matchesAdminUserFilters(user, filters)));
+}
+
 export async function getAdminClasses() {
   const role = await requireRole('admin');
   if (!role.ok) return role;
   const supabase = await createClient();
-  const { data, error } = await supabase.from('classes').select('*, class_memberships(id, role, profiles(display_name, login_id, role))').order('created_at', { ascending: false });
+  const { data, error } = await supabase.from('classes').select('*, class_memberships(id,class_id,profile_id,role,created_at,profiles(display_name,login_id,role))').order('created_at', { ascending: false });
   if (error) return fail('error', `班级关系加载失败：${error.message}`);
-  return ok(data ?? []);
+  const classes = ((data ?? []) as Array<Database['public']['Tables']['classes']['Row'] & {
+    class_memberships?: Array<{
+      id: string;
+      class_id: string;
+      profile_id: string;
+      role: 'teacher' | 'student';
+      created_at: string;
+      profiles?: { display_name?: string | null; login_id?: string | null; role?: AppRole } | Array<{ display_name?: string | null; login_id?: string | null; role?: AppRole }> | null;
+    }> | null;
+  }>).map((klass): AdminClassListItem => {
+    const memberships = (klass.class_memberships ?? []).map(normalizeMembership);
+    const teachers = memberships.filter((membership) => membership.role === 'teacher');
+    const students = memberships.filter((membership) => membership.role === 'student');
+    return {
+      id: klass.id,
+      name: klass.name,
+      grade: klass.grade,
+      status: klass.status,
+      teachers,
+      students,
+      memberCount: memberships.length,
+    };
+  });
+  return ok(classes);
+}
+
+export async function addClassMember(formData: FormData): Promise<void> {
+  const role = await requireRole('admin');
+  if (!role.ok) return;
+  const classId = String(formData.get('class_id') ?? '').trim();
+  const profileId = String(formData.get('profile_id') ?? '').trim();
+  const membershipRole = String(formData.get('role') ?? '').trim();
+  if (!classId || !profileId || !['teacher', 'student'].includes(membershipRole)) return;
+  const supabase = await createClient();
+  const targetRole = membershipRole as 'teacher' | 'student';
+  if (targetRole === 'teacher') {
+    const { data: existing, error: existingError } = await supabase
+      .from('class_memberships')
+      .select('id')
+      .eq('class_id', classId)
+      .eq('profile_id', profileId)
+      .eq('role', 'teacher')
+      .limit(1)
+      .maybeSingle();
+    if (existingError || existing) return;
+  }
+  if (targetRole === 'student') {
+    await supabase.from('class_memberships').delete().eq('profile_id', profileId).eq('role', 'student');
+  }
+  const { error } = await supabase.from('class_memberships').upsert({ class_id: classId, profile_id: profileId, role: targetRole }, { onConflict: 'class_id,profile_id' });
+  if (error) return;
+  revalidatePath('/admin/classes');
+  revalidatePath('/admin/users');
+  revalidatePath('/admin');
+}
+
+export async function removeClassMember(formData: FormData): Promise<void> {
+  const role = await requireRole('admin');
+  if (!role.ok) return;
+  const membershipId = String(formData.get('membership_id') ?? '').trim();
+  if (!membershipId) return;
+  const supabase = await createClient();
+  const { error } = await supabase.from('class_memberships').delete().eq('id', membershipId);
+  if (error) return;
+  revalidatePath('/admin/classes');
+  revalidatePath('/admin/users');
+  revalidatePath('/admin');
 }
 
 export async function createClass(formData: FormData): Promise<void>;
@@ -461,12 +640,31 @@ export async function importUsersFromCsv(csvText: string): Promise<{ ok: true; i
     if (row.className && row.role !== 'admin') {
       const { data: classRow, error: classError } = await supabase.from('classes').upsert({ name: row.className, created_by: role.data.id }, { onConflict: 'name' }).select('id').single();
       if (classError) return { ok: false, message: `第 ${row.rowNumber} 行班级导入失败：${classError.message}`, preview };
+      if (row.role === 'student') {
+        const { error: transferError } = await supabase.from('class_memberships').delete().eq('profile_id', profile.id).eq('role', 'student');
+        if (transferError) return { ok: false, message: `第 ${row.rowNumber} 行自动迁班失败：${transferError.message}`, preview };
+      } else if (row.role === 'teacher') {
+        const { data: existingTeacher, error: existingTeacherError } = await supabase
+          .from('class_memberships')
+          .select('id')
+          .eq('class_id', classRow.id)
+          .eq('profile_id', profile.id)
+          .eq('role', 'teacher')
+          .limit(1)
+          .maybeSingle();
+        if (existingTeacherError) return { ok: false, message: `第 ${row.rowNumber} 行教师关系检查失败：${existingTeacherError.message}`, preview };
+        if (existingTeacher) {
+          imported += 1;
+          continue;
+        }
+      }
       const { error: membershipError } = await supabase.from('class_memberships').upsert({ class_id: classRow.id, profile_id: profile.id, role: row.role }, { onConflict: 'class_id,profile_id' });
       if (membershipError) return { ok: false, message: `第 ${row.rowNumber} 行班级关系导入失败：${membershipError.message}`, preview };
     }
     imported += 1;
   }
   revalidatePath('/admin');
+  revalidatePath('/admin/users');
   revalidatePath('/admin/classes');
   return { ok: true, imported };
 }

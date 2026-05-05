@@ -1,0 +1,11 @@
+{"file": ".trellis/tasks/05-05-context-alignment-gaps/prd.md", "reason": "Primary PRD, requirements, acceptance criteria for CONTEXT alignment gaps"}
+{"file": "CONTEXT.md", "reason": "Domain language source of truth for teacher/admin visible terminology"}
+{"file": ".trellis/tasks/05-05-uiux/prd.md", "reason": "Recently implemented UIUX baseline and scope boundaries"}
+{"file": ".trellis/tasks/05-05-uiux/research/ui-routes-components.md", "reason": "Route and component baseline from previous UIUX work"}
+{"file": ".trellis/spec/frontend/ui-ux-guidelines.md", "reason": "Role IA, language, state, accessibility expectations"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component ownership and server/client boundary guidance"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Empty/error/blocked/success state conventions"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type-safety expectations for page data and UI states"}
+{"file": ".trellis/spec/frontend/teacher-workspace.md", "reason": "Teacher workspace terminology and review flow constraints"}
+{"file": ".trellis/spec/frontend/admin-workspace.md", "reason": "Admin workspace IA and AI operations constraints"}
+{"file": ".trellis/spec/backend/supabase-pgvector-guidelines.md", "reason": "Supabase data access and RLS constraints for profiles/classes/memberships"}

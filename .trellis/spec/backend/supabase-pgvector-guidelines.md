@@ -464,3 +464,89 @@ const { embedding } = await embed({
 
 return matchDocumentChunks({ queryEmbedding: embedding, matchCount, matchThreshold, projectId });
 ```
+
+---
+
+## Scenario: Single Student Class Membership Boundary
+
+### 1. Scope / Trigger
+
+- Trigger: admin class-member assignment, CSV user import, `class_memberships` migrations, or any helper that writes student class membership rows.
+- This is a cross-layer data integrity contract because UI actions and database constraints must agree on whether a student can belong to multiple classes.
+
+### 2. Signatures
+
+Application boundary:
+
+```ts
+export async function addClassMember(formData: FormData): Promise<void>;
+export async function importUsersFromCsv(csvText: string): Promise<ImportUsersResult>;
+```
+
+Required form fields for member assignment:
+
+```text
+class_id: uuid
+profile_id: uuid
+role: 'teacher' | 'student'
+```
+
+Recommended database invariant:
+
+```sql
+create unique index if not exists class_memberships_one_student_class
+  on public.class_memberships(profile_id)
+  where role = 'student';
+```
+
+### 3. Contracts
+
+- A student may have at most one active `class_memberships` row with `role='student'`.
+- Teachers may belong to multiple classes, but the same teacher/class pair must not be duplicated.
+- Admin UI assignment should delete existing student memberships before inserting the new one so the operation behaves as an intentional transfer.
+- CSV import that includes `class_name` for a student must follow the same transfer behavior.
+- If the database unique index exists, application code must still transfer first; do not rely on a constraint error as the normal path.
+- Removing the last teacher from a class is allowed only with an explicit visible warning in admin UI.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| Add student with no class | insert one `student` membership |
+| Add student already in class A to class B | delete old `student` membership, insert class B membership |
+| Add same teacher to same class | no-op or return already-assigned state; no duplicate row |
+| Add teacher to another class | insert additional `teacher` membership |
+| CSV row has invalid role | preview error; no commit |
+| DB unique index rejects student duplicate | surface clear admin error and keep existing assignment |
+
+### 5. Good/Base/Bad Cases
+
+- Good: student imported into `高一(2)班` is automatically moved out of previous student class assignment.
+- Good: teacher can be assigned to both `高一(1)班` and `高一(2)班`.
+- Base: UI uses a datalist profile picker but preserves the transfer invariant.
+- Bad: inserting a second student membership and relying on later cleanup.
+- Bad: teacher duplicate insert creates two identical class rows.
+
+### 6. Tests Required
+
+- Migration/invariant: partial unique index allows multiple teacher rows but rejects duplicate student class rows per profile.
+- Data helper: student transfer deletes existing student memberships before insert.
+- Data helper: teacher duplicate assignment is ignored or returns an explicit already-assigned result.
+- CSV import: student row with class assignment uses the same transfer logic as manual member assignment.
+- UI: class member dialog warns on student auto-transfer and last-teacher removal.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+await supabase.from('class_memberships').insert({ class_id, profile_id, role: 'student' });
+```
+
+#### Correct
+
+```ts
+await supabase.from('class_memberships').delete().eq('profile_id', profileId).eq('role', 'student');
+await supabase.from('class_memberships').insert({ class_id: classId, profile_id: profileId, role: 'student' });
+```
+
