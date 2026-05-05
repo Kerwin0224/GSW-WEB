@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality standards for validating PRD's testing and verification strategy"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend quality standards for auditing PRD's API and database quality requirements"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type safety patterns to validate PRD's TypeScript usage"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error handling patterns to audit PRD's resilience design"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Deep modules principles to check if PRD's abstractions are justified"}
+{"file": "PRD.md", "reason": "The PRD document to verify against quality standards"}
+{"file": "PRD-GAP-ANALYSIS.md", "reason": "Gap analysis to cross-check audit findings"}

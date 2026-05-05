@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
@@ -52,7 +54,7 @@ export default async function StudentProjectsPage() {
           <EmptyState
             title="还没有篇目项目"
             description="提出第一个古诗文问题后，系统会按真实篇目保存学习记录；没有真实记录时不显示示例项目。"
-            action={<Button render={<a href="/student">开始提问</a>} />}
+            action={<Button nativeButton={false} render={<Link href="/student">开始提问</Link>} />}
           />
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

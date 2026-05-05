@@ -1,10 +1,11 @@
-import { ClipboardCheck, FileSearch, GraduationCap, MessageSquareText } from 'lucide-react';
+import { AlertTriangle, ClipboardCheck, FileSearch, GraduationCap, MessageSquareText } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TeacherChatClient } from '@/components/workbench/teacher-chat-client';
-import { ErrorState } from '@/components/workbench/state-surfaces';
-import { PrincipleCard, SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
+import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
+import { SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { getTeacherAnalytics, getTeacherAuditQueue, getTeacherWorkspace } from '@/lib/data/teacher';
 
 export default async function TeacherChatPage() {
@@ -22,21 +23,22 @@ export default async function TeacherChatPage() {
     );
   }
 
-  const analytics = analyticsResult.ok ? analyticsResult.data : { assignedClasses: 0, auditWorkload: 0, studentsNeedingReview: 0 };
-  const auditCount = auditResult.ok ? auditResult.data.length : 0;
+  const analytics = analyticsResult.ok ? analyticsResult.data : { assignedClasses: 0, auditWorkload: 0, studentsNeedingReview: 0, reviewedCount: 0 };
+  const auditRecords = auditResult.ok ? auditResult.data : [];
+  const highRiskRecords = auditRecords.filter((record) => record.preReviewIssues.length > 0).slice(0, 3);
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="教师主线"
-        title="把古诗文课，教到学生真的会。"
-        description="教师端只服务三件事：备好一堂课、追问一个误区、沉淀一条可审计的高质量教学样本。少一点系统黑话，多一点课堂可用。"
-        primaryAction={{ label: '开始备课对话', href: '#teacher-chat' }}
-        secondaryAction={{ label: '查看审计队列', href: '/teacher/audit' }}
+        eyebrow="教师看板"
+        title="先看学生哪里可能被误导，再决定怎么教。"
+        description="看板聚焦学生认知、学习过程纠正与待核实记录。备课不作为任务提醒；需要备课时直接进入教师问答。"
+        primaryAction={{ label: '核实学习记录', href: '/teacher/audit' }}
+        secondaryAction={{ label: '进入教师问答', href: '#teacher-chat' }}
         metrics={[
-          { label: '已发布预设', value: workspace.data.presets.length, hint: '管理员发布后可用于课堂' },
-          { label: '班级范围', value: analytics.assignedClasses, hint: '只看自己负责的班级' },
-          { label: '待审样本', value: auditCount, hint: '用于 SFT / DPO 质量闭环' },
+          { label: '负责班级', value: analytics.assignedClasses, hint: '只看自己负责范围' },
+          { label: '待核实记录', value: auditRecords.length, hint: '完整聊天记录等待确认' },
+          { label: '已核实记录', value: analytics.reviewedCount, hint: '教师确认或修订后产生' },
         ]}
       />
 
@@ -48,17 +50,55 @@ export default async function TeacherChatPage() {
         </Alert>
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <PrincipleCard index="备" title="备课先定目标" description="围绕一篇文本、一节课、一类学生误区，生成可直接用于课堂的引导。" />
-        <PrincipleCard index="问" title="追问要有层级" description="教师不是要标准答案，而是要能把学生从会背带到会分析。" accent="gold" />
-        <PrincipleCard index="审" title="好样本要沉淀" description="课堂中真正有价值的 AI 输出，进入审计与数据集闭环。" accent="cinnabar" />
+      <section className="grid gap-4 lg:grid-cols-[1fr_1fr_0.8fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ClipboardCheck className="size-5 text-primary" />
+              学生认知概览
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm leading-7 text-muted-foreground">
+            <p>当前看板以真实学习记录为准，不用装饰性大屏替代证据。</p>
+            <p>负责班级：{analytics.assignedClasses} 个；已核实记录：{analytics.reviewedCount} 条。</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileSearch className="size-5 text-primary" />
+              待核实学习记录
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm leading-7 text-muted-foreground">
+            <p>待核实：{auditRecords.length} 条。教师需要看完整聊天记录后确认无误或保存修订。</p>
+            <Button render={<a href="/teacher/audit">进入学习核实</a>} variant="outline" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="size-5 text-destructive" />
+              最近高风险记录
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {highRiskRecords.length === 0 ? <EmptyState title="暂无高风险提示" description="AI 预审未发现疑点或预审能力未就绪时，这里保持诚实为空。" /> : null}
+            {highRiskRecords.map((record) => (
+              <a key={record.id} href="/teacher/audit" className="block rounded-xl border bg-background/70 p-3 hover:border-primary/40">
+                <p className="font-medium">{record.studentName} · 《{record.projectTitle}》</p>
+                <p className="mt-1 text-xs text-muted-foreground">{record.preReviewIssues.map((issue) => issue.label).join('、')}</p>
+              </a>
+            ))}
+          </CardContent>
+        </Card>
       </section>
 
       <section id="teacher-chat" className="space-y-4 scroll-mt-20">
         <SectionHeader
-          eyebrow="teaching workspace"
-          title="教学对话"
-          description="先选择学校发布的教学预设，再围绕篇目、年级、误区或练习目标发起对话。"
+          eyebrow="teaching Q&A"
+          title="教师问答"
+          description="需要备课、追问误区或设计课堂引导时，直接进入教师问答。"
         />
         <Card className="overflow-hidden border-primary/20 shadow-sm">
           <CardContent className="p-0">
@@ -69,37 +109,16 @@ export default async function TeacherChatPage() {
 
       <section className="grid gap-4 lg:grid-cols-3">
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MessageSquareText className="size-5 text-primary" />
-              课堂提问抓手
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm leading-7 text-muted-foreground">
-            从“这句什么意思”升级到“为什么这样写、还能怎样表达”。教师端默认服务课堂追问，而不是泛泛聊天。
-          </CardContent>
+          <CardHeader><CardTitle className="flex items-center gap-2"><MessageSquareText className="size-5 text-primary" />课堂提问抓手</CardTitle></CardHeader>
+          <CardContent className="text-sm leading-7 text-muted-foreground">从“这句什么意思”升级到“为什么这样写、还能怎样表达”。</CardContent>
         </Card>
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileSearch className="size-5 text-primary" />
-              审计闭环
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm leading-7 text-muted-foreground">
-            待审计回答：{auditCount} 条。只有教师认可的样本才进入导出，避免把垃圾答案训练进系统。
-          </CardContent>
+          <CardHeader><CardTitle className="flex items-center gap-2"><FileSearch className="size-5 text-primary" />学习过程纠正</CardTitle></CardHeader>
+          <CardContent className="text-sm leading-7 text-muted-foreground">对可能误导学生的回答，直接在回答气泡中修订，学生侧只看到修订版。</CardContent>
         </Card>
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ClipboardCheck className="size-5 text-primary" />
-              学情行动
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm leading-7 text-muted-foreground">
-            已绑定班级：{analytics.assignedClasses} 个。后续学情只展示可行动线索，不做装饰性大屏。
-          </CardContent>
+          <CardHeader><CardTitle className="flex items-center gap-2"><ClipboardCheck className="size-5 text-primary" />可信闭环</CardTitle></CardHeader>
+          <CardContent className="text-sm leading-7 text-muted-foreground">确认无误和保存修订都来自真实记录，后台会自然形成可治理数据。</CardContent>
         </Card>
       </section>
     </div>

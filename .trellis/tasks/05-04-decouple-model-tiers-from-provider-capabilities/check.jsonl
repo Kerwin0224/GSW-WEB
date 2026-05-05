@@ -1,0 +1,6 @@
+{"file":".trellis/tasks/05-04-decouple-model-tiers-from-provider-capabilities/prd.md","reason":"Acceptance criteria for model tier decoupling and backend/UI verification."}
+{"file":".trellis/tasks/05-04-decouple-model-tiers-from-provider-capabilities/research/model-tier-schema.md","reason":"Verification risks for schema, RLS, migration, and nondeterministic routing."}
+{"file":".trellis/tasks/05-04-decouple-model-tiers-from-provider-capabilities/research/admin-model-tier-ux.md","reason":"UI testing states for tier cards, scenario mapping, and provider operations."}
+{"file":".trellis/spec/backend/supabase-pgvector-guidelines.md","reason":"Security and blocked-state checks for provider secrets and Supabase configuration."}
+{"file":".trellis/spec/frontend/admin-workspace.md","reason":"Admin workspace regression surface to verify after replacing capability matrix."}
+{"file":".trellis/spec/frontend/ui-ux-guidelines.md","reason":"Design-quality and accessibility checks for admin tier UI."}

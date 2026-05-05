@@ -1,12 +1,11 @@
-import { Activity, Database, Download, FileText, Puzzle, School, ShieldCheck, Upload, UserPlus } from 'lucide-react';
+import { Activity, Cpu, Database, Download, FileText, Puzzle, School, ShieldCheck, Upload, UserPlus } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
-import { SetupChecklist } from '@/components/workbench/setup-checklist';
-import { PrincipleCard, SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
+import { WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { getAdminDashboard } from '@/lib/data/admin';
 import { getLogFileStatus, readRecentAppEvents } from '@/lib/observability/server-log-store';
 
@@ -25,15 +24,18 @@ export default async function AdminDashboard() {
     );
   }
 
-  const { users, classes, readyCaps, presets, mcp, exports } = result.data;
-  const coreProviderReady = readyCaps.has('student_chat') && readyCaps.has('teacher_chat');
-  const setupItems = [
-    { label: '学校账号', ready: users.length > 0, description: '学号 / 工号、角色与状态。', href: '/admin' },
-    { label: '模型能力', ready: coreProviderReady, description: '学生学习、教师备课、分类与练习都依赖真实 Provider。', href: '/admin/providers' },
-    { label: '教学预设', ready: presets.length > 0, description: '教师端必须先有发布版 Prompt。', href: '/admin/presets' },
-    { label: '班级关系', ready: classes.length > 0, description: '决定教师能看哪些学生与审计范围。', href: '/admin/classes' },
-    { label: 'MCP 能力', ready: mcp.length > 0, description: '外部工具只作为可治理能力开放。', href: '/admin/mcp' },
-    { label: '导出记录', ready: exports.length > 0, description: '只导出教师审计通过的样本。', href: '/admin/exports' },
+  const { users, classes, readyCaps, mcp, exports } = result.data;
+  const schoolManagementItems = [
+    { label: '用户', value: users.length, hint: 'profiles' },
+    { label: '班级', value: classes.length, hint: 'classes' },
+    { label: '权限', value: users.filter((user) => user.status === 'active').length, hint: 'active accounts' },
+    { label: '活跃情况', value: '真实采集中', hint: '不使用创建时间伪造登录' },
+  ];
+  const aiOpsItems = [
+    { label: 'Provider', value: readyCaps.size, hint: 'enabled capability bindings' },
+    { label: 'MCP', value: mcp.length, hint: 'enabled servers' },
+    { label: '日志', value: logEvents.filter((event) => event.level === 'error').length, hint: 'recent error events' },
+    { label: '待导出', value: exports.reduce((sum, batch) => sum + batch.record_count, 0), hint: 'export_batches history' },
   ];
 
   return (
@@ -51,19 +53,57 @@ export default async function AdminDashboard() {
         ]}
       />
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <PrincipleCard index="人" title="账号必须真实" description="学生学号、教师工号、管理员角色都来自数据库，不用 email，不猜身份。" />
-        <PrincipleCard index="能" title="能力必须可追" description="Provider、Prompt、MCP 只登记能力与引用，真实密钥留在服务端环境。" accent="gold" />
-        <PrincipleCard index="证" title="日志必须能定位" description="登录、API、渲染错误写入结构化日志，后台崩溃不再靠猜。" accent="cinnabar" />
+      <section className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <School className="size-5 text-primary" />
+              学校管理摘要
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            {schoolManagementItems.map((item) => (
+              <div key={item.label} className="rounded-xl border bg-background/70 p-4">
+                <p className="text-sm text-muted-foreground">{item.label}</p>
+                <p className="mt-2 text-2xl font-semibold">{item.value}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{item.hint}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Cpu className="size-5 text-primary" />
+              AI 运维摘要
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            {aiOpsItems.map((item) => (
+              <div key={item.label} className="rounded-xl border bg-background/70 p-4">
+                <p className="text-sm text-muted-foreground">{item.label}</p>
+                <p className="mt-2 text-2xl font-semibold">{item.value}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{item.hint}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       </section>
 
-      <section className="space-y-4">
-        <SectionHeader
-          eyebrow="readiness"
-          title="上线前就绪检查"
-          description="缺哪一项，相关能力就明确阻塞；不使用模拟 Provider、演示账号或假审计记录掩盖问题。"
-        />
-        <SetupChecklist items={setupItems} />
+      <section className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Download className="size-5 text-primary" />SFT JSONL</CardTitle></CardHeader>
+          <CardContent className="text-sm leading-7 text-muted-foreground">教师确认无误或修订后的 supervised 样本，从真实 audit_records 生成。</CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Download className="size-5 text-primary" />DPO JSONL</CardTitle></CardHeader>
+          <CardContent className="text-sm leading-7 text-muted-foreground">教师修订场景自然形成 chosen/rejected 偏好对。</CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Database className="size-5 text-primary" />审阅元数据</CardTitle></CardHeader>
+          <CardContent className="text-sm leading-7 text-muted-foreground">导出审阅人、来源、状态、质量与 metadata，便于数据质量治理。</CardContent>
+        </Card>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">

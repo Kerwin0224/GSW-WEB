@@ -33,7 +33,7 @@ Filter out paths under `.trellis/workspace/` and `.trellis/tasks/` — those are
 
 If anything else is dirty (any path outside those two prefixes), **stop and bail out** with:
 
-> "Working tree has uncommitted code changes. Return to workflow Phase 3.4 to commit them before running `$finish-work`."
+> "Working tree has uncommitted code changes. Return to workflow Phase 3.4 to commit them before running ``finish-work` (Trellis command)`."
 
 Do NOT run `git commit` here. Do NOT prompt the user to commit. The user goes back to Phase 3.4 and the AI drives the batched commit there.
 

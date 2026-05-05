@@ -2,11 +2,11 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { BloomBadge, type BloomLevel } from '@/components/workbench/bloom-badge';
 import { BloomLadder } from '@/components/workbench/bloom-ladder';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { getStudentProject } from '@/lib/data/student';
-import type { BloomLevel } from '@/components/workbench/bloom-badge';
 
 export default async function StudentProjectDetailPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
@@ -26,13 +26,13 @@ export default async function StudentProjectDetailPage({ params }: { params: Pro
         <EmptyState
           title="未找到真实篇目项目"
           description={`项目 ${projectId} 尚未从 Supabase 返回可访问记录。请先在学习提问中创建真实项目。`}
-          action={<Button render={<Link href="/student/projects">返回篇目项目</Link>} />}
+          action={<Button nativeButton={false} render={<Link href="/student/projects">返回篇目项目</Link>} />}
         />
       </div>
     );
   }
 
-  const { project, questions, practices } = result.data;
+  const { project, questions, practices, challengeProgress } = result.data;
   const levels = Object.fromEntries(
     ([1, 2, 3, 4, 5, 6] as BloomLevel[]).map((level) => [
       level,
@@ -55,9 +55,43 @@ export default async function StudentProjectDetailPage({ params }: { params: Pro
         metrics={[
           { label: '最高层级', value: project.highest_bloom_level ? `L${project.highest_bloom_level}` : '未分类', hint: '来自真实 Bloom 分类' },
           { label: '问题记录', value: questions.length, hint: '学生真实提问' },
-          { label: '练习记录', value: practices.length, hint: '已保存练习' },
+          { label: '练习记录', value: practices.length, hint: `挑战已达标 ${challengeProgress.completedLevels}/6` },
         ]}
       />
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle>对话画像</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm leading-6 text-muted-foreground">
+            <p>问题记录来自学生在本项目下的真实提问，用来观察认知路径和层级分布。</p>
+            <p>它说明“提问触达过哪些 Bloom 层级”，不是最终能力证明。</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>挑战核查与攀升</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm leading-6 text-muted-foreground">挑战按 L1→L6 出题核查，当前解锁 L{challengeProgress.currentLevel}；未达标会停留当前层，达标后才进入下一层。</p>
+            <div className="grid grid-cols-6 gap-2" aria-label="挑战攀升进度">
+              {challengeProgress.levels.map((levelProgress) => {
+                const level = levelProgress.level as BloomLevel;
+                return (
+                  <div key={level} className="rounded-lg border bg-background/60 p-2 text-center text-xs">
+                    <BloomBadge level={level} />
+                    <p className="mt-2 text-muted-foreground">
+                      {levelProgress.state === 'achieved' ? '已达标' : levelProgress.state === 'current' ? '当前' : '未解锁'}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+            <Button nativeButton={false} render={<Link href={`/student/challenge/${projectId}`}>进入 L{challengeProgress.currentLevel} 挑战</Link>} disabled={challengeProgress.isComplete} />
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="flex justify-end">
+        <Button nativeButton={false} render={<Link href={`/cognitive-path/${projectId}`}>查看认知路径详情</Link>} variant="outline" />
+      </div>
 
       <Tabs defaultValue="ladder" className="space-y-4">
         <TabsList>

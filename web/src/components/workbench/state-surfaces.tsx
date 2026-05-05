@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { AlertCircle, Ban, Inbox, Loader2 } from 'lucide-react';
+import Link from 'next/link';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -100,6 +101,6 @@ export function SuccessState({ title, description, action, className }: SurfaceP
 
 export function InlineActionLink({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <Button render={<a href={href}>{children}</a>} size="sm" variant="outline" />
+    <Button nativeButton={false} render={<Link href={href}>{children}</Link>} size="sm" variant="outline" />
   );
 }

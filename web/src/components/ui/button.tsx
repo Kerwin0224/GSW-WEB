@@ -46,9 +46,12 @@ function Button({
   size = "default",
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+  // Note: data-slot is intentionally not set here. When this Button is used
+  // as a render prop target (e.g. <DialogTrigger render={<Button />}>),
+  // the parent slot (data-slot="dialog-trigger") would conflict and cause
+  // SSR/CSR hydration mismatch. Parent components own their slot identifier.
   return (
     <ButtonPrimitive
-      data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />

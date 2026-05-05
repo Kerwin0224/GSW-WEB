@@ -39,8 +39,8 @@ export function BloomLadder({ levels, currentMaxLevel }: Props) {
                         <TooltipTrigger render={
                           <button
                             type="button"
-                            className="size-8 rounded-full text-[10px] font-medium text-white transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                            style={{ backgroundColor: `var(--bloom-${level})` }}
+                            className="size-8 rounded-full text-[10px] font-medium transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                            style={{ backgroundColor: `var(--bloom-${level})`, color: `var(--bloom-${level}-fg)` }}
                             aria-label={`L${level} ${info.label}问题：${q.text}`}
                           >
                             问

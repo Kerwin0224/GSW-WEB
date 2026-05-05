@@ -1,0 +1,6 @@
+{"file":".trellis/tasks/05-04-decouple-model-tiers-from-provider-capabilities/prd.md","reason":"Primary requirements and technical approach for two-tier model routing."}
+{"file":".trellis/tasks/05-04-decouple-model-tiers-from-provider-capabilities/research/model-tier-schema.md","reason":"Schema and backend architecture options for first-class model tier bindings."}
+{"file":".trellis/tasks/05-04-decouple-model-tiers-from-provider-capabilities/research/admin-model-tier-ux.md","reason":"Tier-first admin provider UX requirements and states."}
+{"file":".trellis/spec/backend/supabase-pgvector-guidelines.md","reason":"Backend Supabase/provider/secret contracts that must be reconciled with tier routing."}
+{"file":".trellis/spec/frontend/admin-workspace.md","reason":"Admin provider workspace contracts and known capability-first spec drift."}
+{"file":".trellis/spec/frontend/ui-ux-guidelines.md","reason":"Visual and blocked-state guidance for admin model configuration UI."}

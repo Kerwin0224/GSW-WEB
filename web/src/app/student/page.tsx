@@ -67,6 +67,7 @@ export default async function StudentChatPage() {
             <StudentChatClient
               providerBlocked={workspace.data.providerBlocked}
               classificationBlocked={workspace.data.classificationBlocked}
+              projects={projects}
             />
           </CardContent>
         </Card>

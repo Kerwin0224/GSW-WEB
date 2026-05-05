@@ -1,0 +1,10 @@
+{"file":".trellis/tasks/05-04-align-admin-frontend-backend-contracts/prd.md","reason":"Task-specific requirements, mismatch inventory, MVP boundary, implementation plan, and acceptance criteria."}
+{"file":".trellis/spec/frontend/admin-workspace.md","reason":"Admin dashboard, provider capability, MCP, logs, import/export workspace contracts."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Form, dialog, table, empty/error state component expectations for admin pages."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Blocked/setup-incomplete/health/error state semantics for admin UI."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Typed data/action contracts and safe shape normalization for frontend boundaries."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend lint/type/build and manual UI verification quality bar."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Supabase data integrity and admin table relationships for profiles/classes/providers/audit/export."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Backend/action/API error propagation requirements for admin mutations."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Admin log surface and API logging expectations."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Cross-layer contract alignment across schema, data functions, API routes, and UI."}

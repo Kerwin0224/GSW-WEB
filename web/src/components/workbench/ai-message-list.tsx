@@ -37,6 +37,9 @@ export function AIMessagePart({ part }: { part: unknown }) {
   if (type.includes('citation') || type.includes('retrieval')) {
     return <Badge variant="outline">检索 / 引用状态</Badge>;
   }
+  if (type === 'data-teacher-revision') {
+    return <Badge variant="outline">教师已修订</Badge>;
+  }
   if (type.includes('classification')) {
     return <Badge variant="outline">分类状态更新</Badge>;
   }

@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --test --experimental-strip-types src/lib/__tests__/*.test.ts",
+    "test:sft-dpo-pipeline": "node scripts/sft-dpo-pipeline-e2e.mjs",
     "dev:logged": "mkdir -p .logs && next dev 2>&1 | tee .logs/next-dev.log",
     "logs:tail": "mkdir -p .logs && touch .logs/next-dev.log .logs/app-events.jsonl && tail -n 120 -f .logs/next-dev.log .logs/app-events.jsonl"
   },

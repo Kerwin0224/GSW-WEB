@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -48,8 +49,8 @@ export function WorkspaceHero({
           </div>
           {(primaryAction || secondaryAction) ? (
             <div className="flex flex-wrap gap-3">
-              {primaryAction ? <Button render={<a href={primaryAction.href}>{primaryAction.label}</a>} size="lg" variant={primaryAction.variant ?? 'default'} /> : null}
-              {secondaryAction ? <Button render={<a href={secondaryAction.href}>{secondaryAction.label}</a>} size="lg" variant={secondaryAction.variant ?? 'outline'} /> : null}
+              {primaryAction ? <Button nativeButton={false} render={<Link href={primaryAction.href}>{primaryAction.label}</Link>} size="lg" variant={primaryAction.variant ?? 'default'} /> : null}
+              {secondaryAction ? <Button nativeButton={false} render={<Link href={secondaryAction.href}>{secondaryAction.label}</Link>} size="lg" variant={secondaryAction.variant ?? 'outline'} /> : null}
             </div>
           ) : null}
         </div>

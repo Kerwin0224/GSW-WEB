@@ -1,23 +1,25 @@
 'use client';
 
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
-  MessageSquare,
+  Activity,
+  BarChart3,
+  BookOpen,
+  Cpu,
+  Download,
+  FileSearch,
+  FileText,
   FolderOpen,
+  MessageSquare,
+  Puzzle,
+  School,
+  ShieldCheck,
   Swords,
   User,
-  FileSearch,
-  BarChart3,
-  School,
-  Cpu,
-  Puzzle,
-  FileText,
-  Download,
-  Activity,
-  BookOpen,
-  ShieldCheck,
+  Users,
 } from 'lucide-react';
 
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Sidebar,
   SidebarContent,
@@ -29,7 +31,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { RoleBadge } from '@/components/workbench/role-badge';
 
 type Role = 'admin' | 'teacher' | 'student';
@@ -41,30 +42,56 @@ interface NavItem {
   description: string;
 }
 
-const studentNav: NavItem[] = [
-  { icon: MessageSquare, label: '学习提问', href: '/student', description: 'AI 问答与篇目归档' },
-  { icon: FolderOpen, label: '篇目项目', href: '/student/projects', description: '诗文项目与认知路径' },
-  { icon: Swords, label: '层级挑战', href: '/student/challenge', description: '布鲁姆练习入口' },
-  { icon: User, label: '我的画像', href: '/student/me', description: '个人学习概览' },
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+const studentNavGroups: NavGroup[] = [
+  {
+    label: '我的学习项目',
+    items: [
+      { icon: MessageSquare, label: '学习提问', href: '/student', description: '自然提问并自动沉淀到篇目项目' },
+      { icon: FolderOpen, label: '篇目项目', href: '/student/projects', description: '项目、会话与认知路径' },
+      { icon: Swords, label: '层级挑战', href: '/student/challenge', description: '用挑战确认真实认知水平' },
+      { icon: User, label: '我的画像', href: '/student/me', description: '个人布鲁姆认知概览' },
+    ],
+  },
 ];
 
-const teacherNav: NavItem[] = [
-  { icon: MessageSquare, label: '教学对话', href: '/teacher', description: 'Preset-first 教学助手' },
-  { icon: FileSearch, label: '审计标注', href: '/teacher/audit', description: 'SFT / DPO 质量控制' },
-  { icon: BarChart3, label: '学情线索', href: '/teacher/analytics', description: '班级行动摘要' },
+const teacherNavGroups: NavGroup[] = [
+  {
+    label: '教学与核实',
+    items: [
+      { icon: BarChart3, label: '学情看板', href: '/teacher', description: '学生认知与待核实学习记录' },
+      { icon: FileSearch, label: '学习核实', href: '/teacher/audit', description: '查看完整学习过程并修订回答' },
+      { icon: MessageSquare, label: '学情线索', href: '/teacher/analytics', description: '课堂追问与学情线索' },
+    ],
+  },
 ];
 
-const adminNav: NavItem[] = [
-  { icon: ShieldCheck, label: '系统就绪/用户', href: '/admin', description: '配置状态与用户入口' },
-  { icon: School, label: '班级关系', href: '/admin/classes', description: '教师与学生归属' },
-  { icon: Cpu, label: '模型 Provider', href: '/admin/providers', description: '能力路由与密钥' },
-  { icon: Puzzle, label: 'MCP 能力', href: '/admin/mcp', description: '外部工具治理' },
-  { icon: FileText, label: 'Prompt 预设', href: '/admin/presets', description: '全局预设生命周期' },
-  { icon: Download, label: '数据集导出', href: '/admin/exports', description: '审计后 JSONL' },
-  { icon: Activity, label: '运行日志', href: '/admin/logs', description: '错误与请求追踪' },
+const adminNavGroups: NavGroup[] = [
+  {
+    label: '学校管理',
+    items: [
+      { icon: ShieldCheck, label: '管理看板', href: '/admin', description: '学校账号、班级与权限摘要' },
+      { icon: Users, label: '用户权限', href: '/admin', description: '用户、角色、状态与活跃情况' },
+      { icon: School, label: '班级关系', href: '/admin/classes', description: '教师与学生归属' },
+    ],
+  },
+  {
+    label: 'AI 运维',
+    items: [
+      { icon: Cpu, label: 'Provider', href: '/admin/providers', description: '模型能力路由与密钥引用' },
+      { icon: Puzzle, label: 'MCP', href: '/admin/mcp', description: '外部工具治理' },
+      { icon: FileText, label: 'Prompt 预设', href: '/admin/presets', description: '全局预设生命周期' },
+      { icon: Download, label: '教学数据导出', href: '/admin/exports', description: 'SFT JSONL、DPO JSONL、审阅元数据' },
+      { icon: Activity, label: '运行日志', href: '/admin/logs', description: '错误与请求追踪' },
+    ],
+  },
 ];
 
-const navMap: Record<Role, NavItem[]> = { student: studentNav, teacher: teacherNav, admin: adminNav };
+const navMap: Record<Role, NavGroup[]> = { student: studentNavGroups, teacher: teacherNavGroups, admin: adminNavGroups };
 const roleTitle: Record<Role, string> = { student: '学生工作台', teacher: '教师工作台', admin: '管理控制台' };
 
 interface AppSidebarProps { role: Role; displayName: string; }
@@ -77,7 +104,7 @@ export function AppSidebar({ role, displayName }: AppSidebarProps) {
     <Sidebar collapsible="icon" variant="sidebar">
       <SidebarHeader className="px-3 py-4">
         <div className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
-          <BookOpen className="size-5 text-sidebar-foreground shrink-0" aria-hidden="true" />
+          <BookOpen className="size-5 shrink-0 text-sidebar-foreground" aria-hidden="true" />
           <div className="group-data-[collapsible=icon]:hidden">
             <span className="font-heading text-lg leading-none">文韵智途</span>
             <p className="mt-1 text-xs text-sidebar-foreground/70">{roleTitle[role]}</p>
@@ -86,31 +113,33 @@ export function AppSidebar({ role, displayName }: AppSidebarProps) {
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">导航</SidebarGroupLabel>
-          <SidebarMenu>
-            {navMap[role].map((item) => {
-              const active = pathname === item.href || (item.href !== `/${role}` && pathname.startsWith(`${item.href}/`));
-              return (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton isActive={active} tooltip={`${item.label} · ${item.description}`} onClick={() => router.push(item.href)}>
-                    <item.icon aria-hidden="true" />
-                    <span>{item.label}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              );
-            })}
-          </SidebarMenu>
-        </SidebarGroup>
+        {navMap[role].map((group) => (
+          <SidebarGroup key={group.label}>
+            <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">{group.label}</SidebarGroupLabel>
+            <SidebarMenu>
+              {group.items.map((item) => {
+                const active = pathname === item.href || (item.href !== `/${role}` && pathname.startsWith(`${item.href}/`));
+                return (
+                  <SidebarMenuItem key={`${group.label}-${item.href}-${item.label}`}>
+                    <SidebarMenuButton isActive={active} tooltip={`${item.label} · ${item.description}`} onClick={() => router.push(item.href)}>
+                      <item.icon aria-hidden="true" />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
 
       <SidebarFooter className="p-3">
         <div className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
           <Avatar className="size-8 shrink-0">
-            <AvatarFallback className="text-xs bg-sidebar-primary text-sidebar-primary-foreground">{displayName.slice(0, 2)}</AvatarFallback>
+            <AvatarFallback className="bg-sidebar-primary text-xs text-sidebar-primary-foreground">{displayName.slice(0, 2)}</AvatarFallback>
           </Avatar>
-          <div className="group-data-[collapsible=icon]:hidden min-w-0 flex-1">
-            <p className="text-sm truncate">{displayName}</p>
+          <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+            <p className="truncate text-sm">{displayName}</p>
             <RoleBadge role={role} className="text-[10px]" />
           </div>
         </div>

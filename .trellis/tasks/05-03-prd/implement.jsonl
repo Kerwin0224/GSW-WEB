@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/frontend/next-ai-sdk-guidelines.md", "reason": "Vercel AI SDK v6 usage patterns for validating PRD's AI implementation design"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Frontend architecture patterns to validate PRD's proposed directory structure"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component design principles to audit PRD's UI component architecture"}
+{"file": ".trellis/spec/frontend/ui-ux-guidelines.md", "reason": "UI/UX best practices to validate PRD's design system and interaction patterns"}
+{"file": ".trellis/spec/backend/supabase-pgvector-guidelines.md", "reason": "Supabase and pgvector usage patterns to validate PRD's database and RAG design"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Database schema and RLS patterns to audit PRD's data model"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Deep modules and abstraction principles to evaluate PRD's 7 deep modules design"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer consistency checks for validating PRD's full-stack architecture"}
+{"file": "PRD.md", "reason": "The 111KB PRD document being audited"}
+{"file": "PRD-GAP-ANALYSIS.md", "reason": "Existing gap analysis between PRD and current codebase"}

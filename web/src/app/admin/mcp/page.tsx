@@ -1,12 +1,14 @@
-import { Plus, Puzzle } from 'lucide-react';
+import { Plus, Puzzle, Pencil } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
+import { McpServerDialog } from '@/components/workbench/mcp-server-dialog';
 import { SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { getAdminMcp } from '@/lib/data/admin';
+
+type Role = 'admin' | 'teacher' | 'student';
 
 export default async function AdminMcpPage() {
   const result = await getAdminMcp();
@@ -21,10 +23,13 @@ export default async function AdminMcpPage() {
   const servers = result.data as Array<{
     id: string;
     name: string;
+    description: string | null;
     connection_ref: string | null;
+    secret_ref: string | null;
     secret_last_four: string | null;
     health_status: string;
-    allowed_roles: string[];
+    enabled_tools: unknown;
+    allowed_roles: Role[];
     is_enabled: boolean;
   }>;
 
@@ -45,13 +50,28 @@ export default async function AdminMcpPage() {
         <SectionHeader
           title="能力治理"
           description="缺少本机 bridge env 时保持 blocked/offline，不做隐式 fallback。"
-          action={<Button disabled><Plus className="mr-2 size-4" />添加 MCP Server</Button>}
+          action={
+            <McpServerDialog
+              trigger={
+                <Button>
+                  <Plus className="mr-2 size-4" />添加 MCP Server
+                </Button>
+              }
+            />
+          }
         />
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Puzzle className="size-5" />MCP Server</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Puzzle className="size-5" />MCP Server
+            </CardTitle>
+          </CardHeader>
           <CardContent>
             {servers.length === 0 ? (
-              <EmptyState title="暂无 MCP Server" description="未配置时学生与教师不会获得任何外部工具能力，也不会尝试隐式 fallback。" />
+              <EmptyState
+                title="暂无 MCP Server"
+                description="未配置时学生与教师不会获得任何外部工具能力，也不会尝试隐式 fallback。"
+              />
             ) : (
               <Table>
                 <TableHeader>
@@ -62,26 +82,48 @@ export default async function AdminMcpPage() {
                     <TableHead>启用角色</TableHead>
                     <TableHead>密钥</TableHead>
                     <TableHead>状态</TableHead>
+                    <TableHead className="w-20">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {servers.map((server) => (
                     <TableRow key={server.id}>
-                      <TableCell>{server.name}</TableCell>
-                      <TableCell>{server.connection_ref ?? '未登记'}</TableCell>
+                      <TableCell>
+                        <div className="font-medium">{server.name}</div>
+                        {server.description ? (
+                          <div className="text-xs text-muted-foreground">{server.description}</div>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">{server.connection_ref ?? '未登记'}</TableCell>
                       <TableCell>{server.health_status}</TableCell>
                       <TableCell>{server.allowed_roles.join('、') || '未授权'}</TableCell>
                       <TableCell>{server.secret_last_four ? `••••${server.secret_last_four}` : '服务端 env'}</TableCell>
                       <TableCell>{server.is_enabled ? '启用' : '禁用'}</TableCell>
+                      <TableCell>
+                        <McpServerDialog
+                          mode="edit"
+                          initial={{
+                            id: server.id,
+                            name: server.name,
+                            description: server.description,
+                            connectionRef: server.connection_ref,
+                            secretLastFour: server.secret_last_four,
+                            enabledTools: server.enabled_tools,
+                            allowedRoles: server.allowed_roles,
+                            isEnabled: server.is_enabled,
+                          }}
+                          trigger={
+                            <Button variant="ghost" size="icon-sm">
+                              <Pencil className="size-3.5" />
+                            </Button>
+                          }
+                        />
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             )}
-            <div className="mt-4 flex items-center justify-between rounded-xl border p-3">
-              <span className="text-sm">未知/高风险工具默认禁用；缺少本机 bridge env 时保持 blocked/offline</span>
-              <Switch checked={false} disabled aria-label="未知工具默认禁用" />
-            </div>
           </CardContent>
         </Card>
       </section>

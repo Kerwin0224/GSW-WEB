@@ -4,12 +4,28 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AdminLogViewer } from '@/components/workbench/admin-log-viewer';
 import { SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
-import { getLogFileStatus, readRecentAppEvents, readRecentDevLogLines } from '@/lib/observability/server-log-store';
+import { getLogFileStatus, readFilteredAppEvents, readRecentDevLogLines, type AppEventFilters } from '@/lib/observability/server-log-store';
 
-export default async function AdminLogsPage() {
+export default async function AdminLogsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const pick = (key: string) => {
+    const value = params[key];
+    return Array.isArray(value) ? value[0] : value;
+  };
+  const level = pick('level');
+  const filters: AppEventFilters = {
+    level: level === 'debug' || level === 'info' || level === 'warn' || level === 'error' ? level : undefined,
+    traceId: pick('trace_id'),
+    userId: pick('user_id'),
+    search: pick('q'),
+  };
   const [status, events, devLines] = await Promise.all([
     getLogFileStatus(),
-    readRecentAppEvents(80),
+    readFilteredAppEvents(filters, 120),
     readRecentDevLogLines(120),
   ]);
   const errorCount = events.filter((event) => event.level === 'error').length;
@@ -59,7 +75,7 @@ export default async function AdminLogsPage() {
 
       <section className="space-y-4">
         <SectionHeader title="最近日志" description="先看结构化事件定位 requestId，再看原始 dev 日志确认框架级 panic 或编译错误。" />
-        <AdminLogViewer events={events} devLines={devLines} />
+        <AdminLogViewer events={events} devLines={devLines} filters={filters} />
       </section>
     </div>
   );

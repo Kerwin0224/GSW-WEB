@@ -67,3 +67,4 @@ output-*.png
 
 # local runtime logs
 web/.logs/
+.gitnexus

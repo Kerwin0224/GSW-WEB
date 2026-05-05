@@ -1,6 +1,7 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type AppRole = 'admin' | 'teacher' | 'student';
+export type ModelTier = 'flash' | 'advanced';
 export type ProviderCapability =
   | 'student_chat'
   | 'teacher_chat'
@@ -12,7 +13,7 @@ export type ProviderCapability =
   | 'embedding';
 export type PromptPresetStatus = 'draft' | 'published' | 'disabled';
 export type InteractionSource = 'student_chat' | 'teacher_chat' | 'practice';
-export type AuditKind = 'sft' | 'dpo';
+export type AuditKind = 'sft' | 'dpo' | 'review_metadata';
 export type AuditStatus = 'pending' | 'approved' | 'rejected' | 'exported';
 export type ExportStatus = 'queued' | 'ready' | 'failed';
 export type Vector = number[];
@@ -36,14 +37,19 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['class_memberships']['Insert']>;
       };
       provider_configs: {
-        Row: { id: string; name: string; provider_type: string; base_url: string | null; secret_ref: string | null; secret_last_four: string | null; is_enabled: boolean; health_status: string; created_by: string | null; created_at: string; updated_at: string };
-        Insert: { id?: string; name: string; provider_type: string; base_url?: string | null; secret_ref?: string | null; secret_last_four?: string | null; is_enabled?: boolean; health_status?: string; created_by?: string | null };
+        Row: { id: string; name: string; provider_type: string; base_url: string | null; secret_ref: string | null; secret_last_four: string | null; secret_created_at: string | null; secret_last_used_at: string | null; secret_rotated_at: string | null; api_models: Json; last_health_check_at: string | null; last_health_latency_ms: number | null; is_enabled: boolean; health_status: string; created_by: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; name: string; provider_type: string; base_url?: string | null; secret_ref?: string | null; secret_last_four?: string | null; secret_created_at?: string | null; secret_last_used_at?: string | null; secret_rotated_at?: string | null; api_models?: Json; last_health_check_at?: string | null; last_health_latency_ms?: number | null; is_enabled?: boolean; health_status?: string; created_by?: string | null };
         Update: Partial<Database['public']['Tables']['provider_configs']['Insert']>;
       };
       provider_capabilities: {
         Row: { id: string; provider_id: string; capability: ProviderCapability; model_id: string; is_enabled: boolean; metadata: Json };
         Insert: { id?: string; provider_id: string; capability: ProviderCapability; model_id: string; is_enabled?: boolean; metadata?: Json };
         Update: Partial<Database['public']['Tables']['provider_capabilities']['Insert']>;
+      };
+      model_tier_bindings: {
+        Row: { id: string; tier: ModelTier; provider_id: string; model_id: string; is_enabled: boolean; metadata: Json; created_at: string; updated_at: string };
+        Insert: { id?: string; tier: ModelTier; provider_id: string; model_id: string; is_enabled?: boolean; metadata?: Json };
+        Update: Partial<Database['public']['Tables']['model_tier_bindings']['Insert']>;
       };
       mcp_servers: {
         Row: { id: string; name: string; description: string | null; connection_ref: string | null; secret_ref: string | null; secret_last_four: string | null; health_status: string; enabled_tools: Json; allowed_roles: AppRole[]; metadata: Json; is_enabled: boolean; created_by: string | null; created_at: string; updated_at: string };
@@ -108,7 +114,7 @@ export interface Database {
         Returns: { id: string; document_id: string; owner_id: string; class_id: string | null; project_id: string | null; chunk_index: number; content: string; metadata: Json; document_title: string; source_uri: string | null; similarity: number }[];
       };
     };
-    Enums: { app_role: AppRole; provider_capability: ProviderCapability; prompt_preset_status: PromptPresetStatus; interaction_source: InteractionSource; audit_kind: AuditKind; audit_status: AuditStatus; export_status: ExportStatus };
+    Enums: { app_role: AppRole; model_tier: ModelTier; provider_capability: ProviderCapability; prompt_preset_status: PromptPresetStatus; interaction_source: InteractionSource; audit_kind: AuditKind; audit_status: AuditStatus; export_status: ExportStatus };
     CompositeTypes: Record<string, never>;
   };
 }
