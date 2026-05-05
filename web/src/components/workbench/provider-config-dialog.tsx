@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Loader2, ServerCog, XCircle } from 'lucide-react';
+import { Loader2, Plus, ServerCog, XCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import { saveProviderConfigV2 } from '@/lib/data/admin';
  * 单一职责：只负责创建一个 Provider。
  * 测速、拉取模型、配置能力、编辑、删除都在列表行的独立按钮里完成。
  */
-export function ProviderConfigDialog({ trigger }: { trigger: React.ReactNode }) {
+export function ProviderConfigDialog() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [providerType, setProviderType] = useState('openai-compatible');
@@ -50,7 +50,11 @@ export function ProviderConfigDialog({ trigger }: { trigger: React.ReactNode }) 
     <AdminDialogShell
       open={open}
       onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}
-      trigger={trigger}
+      trigger={(
+        <Button type="button">
+          <Plus className="mr-2 size-4" />添加 Provider
+        </Button>
+      )}
       title="添加 Provider"
       description="只填基础信息。保存后可在列表中独立执行：测速、拉取模型、配置能力。"
       icon={<ServerCog className="size-5" />}
@@ -69,9 +73,18 @@ export function ProviderConfigDialog({ trigger }: { trigger: React.ReactNode }) 
 
           <div className="space-y-2">
             <Label htmlFor="provider-type">类型</Label>
-            <Select value={providerType} onValueChange={(v) => setProviderType(v ?? 'openai-compatible')}>
+            <Select value={providerType} onValueChange={(v) => {
+              const nextType = v ?? 'openai-compatible';
+              setProviderType(nextType);
+              if (nextType === 'local-lmstudio') {
+                setName((current) => current || 'LM Studio 本机');
+                setBaseUrl('http://localhost:1234/v1');
+                setApiKey((current) => current || 'lm-studio');
+              }
+            }}>
               <SelectTrigger id="provider-type"><SelectValue /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="local-lmstudio">LM Studio 本机（OpenAI Compatible）</SelectItem>
                 <SelectItem value="cloud">Cloud（云端 OpenAI 兼容）</SelectItem>
                 <SelectItem value="local">Local（本地部署）</SelectItem>
                 <SelectItem value="proxy">Proxy（API 中转）</SelectItem>
@@ -84,6 +97,10 @@ export function ProviderConfigDialog({ trigger }: { trigger: React.ReactNode }) 
               </SelectContent>
             </Select>
           </div>
+
+            <p className="text-xs text-muted-foreground">
+              本机 LM Studio 已核实可用地址：http://localhost:1234/v1；embedding 模型候选：text-embedding-embeddinggemma-300m、text-embedding-nomic-embed-text-v1.5。
+            </p>
 
           <div className="space-y-2">
             <Label htmlFor="provider-baseurl">Base URL</Label>

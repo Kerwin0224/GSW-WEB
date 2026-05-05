@@ -1,6 +1,5 @@
-import { Plus, Puzzle, Pencil } from 'lucide-react';
+import { Puzzle } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
@@ -50,15 +49,7 @@ export default async function AdminMcpPage() {
         <SectionHeader
           title="能力治理"
           description="缺少本机 bridge env 时保持 blocked/offline，不做隐式 fallback。"
-          action={
-            <McpServerDialog
-              trigger={
-                <Button>
-                  <Plus className="mr-2 size-4" />添加 MCP Server
-                </Button>
-              }
-            />
-          }
+          action={<McpServerDialog />}
         />
         <Card>
           <CardHeader>
@@ -112,11 +103,6 @@ export default async function AdminMcpPage() {
                             allowedRoles: server.allowed_roles,
                             isEnabled: server.is_enabled,
                           }}
-                          trigger={
-                            <Button variant="ghost" size="icon-sm">
-                              <Pencil className="size-3.5" />
-                            </Button>
-                          }
                         />
                       </TableCell>
                     </TableRow>

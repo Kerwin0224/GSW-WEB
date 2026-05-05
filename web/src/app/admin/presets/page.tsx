@@ -1,15 +1,8 @@
-import { Plus } from 'lucide-react';
-
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Textarea } from '@/components/ui/textarea';
-import { AdminDialogShell } from '@/components/workbench/admin-dialog-shell';
+import { AdminPromptPresetDialog } from '@/components/workbench/admin-prompt-preset-form';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
-import { getAdminPresets, savePromptPreset } from '@/lib/data/admin';
+import { getAdminPresets } from '@/lib/data/admin';
 
 export default async function AdminPresetsPage() {
   const result = await getAdminPresets();
@@ -41,38 +34,7 @@ export default async function AdminPresetsPage() {
         <SectionHeader
           title="预设列表"
           description="发布真实预设前，教师教学对话保持阻塞。"
-          action={(
-            <AdminDialogShell
-              trigger={<Button><Plus className="mr-2 size-4" />新建预设</Button>}
-              title="新建 Prompt 预设"
-              description="保存为草稿或发布新版本，历史互动可追踪版本。"
-              icon={<Plus className="size-5" />}
-              className="max-w-2xl"
-            >
-                <form action={savePromptPreset}>
-                  <div className="grid gap-4">
-                    <div className="space-y-2"><Label htmlFor="title">标题</Label><Input id="title" name="title" placeholder="苏格拉底式引导" /></div>
-                    <div className="space-y-2"><Label htmlFor="scenario">教学场景</Label><Input id="scenario" name="scenario" placeholder="课堂追问 / 练习设计" /></div>
-                    <div className="space-y-2"><Label htmlFor="system_instruction">System Instruction</Label><Textarea id="system_instruction" name="system_instruction" className="min-h-32 font-mono" /></div>
-                    <div className="space-y-2"><Label htmlFor="variables">变量</Label><Input id="variables" name="variables" placeholder="篇目, 年级, 学生误区" /></div>
-                    <div className="space-y-2">
-                      <Label>状态</Label>
-                      <Select name="status" defaultValue="draft">
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="draft">draft</SelectItem>
-                          <SelectItem value="published">published</SelectItem>
-                          <SelectItem value="disabled">disabled</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="mt-4 flex justify-end">
-                    <Button type="submit">保存预设</Button>
-                  </div>
-                </form>
-            </AdminDialogShell>
-          )}
+          action={<AdminPromptPresetDialog />}
         />
         <div className="rounded-xl border bg-card">
           <Table>

@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/05-05-enforce-single-student-class-membership/prd.md", "reason": "Database hard-constraint requirements and acceptance criteria"}
+{"file": "CONTEXT.md", "reason": "Domain decision: teachers may have multiple classes; students only one with hard constraint"}
+{"file": ".trellis/spec/backend/supabase-pgvector-guidelines.md", "reason": "Supabase migration safety and validation constraints"}

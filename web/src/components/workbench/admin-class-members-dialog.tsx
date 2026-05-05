@@ -14,7 +14,6 @@ import { addClassMember, removeClassMember, type AdminClassListItem, type AdminU
 type AdminClassMembersDialogProps = {
   klass: AdminClassListItem;
   users: AdminUserListItem[];
-  trigger: React.ReactNode;
 };
 
 function MemberList({ members, roleLabel }: { members: AdminClassListItem['teachers']; roleLabel: string }) {
@@ -72,10 +71,15 @@ function AddMemberForm({ klass, users, role }: { klass: AdminClassListItem; user
   );
 }
 
-export function AdminClassMembersDialog({ klass, users, trigger }: AdminClassMembersDialogProps) {
+export function AdminClassMembersDialog({ klass, users }: AdminClassMembersDialogProps) {
   return (
     <AdminDialogShell
-      trigger={trigger}
+      trigger={(
+        <Button type="button" variant="outline" className="w-full">
+          <UsersRound className="mr-2 size-4" />
+          成员分配
+        </Button>
+      )}
       title={`${klass.name} · 成员分配`}
       description="在班级上下文中查看当前成员、添加账号或移除已有成员。"
       icon={<UsersRound className="size-5" />}

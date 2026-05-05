@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/05-05-enforce-single-student-class-membership/prd.md", "reason": "Verify database constraint behavior"}
+{"file": "CONTEXT.md", "reason": "Verify teacher multi-class and student single-class product rule"}
+{"file": ".trellis/spec/backend/supabase-pgvector-guidelines.md", "reason": "Verify migration safety and Supabase constraints"}

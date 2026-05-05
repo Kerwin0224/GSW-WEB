@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { encryptSecret } from '@/lib/crypto/secret-cipher';
 import { createClient } from '@/lib/supabase/server';
 import type { AppRole, AuditKind, Database, Json, ModelTier, ProviderCapability } from '@/lib/supabase/database.types';
-import { fail, getModelTiers, ok, requireRole, type ModelTierStatus } from './common';
+import { fail, getModelTiers, isMissingSchemaRelationError, modelTierSchemaBlockedMessage, ok, requireRole, type DataResult, type ModelTierStatus } from './common';
 
 export type AdminActionState = { ok: boolean; message: string; errors?: Record<string, string> };
 export type ProviderActionResult = { ok: true; message?: string } | { ok: false; message: string };
@@ -36,7 +36,7 @@ export type AdminUserListItem = {
   role: AppRole;
   status: AdminProfileStatus;
   createdAt: string;
-  updatedAt: string;
+  recentActivityLabel: string;
   memberships: AdminClassMembership[];
   assignmentSummary: string;
 };
@@ -76,7 +76,7 @@ type ProviderApiModel = { id: string; ownedBy?: string };
 type ProviderConfigInput = { name: string; providerType: string; baseUrl: string; apiKey: string };
 type ProviderPatchInput = { name?: string; providerType?: string; baseUrl?: string | null; apiKey?: string; isEnabled?: boolean };
 type ProviderCapabilityInput = { capability: string; modelId: string };
-type McpServerInput = { name: string; description?: string | null; connectionRef?: string | null; token?: string; enabledTools?: unknown; allowedRoles?: AppRoleArray; isEnabled?: boolean };
+type McpServerInput = { name?: string; description?: string | null; connectionRef?: string | null; token?: string; enabledTools?: unknown; allowedRoles?: AppRoleArray; isEnabled?: boolean; metadata?: Json };
 
 function actionResult(okResult: boolean, message: string, errors?: Record<string, string>): AdminActionState {
   return { ok: okResult, message, errors };
@@ -222,7 +222,7 @@ export async function getAdminUsers(filters: AdminUserFilters = {}) {
     .from('profiles')
     .select('*, class_memberships(id,class_id,profile_id,role,created_at,classes(name,grade))')
     .order('created_at', { ascending: false });
-  if (error) return fail('error', `用户权限加载失败：${error.message}`);
+  if (error) return fail('error', `用户管理加载失败：${error.message}`);
   const users = ((data ?? []) as Array<Database['public']['Tables']['profiles']['Row'] & {
     class_memberships?: Array<{
       id: string;
@@ -241,7 +241,9 @@ export async function getAdminUsers(filters: AdminUserFilters = {}) {
       role: user.role,
       status: user.status,
       createdAt: user.created_at,
-      updatedAt: user.updated_at,
+      recentActivityLabel: user.updated_at !== user.created_at
+        ? `资料更新：${new Date(user.updated_at).toLocaleString('zh-CN')}`
+        : `账号创建：${new Date(user.created_at).toLocaleString('zh-CN')}`,
       memberships,
       assignmentSummary: getAssignmentSummary(user.role, memberships),
     };
@@ -249,7 +251,14 @@ export async function getAdminUsers(filters: AdminUserFilters = {}) {
   return ok(users.filter((user) => matchesAdminUserFilters(user, filters)));
 }
 
-export async function getAdminClasses() {
+export type AdminDuplicateClassGroup = {
+  name: string;
+  count: number;
+  classes: Array<{ id: string; name: string; grade: string | null; status: 'active' | 'archived'; memberCount: number }>;
+};
+export type AdminClassesPayload = { classes: AdminClassListItem[]; duplicateGroups: AdminDuplicateClassGroup[] };
+
+export async function getAdminClasses(): Promise<DataResult<AdminClassesPayload>> {
   const role = await requireRole('admin');
   if (!role.ok) return role;
   const supabase = await createClient();
@@ -278,7 +287,15 @@ export async function getAdminClasses() {
       memberCount: memberships.length,
     };
   });
-  return ok(classes);
+  const duplicateGroups = Array.from(classes.reduce((groups, klass) => {
+    const existing = groups.get(klass.name) ?? [];
+    existing.push({ id: klass.id, name: klass.name, grade: klass.grade, status: klass.status, memberCount: klass.memberCount });
+    groups.set(klass.name, existing);
+    return groups;
+  }, new Map<string, Array<{ id: string; name: string; grade: string | null; status: 'active' | 'archived'; memberCount: number }>>()))
+    .filter(([, group]) => group.length > 1)
+    .map(([name, group]) => ({ name, count: group.length, classes: group }));
+  return ok({ classes, duplicateGroups });
 }
 
 export async function addClassMember(formData: FormData): Promise<void> {
@@ -290,6 +307,11 @@ export async function addClassMember(formData: FormData): Promise<void> {
   if (!classId || !profileId || !['teacher', 'student'].includes(membershipRole)) return;
   const supabase = await createClient();
   const targetRole = membershipRole as 'teacher' | 'student';
+  const [{ data: targetClass, error: classError }, { data: targetProfile, error: profileError }] = await Promise.all([
+    supabase.from('classes').select('id').eq('id', classId).maybeSingle(),
+    supabase.from('profiles').select('id,role,status').eq('id', profileId).maybeSingle(),
+  ]);
+  if (classError || profileError || !targetClass || !targetProfile || targetProfile.role !== targetRole || targetProfile.status !== 'active') return;
   if (targetRole === 'teacher') {
     const { data: existing, error: existingError } = await supabase
       .from('class_memberships')
@@ -302,7 +324,8 @@ export async function addClassMember(formData: FormData): Promise<void> {
     if (existingError || existing) return;
   }
   if (targetRole === 'student') {
-    await supabase.from('class_memberships').delete().eq('profile_id', profileId).eq('role', 'student');
+    const { error: migrationError } = await supabase.from('class_memberships').delete().eq('profile_id', profileId).eq('role', 'student');
+    if (migrationError) return;
   }
   const { error } = await supabase.from('class_memberships').upsert({ class_id: classId, profile_id: profileId, role: targetRole }, { onConflict: 'class_id,profile_id' });
   if (error) return;
@@ -336,6 +359,19 @@ export async function createClass(first: FormData | AdminActionState, second?: F
   if (!name) errors.name = '请填写班级名称。';
   if (Object.keys(errors).length > 0) return shouldReturnState ? actionResult(false, '请补齐班级信息。', errors) : undefined;
   const supabase = await createClient();
+  const { data: existing, error: existingError } = await supabase
+    .from('classes')
+    .select('id,status,grade')
+    .eq('name', name)
+    .limit(1)
+    .maybeSingle();
+  if (existingError) return shouldReturnState ? actionResult(false, `班级重复检查失败：${existingError.message}`) : undefined;
+  if (existing) {
+    const gradeHint = existing.grade ? `（${existing.grade}）` : '';
+    return shouldReturnState
+      ? actionResult(false, `已存在名为「${name}」${gradeHint}的班级，请直接在该班级中进行成员分配。`, { name: '班级名称已存在。' })
+      : undefined;
+  }
   const { error } = await supabase.from('classes').insert({ name, grade, created_by: role.data.id });
   if (error) return shouldReturnState ? actionResult(false, `班级创建失败：${error.message}`) : undefined;
   revalidatePath('/admin/classes');
@@ -446,7 +482,7 @@ export async function deleteProvider(providerId: string): Promise<ProviderAction
   if (!role.ok) return providerFailure(role.message);
   const supabase = await createClient();
   const tierDelete = await supabase.from('model_tier_bindings').delete().eq('provider_id', providerId);
-  if (tierDelete.error) return providerFailure(`模型层绑定清理失败：${tierDelete.error.message}`);
+  if (tierDelete.error && !isMissingSchemaRelationError(tierDelete.error.message, 'model_tier_bindings')) return providerFailure(`模型层绑定清理失败：${tierDelete.error.message}`);
   const capabilityDelete = await supabase.from('provider_capabilities').delete().eq('provider_id', providerId);
   if (capabilityDelete.error) return providerFailure(`Provider 能力清理失败：${capabilityDelete.error.message}`);
   const { error } = await supabase.from('provider_configs').delete().eq('id', providerId);
@@ -493,7 +529,10 @@ export async function saveModelTierBinding(input: { tier: ModelTier; providerId:
     model_id: modelId,
     is_enabled: true,
   }, { onConflict: 'tier' });
-  if (error) return providerFailure(`模型层保存失败：${error.message}`);
+  if (error) {
+    if (isMissingSchemaRelationError(error.message, 'model_tier_bindings')) return providerFailure(modelTierSchemaBlockedMessage());
+    return providerFailure(`模型层保存失败：${error.message}`);
+  }
   revalidatePath('/admin/providers');
   revalidatePath('/admin');
   return providerSuccess('模型层已保存。');
@@ -511,15 +550,15 @@ export async function getAdminMcp() {
 export async function createMcpServer(input: McpServerInput): Promise<ProviderActionResult> {
   const role = await requireRole('admin');
   if (!role.ok) return providerFailure(role.message);
-  const name = input.name.trim();
-  if (!name) return providerFailure('请填写 MCP Server 名称。');
-  const allowedRoles = (input.allowedRoles ?? []).filter((item): item is AppRole => isAppRole(item));
+  const name = input.name?.trim() || '未命名 MCP Server';
+  const allowedRoles = (input.allowedRoles ?? []).filter((item): item is AppRole => item !== 'admin' && isAppRole(item));
   const insert: McpServerInsert = {
     name,
     description: input.description?.trim() || null,
     connection_ref: input.connectionRef?.trim() || null,
     enabled_tools: (input.enabledTools ?? []) as Json,
     allowed_roles: allowedRoles,
+    metadata: (input.metadata ?? {}) as Json,
     is_enabled: input.isEnabled ?? false,
     created_by: role.data.id,
   };
@@ -538,15 +577,15 @@ export async function createMcpServer(input: McpServerInput): Promise<ProviderAc
 export async function updateMcpServer(id: string, input: McpServerInput): Promise<ProviderActionResult> {
   const role = await requireRole('admin');
   if (!role.ok) return providerFailure(role.message);
-  const name = input.name.trim();
-  if (!name) return providerFailure('请填写 MCP Server 名称。');
-  const allowedRoles = (input.allowedRoles ?? []).filter((item): item is AppRole => isAppRole(item));
+  const name = input.name?.trim() || '未命名 MCP Server';
+  const allowedRoles = (input.allowedRoles ?? []).filter((item): item is AppRole => item !== 'admin' && isAppRole(item));
   const update: McpServerUpdate = {
     name,
     description: input.description?.trim() || null,
     connection_ref: input.connectionRef?.trim() || null,
     enabled_tools: (input.enabledTools ?? []) as Json,
     allowed_roles: allowedRoles,
+    metadata: (input.metadata ?? {}) as Json,
     is_enabled: input.isEnabled ?? false,
   };
   if (input.token?.trim()) {

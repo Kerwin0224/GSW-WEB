@@ -72,7 +72,7 @@ export default async function TeacherChatPage() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm leading-7 text-muted-foreground">
             <p>待核实：{auditRecords.length} 条。教师需要看完整聊天记录后确认无误或保存修订。</p>
-            <Button render={<a href="/teacher/audit">进入学习核实</a>} variant="outline" />
+            <Button nativeButton={false} render={<a href="/teacher/audit">进入学习记录核实</a>} variant="outline" />
           </CardContent>
         </Card>
         <Card>

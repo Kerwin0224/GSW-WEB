@@ -129,7 +129,7 @@ export async function getTeacherAuditQueue(): Promise<DataResult<AuditQueueRecor
       studentName: profile?.display_name ?? '学生',
       projectTitle: project?.title ?? '未归档篇目',
       createdAt: row.created_at,
-      transcript: (transcriptRows ?? []).map((message) => ({ id: message.id, role: message.role, content: message.content, createdAt: message.created_at, isSource: message.id === row.id })),
+      transcript: (transcriptRows ?? []).map((transcriptRow) => ({ id: transcriptRow.id, role: transcriptRow.role, content: transcriptRow.content, createdAt: transcriptRow.created_at, isSource: transcriptRow.id === row.id })),
       preReviewIssues,
       preReviewBlocked: rowPreReviewBlocked,
     };

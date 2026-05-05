@@ -19,7 +19,7 @@ const SAMPLE = `display_name,login_id,role,class_name,last_login_at
 王同学,20260001,student,高一(3)班,
 李老师,T2026001,teacher,高一(3)班,`;
 
-export function UserImportDialog({ trigger }: { trigger: React.ReactNode }) {
+export function UserImportDialog() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [csvText, setCsvText] = useState(SAMPLE);
@@ -55,7 +55,12 @@ export function UserImportDialog({ trigger }: { trigger: React.ReactNode }) {
     <AdminDialogShell
       open={open}
       onOpenChange={setOpen}
-      trigger={trigger}
+      trigger={(
+        <Button type="button">
+          <Upload className="mr-2 size-4" />
+          CSV 导入账号
+        </Button>
+      )}
       title="CSV 导入账号"
       description="先解析并显示行级预览；存在错误时不会提交。表头必须包含 display_name, login_id, role。"
       icon={<Upload className="size-5" />}

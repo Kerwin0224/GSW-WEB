@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Filter, Search, ShieldCheck, Upload, UsersRound } from 'lucide-react';
+import { Filter, Search, ShieldCheck, UsersRound } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -50,7 +50,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
   if (!result.ok) {
     return (
       <div className="p-6">
-        <ErrorState title="用户权限加载失败" description={result.message} />
+        <ErrorState title="用户管理加载失败" description={result.message} />
       </div>
     );
   }
@@ -63,9 +63,9 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="用户权限"
+        eyebrow="用户管理"
         title="学校账号、角色、状态与班级归属一页看清。"
-        description="用户权限页基于真实 profiles 与 class_memberships 展示；CSV 导入必须先预览校验，再提交有效账号。"
+        description="用户管理页基于真实 profiles 与 class_memberships 展示；CSV 导入必须先预览校验，再提交有效账号。"
         primaryAction={{ label: '查看班级关系', href: '/admin/classes' }}
         metrics={[
           { label: '筛选结果', value: users.length, hint: '匹配当前条件' },
@@ -79,14 +79,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
           title="账号筛选与导入"
           description="支持按姓名或学校账号搜索，按角色与状态筛选；导入入口复用同一套 CSV 预览与提交流程。"
           action={(
-            <UserImportDialog
-              trigger={(
-                <Button>
-                  <Upload className="mr-2 size-4" />
-                  CSV 导入账号
-                </Button>
-              )}
-            />
+            <UserImportDialog />
           )}
         />
         <Card>
@@ -150,7 +143,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                   <TableHead>角色</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>班级归属</TableHead>
-                  <TableHead>最近更新</TableHead>
+                  <TableHead>最近管理活动</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -161,7 +154,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                     <TableCell><Badge variant="outline">{roleLabel(user.role)}</Badge></TableCell>
                     <TableCell><Badge variant={user.status === 'active' ? 'secondary' : 'destructive'}>{statusLabel(user.status)}</Badge></TableCell>
                     <TableCell className="text-sm text-muted-foreground">{user.assignmentSummary}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{new Date(user.updatedAt).toLocaleString('zh-CN')}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{user.recentActivityLabel}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -172,12 +165,12 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
 
       <section className="grid gap-4 md:grid-cols-3">
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5 text-primary" />MVP 边界</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5 text-primary" />管理边界</CardTitle></CardHeader>
           <CardContent className="text-sm leading-7 text-muted-foreground">本页只做账号可视化、CSV 导入、角色/状态/活动信息展示与班级归属入口，不提供在线改角色或停用账号。</CardContent>
         </Card>
         <Card className="md:col-span-2">
           <CardHeader><CardTitle>班级归属规则</CardTitle></CardHeader>
-          <CardContent className="text-sm leading-7 text-muted-foreground">教师可负责多个班级；学生在 MVP 中只允许属于一个班级。需要调整学生班级时，请在班级关系页使用成员分配完成自动迁班。</CardContent>
+          <CardContent className="text-sm leading-7 text-muted-foreground">教师可负责多个班级；学生只允许属于一个班级。需要调整学生班级时，请在班级关系页使用成员分配完成自动迁班。</CardContent>
         </Card>
       </section>
     </div>

@@ -43,7 +43,7 @@ const CAPABILITY_LABELS: Record<string, string> = {
   project_classification: '篇目识别',
   practice_generation: '挑战出题',
   practice_evaluation: '挑战评判',
-  audit_assist: '审计辅助',
+  audit_assist: '核实辅助',
   embedding: '向量嵌入',
 };
 
@@ -54,7 +54,7 @@ const SCENARIO_ROWS = [
   { role: 'Student /student/challenge', scenario: 'practice_generation', tier: 'flash', impact: '低成本练习生成' },
   { role: 'Teacher /teacher', scenario: 'teacher_chat', tier: 'advanced', impact: '教师高质量问答' },
   { role: 'Practice evaluation', scenario: 'practice_evaluation', tier: 'advanced', impact: '练习强判断评估' },
-  { role: 'Teacher /teacher/audit', scenario: 'audit_assist', tier: 'advanced', impact: '审计辅助与质量把关' },
+  { role: 'Teacher /teacher/audit', scenario: 'audit_assist', tier: 'advanced', impact: '教学正确性核实辅助' },
   { role: 'RAG /student/projects', scenario: 'embedding', tier: 'embedding', impact: '独立向量嵌入配置' },
 ] as const;
 
@@ -75,7 +75,7 @@ const TIER_COPY: Record<ModelTier, {
   advanced: {
     title: 'Advanced Model',
     subtitle: '更强推理、更高质量',
-    intent: '面向教师问答、练习评判与审计辅助，优先复杂推理和输出质量。',
+    intent: '面向教师问答、练习评判与教学正确性核实辅助，优先复杂推理和输出质量。',
     tone: 'from-accent/25 via-background to-background',
     icon: <Brain className="size-5" />,
   },
@@ -239,8 +239,8 @@ function ModelTierCard({ tierView, providers }: { tierView: TierView; providers:
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-lg border bg-background/70 p-3">
             <div className="text-xs text-muted-foreground">Provider</div>
-            <div className="mt-1 font-medium">{tierView.provider?.name ?? '未选择'}</div>
-            <div className="text-xs text-muted-foreground">{tierView.provider?.providerType ?? '需要先绑定 Provider'}</div>
+            <div className="mt-1 font-medium">{tierView.provider?.name ?? tierView.status.providerName ?? '未选择'}</div>
+            <div className="text-xs text-muted-foreground">{tierView.provider?.providerType ?? tierView.status.providerType ?? '需要先绑定 Provider'}</div>
           </div>
           <div className="rounded-lg border bg-background/70 p-3">
             <div className="text-xs text-muted-foreground">Model</div>

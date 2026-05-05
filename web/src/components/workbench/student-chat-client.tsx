@@ -55,8 +55,68 @@ export function StudentChatClient({
   const blocked = providerBlocked || classificationBlocked;
 
   return (
-    <div className="grid min-h-[42rem] bg-background/40 lg:grid-cols-[18rem_minmax(0,1fr)]">
-      <aside className="border-b bg-card/80 p-4 lg:border-b-0 lg:border-r" aria-label="篇目项目和会话">
+    <div className="grid min-h-0 w-full flex-1 bg-background/40 lg:grid-cols-[18rem_minmax(0,1fr)]">
+      <section className="order-1 flex min-h-[calc(100svh-8rem)] min-w-0 flex-col lg:order-2 lg:min-h-0" aria-label="古诗文学习对话">
+        <div className="border-b bg-card/90 px-4 py-3">
+          <div className="mx-auto flex max-w-3xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium">当前项目层级</p>
+              <p className="font-heading text-xl">{activeProject ? `《${activeProject.title}》` : '自然提问，系统自动归属篇目'}</p>
+            </div>
+            <Badge className="w-fit" variant="outline"><Sparkles className="mr-1 size-3" />已进入项目化学习</Badge>
+          </div>
+        </div>
+        <div className="order-2 border-t bg-card/95 p-4 lg:order-3">
+          <div className="mx-auto max-w-3xl">
+            <ChatComposer
+              value={input}
+              onChange={setInput}
+              onSubmit={submit}
+              placeholder="直接输入你的古诗文问题…（Enter 发送，Shift+Enter 换行）"
+              disabled={busy || Boolean(blocked)}
+              blockedReason={blocked}
+            />
+          </div>
+        </div>
+        <div ref={scrollRef} className="order-3 min-h-0 flex-1 overflow-y-auto px-4 py-6 lg:order-2">
+          <div className="mx-auto max-w-3xl space-y-6">
+            {providerBlocked ? <BlockedState title="学生 AI 能力未就绪" description={providerBlocked} /> : null}
+            {classificationBlocked ? <BlockedState title="分类能力未就绪" description={classificationBlocked} /> : null}
+            {messages.length === 0 ? (
+              <EmptyState
+                title="把卡住的句子直接问出来"
+                description="不用先填表。系统会把真实对话归入篇目项目，并在回答区轻提示归属结果。"
+                action={(
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {promptChips.map((chip) => (
+                      <Button key={chip} variant="outline" size="sm" onClick={() => setInput(chip)}>
+                        {chip}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              />
+            ) : (
+              <AIMessageList messages={messages} userBloomStatus={bloomStatus} />
+            )}
+            {messages.length > 0 ? (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm" aria-live="polite">
+                <BookOpen className="mr-2 inline size-4 text-primary" aria-hidden="true" />
+                已归入《{assignedProjectTitle}》项目。你可以继续追问，不会被强制跳转。
+              </div>
+            ) : null}
+            {busy ? (
+              <div className="flex items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground" aria-live="polite">
+                <Loader2 className="size-4 animate-spin" />
+                {status === 'submitted' ? '已提交，等待模型首个响应…' : 'AI 正在流式回答…'}
+              </div>
+            ) : null}
+            {error ? <ErrorState title="AI 响应失败" description={error.message} /> : null}
+          </div>
+        </div>
+      </section>
+
+      <aside className="order-2 border-t bg-card/80 p-4 lg:order-1 lg:border-r lg:border-t-0" aria-label="篇目项目和会话">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <p className="font-heading text-lg">篇目项目</p>
@@ -112,66 +172,6 @@ export function StudentChatClient({
           </div>
         )}
       </aside>
-
-      <section className="flex min-w-0 flex-col" aria-label="古诗文学习对话">
-        <div className="border-b bg-card/90 px-4 py-3">
-          <div className="mx-auto flex max-w-3xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-medium">当前项目层级</p>
-              <p className="font-heading text-xl">{activeProject ? `《${activeProject.title}》` : '自然提问，系统自动归属篇目'}</p>
-            </div>
-            <Badge className="w-fit" variant="outline"><Sparkles className="mr-1 size-3" />已进入项目化学习</Badge>
-          </div>
-        </div>
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6">
-          <div className="mx-auto max-w-3xl space-y-6">
-            {providerBlocked ? <BlockedState title="学生 AI 能力未就绪" description={providerBlocked} /> : null}
-            {classificationBlocked ? <BlockedState title="分类能力未就绪" description={classificationBlocked} /> : null}
-            {messages.length === 0 ? (
-              <EmptyState
-                title="把卡住的句子直接问出来"
-                description="不用先填表。系统会把真实对话归入篇目项目，并在回答区轻提示归属结果。"
-                action={(
-                  <div className="flex flex-wrap justify-center gap-2">
-                    {promptChips.map((chip) => (
-                      <Button key={chip} variant="outline" size="sm" onClick={() => setInput(chip)}>
-                        {chip}
-                      </Button>
-                    ))}
-                  </div>
-                )}
-              />
-            ) : (
-              <AIMessageList messages={messages} userBloomStatus={bloomStatus} />
-            )}
-            {messages.length > 0 ? (
-              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm" aria-live="polite">
-                <BookOpen className="mr-2 inline size-4 text-primary" aria-hidden="true" />
-                已归入《{assignedProjectTitle}》项目。你可以继续追问，不会被强制跳转。
-              </div>
-            ) : null}
-            {busy ? (
-              <div className="flex items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground" aria-live="polite">
-                <Loader2 className="size-4 animate-spin" />
-                {status === 'submitted' ? '已提交，等待模型首个响应…' : 'AI 正在流式回答…'}
-              </div>
-            ) : null}
-            {error ? <ErrorState title="AI 响应失败" description={error.message} /> : null}
-          </div>
-        </div>
-        <div className="border-t bg-card/95 p-4">
-          <div className="mx-auto max-w-3xl">
-            <ChatComposer
-              value={input}
-              onChange={setInput}
-              onSubmit={submit}
-              placeholder="直接输入你的古诗文问题…（Enter 发送，Shift+Enter 换行）"
-              disabled={busy || Boolean(blocked)}
-              blockedReason={blocked}
-            />
-          </div>
-        </div>
-      </section>
     </div>
   );
 }

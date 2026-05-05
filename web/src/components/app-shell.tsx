@@ -1,9 +1,12 @@
 'use client';
 
+import { useState } from 'react';
+import { LogOut } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 
 import { AppSidebar } from '@/components/app-sidebar';
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbSeparator, BreadcrumbPage } from '@/components/ui/breadcrumb';
+import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { RoleBadge } from '@/components/workbench/role-badge';
@@ -47,6 +50,27 @@ function derivedBreadcrumbs(pathname: string, fallback: BreadcrumbSegment[]) {
 export function AppShell({ role, displayName, breadcrumbs, children }: AppShellProps) {
   const pathname = usePathname();
   const visibleBreadcrumbs = breadcrumbs.length > 1 ? breadcrumbs : derivedBreadcrumbs(pathname, breadcrumbs);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState('');
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    setLogoutError('');
+
+    try {
+      const response = await fetch('/api/auth/logout', { method: 'POST' });
+      if (!response.ok) {
+        setLogoutError('退出登录失败，请稍后再试。');
+        setIsLoggingOut(false);
+        return;
+      }
+
+      window.location.href = '/login';
+    } catch {
+      setLogoutError('退出登录失败，请稍后再试。');
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <SidebarProvider>
@@ -68,7 +92,16 @@ export function AppShell({ role, displayName, breadcrumbs, children }: AppShellP
             </BreadcrumbList>
           </Breadcrumb>
           <RoleBadge role={role} className="hidden sm:inline-flex" />
+          <Button variant="ghost" size="sm" onClick={handleLogout} disabled={isLoggingOut} aria-label="退出登录">
+            <LogOut className="size-4" aria-hidden="true" />
+            <span className="hidden sm:inline">{isLoggingOut ? '退出中…' : '退出登录'}</span>
+          </Button>
         </header>
+        {logoutError ? (
+          <div className="border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-sm text-destructive" role="alert">
+            {logoutError}
+          </div>
+        ) : null}
         <div className="flex-1">{children}</div>
       </main>
     </SidebarProvider>

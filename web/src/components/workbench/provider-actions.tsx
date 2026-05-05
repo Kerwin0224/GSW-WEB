@@ -25,7 +25,7 @@ const CAPABILITY_LABELS: Record<string, string> = {
   project_classification: '篇目识别',
   practice_generation: '挑战出题',
   practice_evaluation: '挑战评判',
-  audit_assist: '审计辅助',
+  audit_assist: '核实辅助',
   embedding: '向量嵌入',
 };
 

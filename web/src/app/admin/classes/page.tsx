@@ -1,14 +1,13 @@
-import { Plus, Upload, UsersRound } from 'lucide-react';
+import { Upload } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
+import { AdminClassCreateForm } from '@/components/workbench/admin-class-create-form';
 import { AdminClassMembersDialog } from '@/components/workbench/admin-class-members-dialog';
 import { SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
-import { createClass, getAdminClasses, getAdminUsers } from '@/lib/data/admin';
+import { getAdminClasses, getAdminUsers } from '@/lib/data/admin';
 
 export default async function AdminClassesPage() {
   const [classResult, userResult] = await Promise.all([getAdminClasses(), getAdminUsers()]);
@@ -27,7 +26,7 @@ export default async function AdminClassesPage() {
     );
   }
 
-  const classes = classResult.data;
+  const { classes, duplicateGroups } = classResult.data;
   const users = userResult.data;
   const teacherCount = classes.reduce((sum, klass) => sum + klass.teachers.length, 0);
   const studentCount = classes.reduce((sum, klass) => sum + klass.students.length, 0);
@@ -54,20 +53,24 @@ export default async function AdminClassesPage() {
         <Card>
           <CardHeader><CardTitle>新建班级</CardTitle></CardHeader>
           <CardContent>
-            <form action={createClass} className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
-              <div className="space-y-2">
-                <Label htmlFor="name">班级名称</Label>
-                <Input id="name" name="name" placeholder="高一(3)班" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="grade">年级</Label>
-                <Input id="grade" name="grade" placeholder="高一" />
-              </div>
-              <Button type="submit" className="self-end"><Plus className="mr-2 size-4" />创建班级</Button>
-            </form>
+            <AdminClassCreateForm />
           </CardContent>
         </Card>
       </section>
+
+      {duplicateGroups.length > 0 ? (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardHeader><CardTitle>发现重复班级名称</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <p>以下班级来自现有数据，请先确认后再继续分配成员；新建班级已阻止同名创建。</p>
+            <div className="flex flex-wrap gap-2">
+              {duplicateGroups.map((group) => (
+                <Badge key={group.name} variant="destructive">{group.name} × {group.count}</Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {classes.length === 0 ? (
         <EmptyState title="暂无班级" description="创建真实班级并分配教师、学生后，教师权限才会按班级生效。" />
@@ -94,7 +97,7 @@ export default async function AdminClassesPage() {
                   <div className="rounded-lg border bg-background/70 p-3">
                     <p className="text-muted-foreground">学生</p>
                     <p className="mt-1 text-2xl font-semibold">{klass.students.length}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">MVP 单班级归属</p>
+                    <p className="mt-1 text-xs text-muted-foreground">单班级归属</p>
                   </div>
                 </div>
                 {klass.teachers.length === 0 ? (
@@ -103,12 +106,6 @@ export default async function AdminClassesPage() {
                 <AdminClassMembersDialog
                   klass={klass}
                   users={users}
-                  trigger={(
-                    <Button variant="outline" className="w-full">
-                      <UsersRound className="mr-2 size-4" />
-                      成员分配
-                    </Button>
-                  )}
                 />
               </CardContent>
             </Card>

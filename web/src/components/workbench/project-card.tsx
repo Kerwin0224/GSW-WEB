@@ -59,8 +59,8 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
         )}
       </CardContent>
       <CardFooter className="grid gap-2 sm:grid-cols-2">
-        <Button render={<a href={`/student/projects/${project.id}`}><BookOpen className="mr-2 size-4" />继续学习</a>} className="w-full" variant="outline" />
-        <Button render={<a href={`/student/challenge/${project.id}`}><Swords className="mr-2 size-4" />进入挑战</a>} className="w-full" />
+        <Button nativeButton={false} render={<a href={`/student/projects/${project.id}`}><BookOpen className="mr-2 size-4" />继续学习</a>} className="w-full" variant="outline" />
+        <Button nativeButton={false} render={<a href={`/student/challenge/${project.id}`}><Swords className="mr-2 size-4" />进入挑战</a>} className="w-full" />
       </CardFooter>
     </Card>
   );

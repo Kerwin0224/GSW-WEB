@@ -58,7 +58,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                 <CardContent className="space-y-4 text-sm text-muted-foreground">
                   <p>{project.questionCount} 个历史问题 · 挑战 {project.challengeProgress.achievedCount}/{project.challengeProgress.attemptedCount}</p>
                   <p>下一挑战建议：L{nextLevel(project.highestLevel)} {project.highestLevel ? '继续向上攀登' : '从记忆开始确认'}</p>
-                  <Button render={<a href={`/student/challenge/${project.id}`}><Swords className="mr-2 size-4" />进入挑战</a>} className="w-full" variant="outline" />
+                  <Button nativeButton={false} render={<a href={`/student/challenge/${project.id}`}><Swords className="mr-2 size-4" />进入挑战</a>} className="w-full" variant="outline" />
                 </CardContent>
               </Card>
             ))}
@@ -88,7 +88,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
             <CardHeader><CardTitle className="flex items-center gap-2"><Route className="size-5 text-primary" />下一步</CardTitle></CardHeader>
             <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
               <span>进入单篇挑战页后，系统会调用真实 practice_generation / practice_evaluation 能力生成挑战并写入评估结果；能力缺失时会明确阻塞。</span>
-              <Button render={<a href={`/student/challenge/${selectedProject.id}`}><Swords className="mr-2 size-4" />开始挑战</a>} />
+              <Button nativeButton={false} render={<a href={`/student/challenge/${selectedProject.id}`}><Swords className="mr-2 size-4" />开始挑战</a>} />
             </CardContent>
           </Card>
         </section>

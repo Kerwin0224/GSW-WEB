@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { AdminDialogShell } from '@/components/workbench/admin-dialog-shell';
 import { savePromptPreset, type AdminActionState } from '@/lib/data/admin';
 
 const initialState: AdminActionState = { ok: false, message: '' };
@@ -17,7 +18,7 @@ function FieldError({ message }: { message?: string }) {
   return message ? <p className="text-xs text-destructive" role="alert">{message}</p> : null;
 }
 
-export function AdminPromptPresetForm() {
+export function AdminPromptPresetFormFields() {
   const [state, action, pending] = useActionState(savePromptPreset, initialState);
 
   return (
@@ -66,5 +67,23 @@ export function AdminPromptPresetForm() {
         </Button>
       </div>
     </form>
+  );
+}
+
+export function AdminPromptPresetDialog() {
+  return (
+    <AdminDialogShell
+      trigger={(
+        <Button type="button">
+          <Plus className="mr-2 size-4" />新建预设
+        </Button>
+      )}
+      title="新建 Prompt 预设"
+      description="保存为草稿或发布新版本，历史互动可追踪版本。"
+      icon={<Plus className="size-5" />}
+      className="max-w-2xl"
+    >
+      <AdminPromptPresetFormFields />
+    </AdminDialogShell>
   );
 }

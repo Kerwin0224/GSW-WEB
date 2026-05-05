@@ -48,7 +48,25 @@ function normalizeProvider<T>(provider: T | T[] | null | undefined): T | null {
 function tierBlockedMessage(tier: ModelTier) {
   return tier === 'flash'
     ? '缺少 Flash Model 真实模型层配置；学生对话、分类与练习生成不会降级到默认模型。'
-    : '缺少 Advanced Model 真实模型层配置；教师对话、练习评估与审计辅助不会降级到默认模型。';
+    : '缺少 Advanced Model 真实模型层配置；教师对话、练习评估与教学正确性核实辅助不会降级到默认模型。';
+}
+
+export function isMissingSchemaRelationError(message: string, relationName: string) {
+  const normalized = message.toLowerCase();
+  const relation = relationName.toLowerCase();
+  return (
+    (normalized.includes(`public.${relation}`) || normalized.includes(relation))
+    && (
+      normalized.includes('schema cache')
+      || normalized.includes('could not find the table')
+      || normalized.includes('does not exist')
+      || normalized.includes('relation')
+    )
+  );
+}
+
+export function modelTierSchemaBlockedMessage() {
+  return '模型层数据库迁移尚未应用：请先应用 web/supabase/migrations/202605040003_model_tier_bindings.sql，并刷新 Supabase schema cache。当前页面仅展示 Provider 基础配置，不会使用默认模型降级。';
 }
 
 export async function getModelTier(tier: ModelTier): Promise<DataResult<ModelTierStatus>> {
@@ -59,7 +77,12 @@ export async function getModelTier(tier: ModelTier): Promise<DataResult<ModelTie
       .select('tier,model_id,is_enabled,provider_id,provider_configs(id,name,is_enabled,health_status,provider_type,base_url,secret_ref)')
       .eq('tier', tier)
       .maybeSingle();
-    if (error) return fail('error', `读取模型层配置失败：${error.message}`);
+    if (error) {
+      if (isMissingSchemaRelationError(error.message, 'model_tier_bindings')) {
+        return ok({ tier, ready: false, blockedReason: modelTierSchemaBlockedMessage() });
+      }
+      return fail('error', `读取模型层配置失败：${error.message}`);
+    }
     const provider = normalizeProvider(data?.provider_configs as {
       id: string;
       name: string;

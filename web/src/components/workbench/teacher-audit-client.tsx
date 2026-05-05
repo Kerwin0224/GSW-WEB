@@ -66,7 +66,7 @@ export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] })
       <aside className="border-b bg-card/80 p-4 lg:border-b-0 lg:border-r" aria-label="学生项目会话树">
         <div className="mb-4 space-y-2">
           <div className="flex items-center justify-between gap-3">
-            <h1 className="font-heading text-xl">学习过程核实</h1>
+            <h1 className="font-heading text-xl">学习记录核实</h1>
             <Badge variant="outline">{records.length} 条</Badge>
           </div>
           <p className="text-sm text-muted-foreground">按学生、篇目、会话查看完整记录；教师只需要确认或修订。</p>
@@ -118,18 +118,18 @@ export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] })
             </Card>
 
             <section className="space-y-4">
-              {selected.transcript.map((message) => {
-                const isAssistant = message.role === 'assistant';
-                const isSource = message.isSource;
+              {selected.transcript.map((transcriptItem) => {
+                const isAssistant = transcriptItem.role === 'assistant';
+                const isSource = transcriptItem.isSource;
                 return (
-                  <article key={message.id} className={cn('flex', isAssistant ? 'justify-start' : 'justify-end')}>
+                  <article key={transcriptItem.id} className={cn('flex', isAssistant ? 'justify-start' : 'justify-end')}>
                     <div className={cn('max-w-[86%] rounded-2xl border px-4 py-3 shadow-sm', isAssistant ? 'bg-card' : 'bg-primary text-primary-foreground', isSource && 'border-destructive/40 ring-2 ring-destructive/15')}>
                       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs opacity-80">
                         <Badge variant={isAssistant ? 'outline' : 'secondary'}>{isAssistant ? 'AI 回答' : '学生提问'}</Badge>
                         {isSource ? <Badge variant="destructive">当前核实回答</Badge> : null}
-                        <span>{new Date(message.createdAt).toLocaleString('zh-CN')}</span>
+                        <span>{new Date(transcriptItem.createdAt).toLocaleString('zh-CN')}</span>
                       </div>
-                      {isSource ? <HighlightedText text={message.content} issues={selected.preReviewIssues} /> : <p className="whitespace-pre-wrap leading-7">{message.content}</p>}
+                      {isSource ? <HighlightedText text={transcriptItem.content} issues={selected.preReviewIssues} /> : <p className="whitespace-pre-wrap leading-7">{transcriptItem.content}</p>}
                     </div>
                   </article>
                 );

@@ -1,6 +1,3 @@
-import { Plus } from 'lucide-react';
-
-import { Button } from '@/components/ui/button';
 import { ProviderCapabilityMatrix } from '@/components/workbench/provider-capability-matrix';
 import { ProviderConfigDialog } from '@/components/workbench/provider-config-dialog';
 import { ErrorState } from '@/components/workbench/state-surfaces';
@@ -39,13 +36,7 @@ export default async function AdminProvidersPage() {
           title="模型层设置"
           description="先选择 Flash / Advanced 两个全局模型层；下方 Provider 表只负责运维动作与使用情况。"
           action={(
-            <ProviderConfigDialog
-              trigger={
-                <Button>
-                  <Plus className="mr-2 size-4" />添加 Provider
-                </Button>
-              }
-            />
+            <ProviderConfigDialog />
           )}
         />
         <ProviderCapabilityMatrix providers={providers} modelTiers={modelTiers} />

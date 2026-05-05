@@ -39,7 +39,7 @@ export default async function StudentChallengePage({ params }: { params: Promise
         <EmptyState
           title="未找到真实篇目项目"
           description={`项目 ${projectId} 尚未从 Supabase 返回可访问记录。请先在学习提问中创建真实项目。`}
-          action={<Button render={<Link href="/student/challenge">返回挑战入口</Link>} />}
+          action={<Button nativeButton={false} render={<Link href="/student/challenge">返回挑战入口</Link>} />}
         />
       </div>
     );

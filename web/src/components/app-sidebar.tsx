@@ -64,7 +64,7 @@ const teacherNavGroups: NavGroup[] = [
     label: '教学与核实',
     items: [
       { icon: BarChart3, label: '学情看板', href: '/teacher', description: '学生认知与待核实学习记录' },
-      { icon: FileSearch, label: '学习核实', href: '/teacher/audit', description: '查看完整学习过程并修订回答' },
+      { icon: FileSearch, label: '学习记录核实', href: '/teacher/audit', description: '查看完整学习记录并修订回答' },
       { icon: MessageSquare, label: '学情线索', href: '/teacher/analytics', description: '课堂追问与学情线索' },
     ],
   },
@@ -74,8 +74,8 @@ const adminNavGroups: NavGroup[] = [
   {
     label: '学校管理',
     items: [
-      { icon: ShieldCheck, label: '管理看板', href: '/admin', description: '学校账号、班级与权限摘要' },
-      { icon: Users, label: '用户权限', href: '/admin/users', description: '用户、角色、状态与活跃情况' },
+      { icon: ShieldCheck, label: '管理看板', href: '/admin', description: '学校账号、班级与管理摘要' },
+      { icon: Users, label: '用户管理', href: '/admin/users', description: '用户、角色、状态与活跃情况' },
       { icon: School, label: '班级关系', href: '/admin/classes', description: '教师与学生归属' },
     ],
   },
