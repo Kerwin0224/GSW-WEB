@@ -1,16 +1,7 @@
 import 'server-only';
 
 import { createClient } from '@/lib/supabase/server';
-
-/**
- * 数据集导出模块（M7）
- *
- * 职责：从 audit_records 表导出 SFT/DPO 训练数据集
- * - SFT 格式：{"messages": [{"role": "system"}, {"role": "user"}, {"role": "assistant"}]}
- * - DPO 格式：{"prompt": ..., "chosen": ..., "rejected": ...}
- *
- * 调用者责任：必须验证调用者是 admin 角色
- */
+import type { Database } from '@/lib/supabase/database.types';
 
 export type DatasetType = 'sft' | 'dpo';
 
@@ -28,16 +19,36 @@ export type SftMessage = {
   content: string;
 };
 
+export type ExportSampleMetadata = {
+  sampleId: string;
+  sourceRecordId: string;
+  sourceMessageId: string | null;
+  sourceConversationId: string | null;
+  classId: string | null;
+  projectId: string | null;
+  projectTitle: string | null;
+  studentAnonId: string | null;
+  teacherId: string | null;
+  reviewStatus: string;
+  reviewedAt: string;
+  includesSft: boolean;
+  includesDpo: boolean;
+};
+
 export type SftRecord = {
-  source_record_id: string;
   messages: SftMessage[];
+  metadata: ExportSampleMetadata;
 };
 
 export type DpoRecord = {
-  source_record_id: string;
   prompt: string;
+  messages: SftMessage[];
   chosen: string;
   rejected: string;
+  metadata: ExportSampleMetadata & {
+    chosenAnswerId: string;
+    rejectedAnswerId: string;
+  };
 };
 
 export type DatasetError = {
@@ -49,6 +60,7 @@ export type ExportResult =
   | {
       success: true;
       recordCount: number;
+      recordIds: string[];
       jsonl: string;
       exportedAt: string;
     }
@@ -66,38 +78,11 @@ export type PreviewResult =
     }
   | DatasetError;
 
-const SFT_SYSTEM_PROMPT_FALLBACK =
-  '你是文韵智途的古诗文 AI 教学助手。基于古诗文学习语境回答，用苏格拉底式追问帮助学生沿布鲁姆认知层级深入。';
-
-/**
- * 从 prompt_presets 表读取已发布的 SFT system prompt。
- * 如果没有可用的预设，回退到内置常量。
- *
- * 优先级：published 状态 > target_role 'student' > 最新版本
- */
-async function resolveSftSystemPrompt(
-  supabase: Awaited<ReturnType<typeof createClient>>
-): Promise<string> {
-  const { data, error } = await supabase
-    .from('prompt_presets')
-    .select('system_instruction')
-    .eq('status', 'published')
-    .eq('target_role', 'student')
-    .order('version', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error || !data?.system_instruction) {
-    return SFT_SYSTEM_PROMPT_FALLBACK;
-  }
-
-  return data.system_instruction;
-}
-
 type AuditRecordRow = {
   id: string;
-  kind: 'sft' | 'dpo';
-  status: string;
+  source_message_id: string | null;
+  kind: Database['public']['Tables']['audit_records']['Row']['kind'];
+  status: Database['public']['Tables']['audit_records']['Row']['status'];
   prompt: string;
   original_answer: string | null;
   corrected_answer: string | null;
@@ -108,59 +93,152 @@ type AuditRecordRow = {
   auditor_id: string | null;
   source_conversation_id: string | null;
   created_at: string;
+  updated_at: string;
 };
 
-/**
- * 将 audit_record 转换为 SFT 格式
- */
-function toSftRecord(record: AuditRecordRow, systemPrompt: string): SftRecord | null {
-  // SFT 优先使用修正答案，如果没有则使用原始答案
-  const assistantContent = record.corrected_answer ?? record.original_answer;
+type ConversationRow = {
+  id: string;
+  owner_id: string;
+  project_id: string | null;
+  title: string | null;
+  text_projects?: { title: string | null } | Array<{ title: string | null }> | null;
+};
+
+type TranscriptMessageRow = {
+  id: string;
+  conversation_id: string;
+  role: Database['public']['Tables']['conversation_messages']['Row']['role'];
+  content: string;
+  created_at: string;
+};
+
+type DatasetContext = {
+  record: AuditRecordRow;
+  conversation: ConversationRow | null;
+  transcript: TranscriptMessageRow[];
+};
+
+const EXPORTABLE_AUDIT_STATUSES: Array<AuditRecordRow['status']> = ['approved', 'exported'];
+
+function firstJoined<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
+function getRecordTimestamp(record: Pick<AuditRecordRow, 'updated_at' | 'created_at'>) {
+  return record.updated_at || record.created_at;
+}
+
+function keepLatestBySourceMessage(records: AuditRecordRow[]) {
+  const latest = new Map<string, AuditRecordRow>();
+
+  for (const record of records) {
+    if (!record.source_message_id) continue;
+    const previous = latest.get(record.source_message_id);
+    if (!previous || getRecordTimestamp(record) >= getRecordTimestamp(previous)) {
+      latest.set(record.source_message_id, record);
+    }
+  }
+
+  return [...latest.values()].sort((left, right) => right.created_at.localeCompare(left.created_at));
+}
+
+function keepLatestApprovedExports(records: AuditRecordRow[]) {
+  return keepLatestBySourceMessage(
+    records.filter((record) => EXPORTABLE_AUDIT_STATUSES.includes(record.status)),
+  ).filter((record) => record.status === 'approved');
+}
+
+function anonymizeStudentId(ownerId: string | null | undefined) {
+  return ownerId ? `student_${ownerId.slice(0, 8)}` : null;
+}
+
+function toDatasetMessage(message: TranscriptMessageRow): SftMessage | null {
+  if (message.role !== 'system' && message.role !== 'user' && message.role !== 'assistant') return null;
+  const content = message.content.trim();
+  if (!content) return null;
+  return { role: message.role, content };
+}
+
+function buildPromptMessages(context: DatasetContext): SftMessage[] {
+  const sourceIndex = context.record.source_message_id
+    ? context.transcript.findIndex((message) => message.id === context.record.source_message_id)
+    : -1;
+  const promptTranscript = sourceIndex >= 0 ? context.transcript.slice(0, sourceIndex) : [];
+  const promptMessages = promptTranscript.map(toDatasetMessage).filter((message): message is SftMessage => Boolean(message));
+  if (promptMessages.length > 0) return promptMessages;
+
+  const fallbackPrompt = context.record.prompt.trim();
+  return fallbackPrompt ? [{ role: 'user', content: fallbackPrompt }] : [];
+}
+
+function getPromptText(messages: SftMessage[], fallback: string) {
+  return [...messages].reverse().find((message) => message.role === 'user')?.content ?? fallback.trim();
+}
+
+function getSampleId(record: AuditRecordRow) {
+  return record.source_message_id ?? record.id;
+}
+
+function includesDpo(record: AuditRecordRow) {
+  return record.kind === 'dpo' || Boolean(record.chosen_answer?.trim() && record.rejected_answer?.trim());
+}
+
+function buildMetadata(context: DatasetContext): ExportSampleMetadata {
+  const project = firstJoined(context.conversation?.text_projects);
+  return {
+    sampleId: getSampleId(context.record),
+    sourceRecordId: context.record.id,
+    sourceMessageId: context.record.source_message_id,
+    sourceConversationId: context.record.source_conversation_id,
+    classId: context.record.class_id,
+    projectId: context.conversation?.project_id ?? null,
+    projectTitle: project?.title?.trim() || context.conversation?.title?.trim() || null,
+    studentAnonId: anonymizeStudentId(context.conversation?.owner_id),
+    teacherId: context.record.auditor_id,
+    reviewStatus: context.record.status,
+    reviewedAt: getRecordTimestamp(context.record),
+    includesSft: true,
+    includesDpo: includesDpo(context.record),
+  };
+}
+
+function toSftRecord(context: DatasetContext): SftRecord | null {
+  const assistantContent = (context.record.corrected_answer ?? context.record.original_answer)?.trim();
   if (!assistantContent) return null;
 
   return {
-    source_record_id: record.id,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: record.prompt },
-      { role: 'assistant', content: assistantContent },
-    ],
+    messages: [...buildPromptMessages(context), { role: 'assistant', content: assistantContent }],
+    metadata: buildMetadata(context),
   };
 }
 
-/**
- * 将 audit_record 转换为 DPO 格式
- */
-function toDpoRecord(record: AuditRecordRow): DpoRecord | null {
-  // DPO 需要 chosen 和 rejected 两个答案
-  const chosen = record.chosen_answer ?? record.corrected_answer;
-  const rejected = record.rejected_answer ?? record.original_answer;
-
+function toDpoRecord(context: DatasetContext): DpoRecord | null {
+  const chosen = (context.record.chosen_answer ?? context.record.corrected_answer)?.trim();
+  const rejected = (context.record.rejected_answer ?? context.record.original_answer)?.trim();
   if (!chosen || !rejected) return null;
 
+  const messages = buildPromptMessages(context);
   return {
-    source_record_id: record.id,
-    prompt: record.prompt,
+    prompt: getPromptText(messages, context.record.prompt),
+    messages,
     chosen,
     rejected,
+    metadata: {
+      ...buildMetadata(context),
+      chosenAnswerId: `${getSampleId(context.record)}:chosen`,
+      rejectedAnswerId: `${getSampleId(context.record)}:rejected`,
+    },
   };
 }
 
-/**
- * 应用筛选条件并查询 audit_records
- *
- * 关于 projectIds 筛选：audit_records 通过 source_conversation_id 关联 conversations，
- * conversations.project_id 关联 text_projects。先在 conversations 表查询出符合 projectIds
- * 的 conversation 列表，再用 in() 筛选 audit_records.source_conversation_id。
- */
 async function fetchAuditRecords(
   type: DatasetType,
   filters: DatasetFilters,
-  limit?: number
-): Promise<{ records: AuditRecordRow[]; totalCount: number; error?: string }> {
+  limit?: number,
+): Promise<{ records: DatasetContext[]; totalCount: number; error?: string }> {
   const supabase = await createClient();
 
-  // 如果指定了 projectIds，先查询匹配的 conversation_ids
   let conversationIdFilter: string[] | undefined;
   if (filters.projectIds && filters.projectIds.length > 0) {
     const { data: conversations, error: convError } = await supabase
@@ -169,77 +247,87 @@ async function fetchAuditRecords(
       .in('project_id', filters.projectIds);
 
     if (convError) {
-      return { records: [], totalCount: 0, error: `查询关联对话失败：${convError.message}` };
+      return { records: [], totalCount: 0, error: `查询关联会话失败：${convError.message}` };
     }
 
-    conversationIdFilter = (conversations ?? []).map((c) => c.id);
-
-    if (conversationIdFilter.length === 0) {
-      return { records: [], totalCount: 0 };
-    }
+    conversationIdFilter = (conversations ?? []).map((conversation) => conversation.id);
+    if (conversationIdFilter.length === 0) return { records: [], totalCount: 0 };
   }
 
   let query = supabase
     .from('audit_records')
     .select(
-      'id, kind, status, prompt, original_answer, corrected_answer, chosen_answer, rejected_answer, quality, class_id, auditor_id, source_conversation_id, created_at',
-      { count: 'exact' }
+      'id, source_message_id, kind, status, prompt, original_answer, corrected_answer, chosen_answer, rejected_answer, quality, class_id, auditor_id, source_conversation_id, created_at, updated_at',
     )
-    .eq('kind', type)
-    .eq('status', 'approved');
+    .not('source_message_id', 'is', null);
 
-  if (filters.startDate) {
-    query = query.gte('created_at', filters.startDate);
+  query = query.eq('kind', type).in('status', EXPORTABLE_AUDIT_STATUSES);
+
+  if (filters.startDate) query = query.gte('created_at', filters.startDate);
+  if (filters.endDate) query = query.lte('created_at', filters.endDate);
+  if (filters.classId) query = query.eq('class_id', filters.classId);
+  if (filters.quality) query = query.eq('quality', filters.quality);
+  if (filters.auditorIds && filters.auditorIds.length > 0) query = query.in('auditor_id', filters.auditorIds);
+  if (conversationIdFilter) query = query.in('source_conversation_id', conversationIdFilter);
+
+  const { data, error } = await query.order('created_at', { ascending: false });
+  if (error) return { records: [], totalCount: 0, error: error.message };
+
+  const latestRecords = keepLatestApprovedExports((data ?? []) as AuditRecordRow[]);
+  const slicedRecords = limit === undefined ? latestRecords : latestRecords.slice(0, limit);
+  const conversationIds = [...new Set(slicedRecords.map((record) => record.source_conversation_id).filter((value): value is string => Boolean(value)))];
+
+  if (conversationIds.length === 0) {
+    return {
+      records: slicedRecords.map((record) => ({ record, conversation: null, transcript: [] })),
+      totalCount: latestRecords.length,
+    };
   }
 
-  if (filters.endDate) {
-    query = query.lte('created_at', filters.endDate);
+  const [{ data: conversations, error: conversationsError }, { data: transcriptRows, error: transcriptError }] = await Promise.all([
+    supabase
+      .from('conversations')
+      .select('id, owner_id, project_id, title, text_projects(title)')
+      .in('id', conversationIds),
+    supabase
+      .from('conversation_messages')
+      .select('id, conversation_id, role, content, created_at')
+      .in('conversation_id', conversationIds)
+      .order('created_at', { ascending: true }),
+  ]);
+
+  if (conversationsError) {
+    return { records: [], totalCount: 0, error: `查询会话上下文失败：${conversationsError.message}` };
   }
 
-  if (filters.classId) {
-    query = query.eq('class_id', filters.classId);
+  if (transcriptError) {
+    return { records: [], totalCount: 0, error: `查询会话消息失败：${transcriptError.message}` };
   }
 
-  if (filters.quality) {
-    query = query.eq('quality', filters.quality);
-  }
-
-  if (filters.auditorIds && filters.auditorIds.length > 0) {
-    query = query.in('auditor_id', filters.auditorIds);
-  }
-
-  if (conversationIdFilter) {
-    query = query.in('source_conversation_id', conversationIdFilter);
-  }
-
-  query = query.order('created_at', { ascending: false });
-
-  if (limit !== undefined) {
-    query = query.limit(limit);
-  }
-
-  const { data, error, count } = await query;
-
-  if (error) {
-    return { records: [], totalCount: 0, error: error.message };
+  const conversationsById = new Map(((conversations ?? []) as ConversationRow[]).map((conversation) => [conversation.id, conversation]));
+  const transcriptByConversationId = new Map<string, TranscriptMessageRow[]>();
+  for (const row of (transcriptRows ?? []) as TranscriptMessageRow[]) {
+    const current = transcriptByConversationId.get(row.conversation_id) ?? [];
+    current.push(row);
+    transcriptByConversationId.set(row.conversation_id, current);
   }
 
   return {
-    records: (data ?? []) as AuditRecordRow[],
-    totalCount: count ?? 0,
+    records: slicedRecords.map((record) => ({
+      record,
+      conversation: record.source_conversation_id ? conversationsById.get(record.source_conversation_id) ?? null : null,
+      transcript: record.source_conversation_id ? transcriptByConversationId.get(record.source_conversation_id) ?? [] : [],
+    })),
+    totalCount: latestRecords.length,
   };
 }
 
-/**
- * 导出完整数据集（生成 JSONL）
- */
 export async function exportDataset(
   type: DatasetType,
-  filters: DatasetFilters = {}
+  filters: DatasetFilters = {},
 ): Promise<ExportResult> {
   try {
     const { records, error } = await fetchAuditRecords(type, filters);
-
     if (error) {
       return {
         success: false,
@@ -252,39 +340,37 @@ export async function exportDataset(
       return {
         success: false,
         error: '没有符合条件的审计记录可导出',
-        resolution: '请放宽筛选条件，或确认存在已批准（approved）状态的审计标注。',
+        resolution: '请放宽筛选条件，或确认存在尚未导出的最新可导出样本。',
       };
     }
 
-    // SFT 模式需要从 prompt_presets 读取真实的 system prompt
-    const supabase = await createClient();
-    const systemPrompt = type === 'sft' ? await resolveSftSystemPrompt(supabase) : '';
-
     const lines: string[] = [];
-    let validCount = 0;
+    const recordIds: string[] = [];
 
     for (const record of records) {
-      const converted = type === 'sft' ? toSftRecord(record, systemPrompt) : toDpoRecord(record);
-      if (converted) {
-        lines.push(JSON.stringify(converted));
-        validCount++;
-      }
+      const converted = type === 'sft'
+        ? toSftRecord(record)
+        : toDpoRecord(record);
+      if (!converted) continue;
+      lines.push(JSON.stringify(converted));
+      recordIds.push(record.record.id);
     }
 
-    if (validCount === 0) {
+    if (recordIds.length === 0) {
       return {
         success: false,
         error: `没有有效的 ${type.toUpperCase()} 记录可导出`,
         resolution:
           type === 'dpo'
-            ? 'DPO 格式需要同时包含 chosen 和 rejected 答案；请确认审计记录包含完整的偏好对。'
-            : 'SFT 格式需要包含 corrected_answer 或 original_answer；请确认审计记录包含答案内容。',
+            ? 'DPO 格式需要同时包含 chosen 和 rejected 答案；请确认最新修订记录包含完整偏好对。'
+            : 'SFT 格式需要包含可回放的上下文消息与最新 assistant 内容；请确认核实记录和会话上下文完整。',
       };
     }
 
     return {
       success: true,
-      recordCount: validCount,
+      recordCount: recordIds.length,
+      recordIds,
       jsonl: lines.join('\n'),
       exportedAt: new Date().toISOString(),
     };
@@ -297,17 +383,13 @@ export async function exportDataset(
   }
 }
 
-/**
- * 预览数据集（返回前 N 条样本 + 总数）
- */
 export async function previewDataset(
   type: DatasetType,
   filters: DatasetFilters = {},
-  limit: number = 10
+  limit: number = 10,
 ): Promise<PreviewResult> {
   try {
     const { records, totalCount, error } = await fetchAuditRecords(type, filters, limit);
-
     if (error) {
       return {
         error: `查询审计记录失败：${error}`,
@@ -315,16 +397,13 @@ export async function previewDataset(
       };
     }
 
-    // SFT 模式需要从 prompt_presets 读取真实的 system prompt
-    const supabase = await createClient();
-    const systemPrompt = type === 'sft' ? await resolveSftSystemPrompt(supabase) : '';
-
     const sampleRecords: Array<SftRecord | DpoRecord> = [];
+
     for (const record of records) {
-      const converted = type === 'sft' ? toSftRecord(record, systemPrompt) : toDpoRecord(record);
-      if (converted) {
-        sampleRecords.push(converted);
-      }
+      const converted = type === 'sft'
+        ? toSftRecord(record)
+        : toDpoRecord(record);
+      if (converted) sampleRecords.push(converted);
     }
 
     return {

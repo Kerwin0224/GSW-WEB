@@ -3,8 +3,9 @@
 import { revalidatePath } from 'next/cache';
 import { encryptSecret } from '@/lib/crypto/secret-cipher';
 import { createClient } from '@/lib/supabase/server';
-import type { AppRole, AuditKind, Database, Json, ModelTier, ProviderCapability } from '@/lib/supabase/database.types';
-import { fail, getModelTiers, isMissingSchemaRelationError, modelTierSchemaBlockedMessage, ok, requireRole, type DataResult, type ModelTierStatus } from './common';
+import type { AppRole, Database, Json, ModelTier, ProviderCapability } from '@/lib/supabase/database.types';
+import { fail, getModelTiers, ok, requireRole, tierScenarios, type DataResult, type ModelTierStatus } from './common';
+import { exportDataset } from '@/lib/dataset-export';
 
 export type AdminActionState = { ok: boolean; message: string; errors?: Record<string, string> };
 export type ProviderActionResult = { ok: true; message?: string } | { ok: false; message: string };
@@ -472,6 +473,17 @@ export async function updateProviderCapabilities(providerId: string, rows: Provi
   if (deleteError) return providerFailure(`旧能力清理失败：${deleteError.message}`);
   const { error } = await supabase.from('provider_capabilities').insert(validRows.map((row) => ({ provider_id: providerId, capability: row.capability, model_id: row.modelId, is_enabled: true })));
   if (error) return providerFailure(`能力配置保存失败：${error.message}`);
+
+  const tierRows = (['flash', 'advanced'] as ModelTier[]).flatMap((tier) => {
+    const scenario = tierScenarios[tier].find((capability) => validRows.some((row) => row.capability === capability));
+    const match = scenario ? validRows.find((row) => row.capability === scenario) : undefined;
+    return match ? [{ tier, provider_id: providerId, model_id: match.modelId, is_enabled: true, metadata: { synced_from: 'provider_capabilities', scenario } }] : [];
+  });
+  if (tierRows.length > 0) {
+    const tierSync = await supabase.from('model_tier_bindings').upsert(tierRows, { onConflict: 'tier' });
+    if (tierSync.error) return providerFailure(`模型层同步失败：${tierSync.error.message}`);
+  }
+
   revalidatePath('/admin/providers');
   revalidatePath('/admin');
   return providerSuccess('能力配置已保存。');
@@ -482,7 +494,7 @@ export async function deleteProvider(providerId: string): Promise<ProviderAction
   if (!role.ok) return providerFailure(role.message);
   const supabase = await createClient();
   const tierDelete = await supabase.from('model_tier_bindings').delete().eq('provider_id', providerId);
-  if (tierDelete.error && !isMissingSchemaRelationError(tierDelete.error.message, 'model_tier_bindings')) return providerFailure(`模型层绑定清理失败：${tierDelete.error.message}`);
+  if (tierDelete.error) return providerFailure(`模型层绑定清理失败：${tierDelete.error.message}`);
   const capabilityDelete = await supabase.from('provider_capabilities').delete().eq('provider_id', providerId);
   if (capabilityDelete.error) return providerFailure(`Provider 能力清理失败：${capabilityDelete.error.message}`);
   const { error } = await supabase.from('provider_configs').delete().eq('id', providerId);
@@ -528,14 +540,29 @@ export async function saveModelTierBinding(input: { tier: ModelTier; providerId:
     provider_id: input.providerId,
     model_id: modelId,
     is_enabled: true,
+    metadata: { source_of_truth: 'provider_capabilities', synced_from: 'admin_model_tier_binding' },
   }, { onConflict: 'tier' });
-  if (error) {
-    if (isMissingSchemaRelationError(error.message, 'model_tier_bindings')) return providerFailure(modelTierSchemaBlockedMessage());
-    return providerFailure(`模型层保存失败：${error.message}`);
-  }
+  if (error) return providerFailure(`模型层保存失败：${error.message}`);
+
+  const scenarioRows = tierScenarios[input.tier].map((capability) => ({
+    provider_id: input.providerId,
+    capability,
+    model_id: modelId,
+    is_enabled: true,
+    metadata: { synced_from: 'model_tier_bindings', tier: input.tier },
+  }));
+  const scenarioDelete = await supabase
+    .from('provider_capabilities')
+    .delete()
+    .eq('provider_id', input.providerId)
+    .in('capability', [...tierScenarios[input.tier]]);
+  if (scenarioDelete.error) return providerFailure(`旧场景能力清理失败：${scenarioDelete.error.message}`);
+  const scenarioInsert = await supabase.from('provider_capabilities').insert(scenarioRows);
+  if (scenarioInsert.error) return providerFailure(`场景能力同步失败：${scenarioInsert.error.message}`);
+
   revalidatePath('/admin/providers');
   revalidatePath('/admin');
-  return providerSuccess('模型层已保存。');
+  return providerSuccess('模型层已保存，并已同步到场景能力。');
 }
 
 export async function getAdminMcp() {
@@ -713,50 +740,57 @@ export async function getAdminExports() {
   if (!role.ok) return role;
   const supabase = await createClient();
   const [{ data: approved, error: approvedError }, { data: history, error: historyError }] = await Promise.all([
-    supabase.from('audit_records').select('*').in('status', ['approved', 'exported']).order('created_at', { ascending: false }),
+    supabase
+      .from('audit_records')
+      .select('id,source_message_id,status,created_at,updated_at')
+      .in('status', ['approved', 'exported'])
+      .not('source_message_id', 'is', null)
+      .order('created_at', { ascending: false }),
     supabase.from('export_batches').select('*').order('created_at', { ascending: false }),
   ]);
   if (approvedError) return fail('error', `可导出记录加载失败：${approvedError.message}`);
   if (historyError) return fail('error', `导出历史加载失败：${historyError.message}`);
-  return ok({ approved: approved ?? [], history: history ?? [] });
+
+  const latestByMessage = new Map<string, { id: string; status: string; created_at: string; updated_at: string }>();
+  for (const record of approved ?? []) {
+    if (!record.source_message_id) continue;
+    const previous = latestByMessage.get(record.source_message_id);
+    const recordTime = record.updated_at || record.created_at;
+    const previousTime = previous ? previous.updated_at || previous.created_at : '';
+    if (!previous || recordTime >= previousTime) latestByMessage.set(record.source_message_id, record);
+  }
+
+  const exportable = [...latestByMessage.values()].filter((record) => record.status === 'approved');
+  return ok({ approved: exportable, history: history ?? [] });
 }
 
 export async function createExportBatch(formData: FormData): Promise<void> {
   const role = await requireRole('admin');
   if (!role.ok) return;
-  const export_type = String(formData.get('export_type') ?? 'sft') as AuditKind;
+
+  const exportType = String(formData.get('export_type') ?? 'sft') === 'dpo' ? 'dpo' : 'sft';
+  const result = await exportDataset(exportType);
+  if (!result.success) return;
+
   const supabase = await createClient();
-  const query = supabase.from('audit_records').select('*');
-  const { data: records, error } = export_type === 'review_metadata'
-    ? await query.in('status', ['approved', 'exported'])
-    : await query.eq('status', 'approved').eq('kind', export_type);
-  if (error) return;
-  if (!records?.length) return;
-  const jsonl = records.map((record) => {
-    if (export_type === 'review_metadata') {
-      return JSON.stringify({
-        source_record_id: record.id,
-        source_message_id: record.source_message_id,
-        source_conversation_id: record.source_conversation_id,
-        auditor_id: record.auditor_id,
-        class_id: record.class_id,
-        kind: record.kind,
-        status: record.status,
-        quality: record.quality,
-        rationale: record.rationale,
-        metadata: record.metadata,
-        reviewed_at: record.updated_at,
-      });
-    }
-    return export_type === 'sft'
-      ? JSON.stringify({ prompt: record.prompt, completion: record.corrected_answer || record.original_answer, source_record_id: record.id })
-      : JSON.stringify({ prompt: record.prompt, chosen: record.chosen_answer, rejected: record.rejected_answer, source_record_id: record.id, rationale: record.rationale });
-  }).join('\n');
-  const { error: insertError } = await supabase.from('export_batches').insert({ export_type, record_count: records.length, jsonl, created_by: role.data.id });
-  if (insertError) return;
-  if (export_type !== 'review_metadata') {
-    await supabase.from('audit_records').update({ status: 'exported', exported_at: new Date().toISOString() }).in('id', records.map((record) => record.id));
+  const { data: batch, error: insertError } = await supabase.from('export_batches').insert({
+    export_type: exportType,
+    record_count: result.recordCount,
+    jsonl: result.jsonl,
+    created_by: role.data.id,
+  }).select('id').single();
+  if (insertError || !batch) return;
+
+  const { error: exportMarkError } = await supabase
+    .from('audit_records')
+    .update({ status: 'exported', exported_at: result.exportedAt })
+    .in('id', result.recordIds);
+
+  if (exportMarkError) {
+    await supabase.from('export_batches').delete().eq('id', batch.id);
+    return;
   }
+
   revalidatePath('/admin/exports');
   revalidatePath('/admin');
 }

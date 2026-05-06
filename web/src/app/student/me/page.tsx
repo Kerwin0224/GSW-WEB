@@ -11,31 +11,31 @@ import { CognitiveProfileRadar } from './cognitive-profile-radar';
 
 export default async function StudentProfilePage() {
   const result = await getStudentProfileSummary();
-  if (!result.ok) return <div className="p-6"><ErrorState title="学习画像加载失败" description={result.message} /></div>;
-  const { distribution, projects } = result.data;
+  if (!result.ok) return <div className="p-6"><ErrorState title="学习看板加载失败" description={result.message} /></div>;
+  const { distribution, projects, awaitingChallengeCount } = result.data;
   const hasRecords = distribution.some((item) => item.count > 0);
   const totalQuestions = projects.reduce((sum, p) => sum + p.questionCount, 0);
-  const totalPractices = projects.reduce((sum, p) => sum + p.practiceCount, 0);
+  const totalChallenges = projects.reduce((sum, p) => sum + p.practiceCount, 0);
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="个人中心"
-        title="看见自己是怎么读懂古诗文的。"
-        description="画像只基于真实问题与练习记录生成，不做排名，不做惩罚性评分，只回答下一步应该怎么学。"
+        eyebrow="学生看板"
+        title="看见自己在不同篇目上的挑战确认结果。"
+        description="看板主统计只使用挑战确认后的布鲁姆结果；会话推断出的认知路径留在项目内作为轻量反馈。"
         primaryAction={{ label: '继续提问', href: '/student' }}
         secondaryAction={{ label: '查看全部篇目', href: '/student/projects' }}
         metrics={[
           { label: '篇目项目', value: projects.length, hint: '真实学习项目' },
           { label: '提问记录', value: totalQuestions, hint: '学生提出的问题' },
-          { label: '练习记录', value: totalPractices, hint: '已保存练习' },
+          { label: '等待挑战确认', value: awaitingChallengeCount, hint: '尚无确认层级的项目' },
         ]}
       />
 
       <section className="space-y-4">
         <SectionHeader
-          title="我的篇目"
-          description="按最近学习排序，点击卡片查看认知路径详情。"
+          title="我的篇目项目"
+          description="按最近学习排序，点击卡片查看项目内的认知路径与挑战确认状态。"
         />
         {projects.length === 0 ? (
           <EmptyState
@@ -57,21 +57,22 @@ export default async function StudentProfilePage() {
         <CardContent>
           {hasRecords ? null : (
             <EmptyState
-              title="暂无认知画像"
-              description="完成真实提问和练习评估后，这里会显示跨项目的层级分布与下一步建议。"
-              action={<Button nativeButton={false} render={<Link href="/student">去提问</Link>} />}
+              title="等待挑战确认"
+              description="完成挑战后，这里才会把项目计入看板主统计；在此之前，你仍可在项目页查看会话里的认知路径。"
+              action={<Button nativeButton={false} render={<Link href="/student/challenge">去挑战</Link>} />}
             />
           )}
           {hasRecords ? <CognitiveProfileRadar distribution={distribution} /> : null}
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-6">
             {distribution.map((item) => (
-              <div key={item.level} className="rounded-xl border bg-background/60 p-3 text-center">
+              <div key={item.level} className="rounded-lg border bg-background/60 p-3 text-center">
                 <BloomBadge level={item.level} />
                 <p className="mt-2 text-2xl font-semibold">{item.count}</p>
-                <p className="text-xs text-muted-foreground">真实记录</p>
+                <p className="text-xs text-muted-foreground">已确认项目</p>
               </div>
             ))}
           </div>
+          <p className="mt-4 text-sm text-muted-foreground">累计挑战记录 {totalChallenges} 条，但只有通过挑战确认的项目会进入上方主统计。</p>
         </CardContent>
       </Card>
     </div>

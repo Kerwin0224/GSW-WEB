@@ -38,28 +38,29 @@ export function WorkspaceHero({
   className?: string;
 }) {
   return (
-    <section className={cn('relative overflow-hidden rounded-[2rem] border bg-card shadow-sm', className)}>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(74,111,165,0.18),transparent_36%),radial-gradient(circle_at_bottom_right,rgba(183,165,122,0.18),transparent_34%)]" />
-      <div className="relative grid gap-8 p-6 sm:p-8 lg:grid-cols-[1.25fr_0.75fr] lg:p-10">
+    <section className={cn('relative overflow-hidden rounded-lg border border-primary/15 bg-card/92 shadow-ink backdrop-blur-xl', className)}>
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,color-mix(in_oklch,var(--primary)_10%,transparent),transparent_42%),repeating-linear-gradient(90deg,color-mix(in_oklch,var(--border)_18%,transparent)_0_1px,transparent_1px_5rem)]" />
+      <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+      <div className="relative grid gap-8 p-6 sm:p-8 lg:grid-cols-[1.15fr_0.85fr] lg:p-10 xl:p-12">
         <div className="space-y-6">
-          <Badge variant="outline" className="bg-background/70 text-foreground">{eyebrow}</Badge>
-          <div className="space-y-3">
-            <h1 className="max-w-3xl font-heading text-4xl leading-tight tracking-tight sm:text-5xl">{title}</h1>
+          <Badge variant="outline" className="w-fit border-primary/25 bg-background/80 px-3 py-1 text-primary shadow-sm backdrop-blur">{eyebrow}</Badge>
+          <div className="space-y-4">
+            <h1 className="max-w-3xl font-heading text-4xl leading-tight tracking-tight text-foreground sm:text-5xl lg:text-6xl">{title}</h1>
             <p className="max-w-2xl text-base leading-8 text-muted-foreground sm:text-lg">{description}</p>
           </div>
           {(primaryAction || secondaryAction) ? (
             <div className="flex flex-wrap gap-3">
-              {primaryAction ? <Button nativeButton={false} render={<Link href={primaryAction.href}>{primaryAction.label}</Link>} size="lg" variant={primaryAction.variant ?? 'default'} /> : null}
-              {secondaryAction ? <Button nativeButton={false} render={<Link href={secondaryAction.href}>{secondaryAction.label}</Link>} size="lg" variant={secondaryAction.variant ?? 'outline'} /> : null}
+              {primaryAction ? <Button nativeButton={false} render={<Link href={primaryAction.href}>{primaryAction.label}</Link>} size="lg" variant={primaryAction.variant ?? 'default'} className="min-h-11 cursor-pointer rounded-lg px-6 shadow-ink" /> : null}
+              {secondaryAction ? <Button nativeButton={false} render={<Link href={secondaryAction.href}>{secondaryAction.label}</Link>} size="lg" variant={secondaryAction.variant ?? 'outline'} className="min-h-11 cursor-pointer rounded-lg bg-background/78 px-6 backdrop-blur" /> : null}
             </div>
           ) : null}
         </div>
         <div className="grid gap-3 self-end sm:grid-cols-3 lg:grid-cols-1">
           {metrics.map((metric) => (
-            <Card key={metric.label} className="bg-background/75 backdrop-blur">
-              <CardContent className="space-y-1 p-4">
-                <p className="text-xs text-muted-foreground">{metric.label}</p>
-                <p className="text-3xl font-semibold tracking-tight">{metric.value}</p>
+            <Card key={metric.label} className="border-border/65 bg-background/82 shadow-soft backdrop-blur transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/35 hover:bg-background/95 hover:shadow-ink">
+              <CardContent className="space-y-1.5 p-4">
+                <p className="text-xs font-medium text-muted-foreground">{metric.label}</p>
+                <p className="text-3xl font-semibold tracking-tight text-foreground">{metric.value}</p>
                 <p className="text-xs leading-5 text-muted-foreground">{metric.hint}</p>
               </CardContent>
             </Card>
@@ -84,9 +85,9 @@ export function SectionHeader({
 }) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div className="space-y-1">
-        {eyebrow ? <p className="text-xs font-medium uppercase tracking-[0.24em] text-primary">{eyebrow}</p> : null}
-        <h2 className="font-heading text-2xl tracking-tight">{title}</h2>
+      <div className="space-y-2">
+        {eyebrow ? <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">{eyebrow}</p> : null}
+        <h2 className="font-heading text-2xl tracking-tight sm:text-3xl">{title}</h2>
         {description ? <p className="max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
@@ -112,9 +113,9 @@ export function PrincipleCard({
   }[accent];
 
   return (
-    <Card className="bg-card/85">
+    <Card className="border-border/70 bg-card/86 shadow-sm transition-colors hover:border-primary/25 hover:bg-card">
       <CardContent className="flex gap-4 p-5">
-        <span className={cn('flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ring-1', accentClass)}>{index}</span>
+        <span className={cn('flex size-11 shrink-0 items-center justify-center rounded-lg text-sm font-semibold ring-1 shadow-sm', accentClass)}>{index}</span>
         <div className="space-y-1">
           <h3 className="font-heading text-lg">{title}</h3>
           <p className="text-sm leading-6 text-muted-foreground">{description}</p>

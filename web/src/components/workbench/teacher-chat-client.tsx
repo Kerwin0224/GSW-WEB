@@ -24,7 +24,7 @@ const teacherPrompts = ['这首诗的课堂导入怎么设计？', '学生容易
 
 type Preset = Database['public']['Tables']['prompt_presets']['Row'];
 const instructionInitialState: AuditSubmissionState = { ok: false, message: '' };
-const presetVariables = ['学生姓名', '当前篇目', '年级', '课堂目标', '常见误区', '练习层级'];
+const presetVariables = ['学生姓名', '当前篇目', '年级', '课堂目标', '常见误区', '挑战层级'];
 const placeholderPattern = /\{\{\s*([a-zA-Z0-9_\u4e00-\u9fff-]+)\s*\}\}/g;
 const unsupportedTemplatePattern = /\{\{\s*(?:[#/^>!&]|\{)|\}\}\}/;
 
@@ -46,9 +46,21 @@ function presetVariableLabels(variables: Preset['variables']) {
 export function TeacherChatClient({ presets, providerBlocked }: { presets: Preset[]; providerBlocked?: string }) {
   const [input, setInput] = useState('');
   const [presetId, setPresetId] = useState<string>(presets[0]?.id ?? '');
+  const [conversationId, setConversationId] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadError, setUploadError] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const { messages, sendMessage, status, error } = useChat({
-    transport: new DefaultChatTransport({ api: '/api/teacher/chat' }),
+    transport: new DefaultChatTransport({
+      api: '/api/teacher/chat',
+      fetch: async (input, init) => {
+        const response = await fetch(input, init);
+        const nextConversationId = response.headers.get('x-conversation-id');
+        if (nextConversationId) setConversationId(nextConversationId);
+        return response;
+      },
+    }),
   });
   const busy = status === 'submitted' || status === 'streaming';
   const selectedPreset = presets.find((preset) => preset.id === presetId);
@@ -57,10 +69,35 @@ export function TeacherChatClient({ presets, providerBlocked }: { presets: Prese
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
+  const uploadAttachment = async (file: File) => {
+    if (uploading || !selectedPreset || providerBlocked) return;
+    setUploading(true);
+    setUploadStatus('');
+    setUploadError('');
+    const form = new FormData();
+    form.set('file', file);
+    form.set('metadata', JSON.stringify({
+      workspace: 'teacher',
+      conversationId: conversationId || undefined,
+      presetId: selectedPreset.id,
+    }));
+    try {
+      const response = await fetch('/api/attachments', { method: 'POST', body: form });
+      const payload = await response.json() as { ok?: boolean; message?: string; conversationId?: string; fileName?: string; chunkCount?: number };
+      if (!response.ok || !payload.ok) throw new Error(payload.message || '附件上传失败。');
+      if (payload.conversationId) setConversationId(payload.conversationId);
+      setUploadStatus(`已上传《${payload.fileName ?? file.name}》，生成 ${payload.chunkCount ?? 0} 段仅限当前会话检索的附件片段。`);
+    } catch (uploadError) {
+      setUploadError(uploadError instanceof Error ? uploadError.message : '附件上传失败。');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const submit = () => {
     const text = input.trim();
     if (!text || busy || !selectedPreset || providerBlocked) return;
-    sendMessage({ parts: [{ type: 'text', text }] }, { body: { presetId: selectedPreset.id } });
+    sendMessage({ parts: [{ type: 'text', text }] }, { body: { presetId: selectedPreset.id, ...(conversationId ? { conversationId } : {}) } });
     setInput('');
   };
 
@@ -126,11 +163,11 @@ export function TeacherChatClient({ presets, providerBlocked }: { presets: Prese
             {messages.length === 0 ? (
               <EmptyState
                 title="选择预设，开始设计一节可上好的课"
-                description="围绕篇目、年级、学生误区或练习目标提问；输出会进入可核实闭环。"
+                description="围绕篇目、年级、学生误区或挑战目标提问；输出会进入可核实闭环。"
                 action={(
                   <div className="flex flex-wrap justify-center gap-2">
                     {teacherPrompts.map((prompt) => (
-                      <button key={prompt} type="button" className="rounded-full border px-3 py-1 text-sm hover:bg-muted" onClick={() => setInput(prompt)}>
+                      <button key={prompt} type="button" className="rounded-md border px-3 py-1 text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setInput(prompt)}>
                         {prompt}
                       </button>
                     ))}
@@ -141,7 +178,7 @@ export function TeacherChatClient({ presets, providerBlocked }: { presets: Prese
               <AIMessageList messages={messages} />
             )}
             {busy ? (
-              <div className="flex items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
                 AI 正在生成教学支持…
               </div>
@@ -158,6 +195,10 @@ export function TeacherChatClient({ presets, providerBlocked }: { presets: Prese
               placeholder="输入教学问题…"
               disabled={busy || !selectedPreset || Boolean(providerBlocked)}
               blockedReason={providerBlocked || (!selectedPreset ? '缺少已发布 Prompt 预设。' : undefined)}
+              onFileUpload={uploadAttachment}
+              uploadDisabled={busy || uploading || !selectedPreset || Boolean(providerBlocked)}
+              uploadStatus={uploadStatus}
+              uploadError={uploadError}
             />
           </div>
         </div>
@@ -192,7 +233,7 @@ export function TeacherInstructionEditor({ presets }: { presets: Preset[] }) {
     年级: '七年级',
     课堂目标: '理解景物描写与志向表达',
     常见误区: '只翻译字面，不解释“更上一层楼”的表达效果',
-    练习层级: 'L3-L4',
+    挑战层级: 'L3-L4',
   });
   const missingSamples = detectedVariables.filter((name) => !variableSamples[name]?.trim());
   const previewBlocked = unsupportedTemplate || missingSamples.length > 0;
@@ -205,11 +246,10 @@ export function TeacherInstructionEditor({ presets }: { presets: Preset[] }) {
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="System Instruction"
-        title="把好用的备课提示词沉淀下来。"
+        eyebrow="教师预设"
+        title="把好用的教学问法沉淀下来。"
         description="教师可以自建草稿预设，使用 literal {{variable}} 变量语法；右侧预览只做 mock 渲染，不伪造真实 AI 回复。"
-        primaryAction={{ label: '回到教学对话', href: '/teacher#teacher-chat' }}
-        secondaryAction={{ label: '查看核实队列', href: '/teacher/audit' }}
+        primaryAction={{ label: '回到教师问答', href: '/teacher#teacher-chat' }}
         metrics={[
           { label: '我的草稿/预设', value: presets.length, hint: 'created_by 当前教师' },
           { label: '变量语法', value: '{{var}}', hint: 'literal placeholder subset' },
@@ -240,7 +280,7 @@ export function TeacherInstructionEditor({ presets }: { presets: Preset[] }) {
 
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Label htmlFor="system-instruction">System Instruction</Label>
+                  <Label htmlFor="system-instruction">教师问答指引</Label>
                   <div className="flex flex-wrap gap-1">
                     {presetVariables.map((variable) => (
                       <Button key={variable} type="button" variant="outline" size="xs" onClick={() => insertVariable(variable)}>
@@ -295,8 +335,8 @@ export function TeacherInstructionEditor({ presets }: { presets: Preset[] }) {
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="font-heading">Mock Chat Preview</CardTitle>
-              <CardDescription>预览变量替换后的系统提示与用户模板。</CardDescription>
+              <CardTitle className="font-heading">问法预览</CardTitle>
+              <CardDescription>预览变量替换后的教师问答指引与提问模板。</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               {previewBlocked ? (
@@ -340,7 +380,7 @@ export function TeacherInstructionEditor({ presets }: { presets: Preset[] }) {
       </section>
 
       <section className="space-y-4">
-        <SectionHeader title="变量规则" description="这里只支持 literal {{variable}} 占位符，不执行 Handlebars helper 或表达式，避免提示词模板引擎变成第二套业务逻辑。" />
+        <SectionHeader title="变量规则" description="这里只支持 literal {{variable}} 占位符，不执行模板 helper 或表达式，避免把教师问答预设变成第二套业务逻辑。" />
       </section>
     </div>
   );

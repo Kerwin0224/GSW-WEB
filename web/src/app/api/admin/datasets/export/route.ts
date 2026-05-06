@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { withApiLogging } from '@/lib/observability/with-api-logging';
+
 import { requireRole } from '@/lib/data/common';
 import { exportDataset, previewDataset, type DatasetFilters } from '@/lib/dataset-export';
+import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { createClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -21,20 +22,58 @@ const exportSchema = z.object({
   preview: z.boolean().optional(),
 });
 
+type PreviewAuditRow = {
+  id: string;
+  source_message_id: string | null;
+  original_answer: string | null;
+  corrected_answer: string | null;
+  chosen_answer: string | null;
+  rejected_answer: string | null;
+  kind: 'sft' | 'dpo';
+  status: 'approved' | 'exported';
+  created_at: string;
+  updated_at: string;
+  conversations?: { text_projects?: { title: string | null } | Array<{ title: string | null }> | null } | Array<{ text_projects?: { title: string | null } | Array<{ title: string | null }> | null }> | null;
+};
+
+const EXPORTABLE_AUDIT_STATUSES: PreviewAuditRow['status'][] = ['approved', 'exported'];
+
 function firstJoined<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
+}
+
+function recordTimestamp(row: Pick<PreviewAuditRow, 'updated_at' | 'created_at'>) {
+  return row.updated_at || row.created_at;
+}
+
+function keepLatestBySourceMessage(rows: PreviewAuditRow[]) {
+  const latest = new Map<string, PreviewAuditRow>();
+
+  for (const row of rows) {
+    if (!row.source_message_id) continue;
+    const previous = latest.get(row.source_message_id);
+    if (!previous || recordTimestamp(row) >= recordTimestamp(previous)) latest.set(row.source_message_id, row);
+  }
+
+  return [...latest.values()].sort((left, right) => right.created_at.localeCompare(left.created_at));
+}
+
+function keepLatestApprovedExports(rows: PreviewAuditRow[]) {
+  return keepLatestBySourceMessage(
+    rows.filter((row) => EXPORTABLE_AUDIT_STATUSES.includes(row.status)),
+  ).filter((row) => row.status === 'approved');
 }
 
 async function getPreviewStats(type: 'sft' | 'dpo', filters: DatasetFilters, sampleLimit: number) {
   const supabase = await createClient();
   let query = supabase
     .from('audit_records')
-    .select('id, source_conversation_id, conversations(text_projects(title))', { count: 'exact' })
-    .eq('kind', type)
-    .eq('status', 'approved')
-    .order('created_at', { ascending: false })
-    .limit(sampleLimit);
+    .select('id, source_message_id, original_answer, corrected_answer, chosen_answer, rejected_answer, created_at, updated_at, kind, status, conversations(text_projects(title))')
+    .not('source_message_id', 'is', null)
+    .order('created_at', { ascending: false });
+
+  query = query.eq('kind', type).in('status', EXPORTABLE_AUDIT_STATUSES);
 
   if (filters.startDate) query = query.gte('created_at', filters.startDate);
   if (filters.endDate) query = query.lte('created_at', filters.endDate);
@@ -42,11 +81,27 @@ async function getPreviewStats(type: 'sft' | 'dpo', filters: DatasetFilters, sam
   if (filters.quality) query = query.eq('quality', filters.quality);
   if (filters.auditorIds && filters.auditorIds.length > 0) query = query.in('auditor_id', filters.auditorIds);
 
-  const { data, count } = await query;
+  if (filters.projectIds && filters.projectIds.length > 0) {
+    const { data: conversations, error: conversationError } = await supabase.from('conversations').select('id').in('project_id', filters.projectIds);
+    if (conversationError) throw new Error(`导出预览项目筛选失败：${conversationError.message}`);
+    const conversationIds = (conversations ?? []).map((conversation) => conversation.id);
+    if (conversationIds.length === 0) return { poemDistribution: [], eligibleRecords: 0, validRecords: 0, invalidRecords: 0, sampleLimit };
+    query = query.in('source_conversation_id', conversationIds);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(`导出预览统计失败：${error.message}`);
+
+  const latestRows = keepLatestApprovedExports((data ?? []) as PreviewAuditRow[]);
+  const validRows = latestRows.filter((row) => {
+    return type === 'sft'
+      ? Boolean(row.corrected_answer ?? row.original_answer)
+      : Boolean((row.chosen_answer ?? row.corrected_answer) && (row.rejected_answer ?? row.original_answer));
+  });
+  const sampledRows = validRows.slice(0, sampleLimit);
   const poemCounts = new Map<string, number>();
-  for (const row of (data ?? []) as Array<{
-    conversations?: { text_projects?: { title: string | null } | Array<{ title: string | null }> | null } | Array<{ text_projects?: { title: string | null } | Array<{ title: string | null }> | null }> | null;
-  }>) {
+
+  for (const row of sampledRows) {
     const conversation = firstJoined(row.conversations);
     const project = firstJoined(conversation?.text_projects);
     const title = project?.title?.trim() || '未关联篇目';
@@ -55,7 +110,10 @@ async function getPreviewStats(type: 'sft' | 'dpo', filters: DatasetFilters, sam
 
   return {
     poemDistribution: [...poemCounts.entries()].map(([title, itemCount]) => ({ title, count: itemCount })).sort((left, right) => right.count - left.count),
-    approvedRecords: count ?? 0,
+    eligibleRecords: latestRows.length,
+    validRecords: validRows.length,
+    invalidRecords: Math.max(latestRows.length - validRows.length, 0),
+    sampleLimit,
   };
 }
 
@@ -65,7 +123,7 @@ export async function POST(req: Request) {
     if (!role.ok) {
       return Response.json(
         { error: role.message },
-        { status: role.reason === 'forbidden' ? 403 : 401 }
+        { status: role.reason === 'forbidden' ? 403 : 401 },
       );
     }
 
@@ -75,7 +133,7 @@ export async function POST(req: Request) {
     } catch {
       return Response.json(
         { error: 'Invalid request', issues: [{ message: 'Malformed JSON body' }] },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -83,7 +141,7 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return Response.json(
         { error: 'Invalid request', issues: parsed.error.flatten() },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -97,7 +155,7 @@ export async function POST(req: Request) {
         if ('error' in result) {
           return Response.json(
             { error: result.error, resolution: result.resolution },
-            { status: 503 }
+            { status: 503 },
           );
         }
 
@@ -106,10 +164,10 @@ export async function POST(req: Request) {
           ...result,
           poemDistribution: stats.poemDistribution,
           coverage: {
-            approvedRecords: stats.approvedRecords,
-            validRecords: result.sampleRecords.length,
-            invalidRecords: Math.max(0, Math.min(stats.approvedRecords, previewLimit) - result.sampleRecords.length),
-            sampleLimit: previewLimit,
+            eligibleRecords: stats.eligibleRecords,
+            validRecords: stats.validRecords,
+            invalidRecords: stats.invalidRecords,
+            sampleLimit: stats.sampleLimit,
           },
         });
       }
@@ -119,7 +177,7 @@ export async function POST(req: Request) {
       if (!result.success) {
         return Response.json(
           { error: result.error, resolution: result.resolution },
-          { status: 503 }
+          { status: 503 },
         );
       }
 
@@ -133,6 +191,18 @@ export async function POST(req: Request) {
         return Response.json({ error: `导出批次保存失败：${batchError?.message ?? 'unknown'}` }, { status: 500 });
       }
 
+      const { error: exportMarkError } = await supabase
+        .from('audit_records')
+        .update({ status: 'exported', exported_at: result.exportedAt })
+        .in('id', result.recordIds);
+      if (exportMarkError) {
+        const { error: rollbackError } = await supabase.from('export_batches').delete().eq('id', batch.id);
+        if (rollbackError) {
+          return Response.json({ error: `导出状态回写失败：${exportMarkError.message}；导出批次回滚失败：${rollbackError.message}` }, { status: 500 });
+        }
+        return Response.json({ error: `导出状态回写失败：${exportMarkError.message}` }, { status: 500 });
+      }
+
       return Response.json({
         success: true,
         batchId: batch.id,
@@ -144,7 +214,7 @@ export async function POST(req: Request) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       return Response.json(
         { error: `Dataset export failed: ${message}` },
-        { status: 500 }
+        { status: 500 },
       );
     }
   });

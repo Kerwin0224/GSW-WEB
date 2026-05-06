@@ -14,7 +14,7 @@ export default async function AdminClassesPage() {
   if (!classResult.ok) {
     return (
       <div className="p-6">
-        <ErrorState title="班级关系加载失败" description={classResult.message} />
+        <ErrorState title="班级成员管理加载失败" description={classResult.message} />
       </div>
     );
   }
@@ -34,13 +34,13 @@ export default async function AdminClassesPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="班级关系"
-        title="把教师能看谁、学生归属谁说清楚。"
-        description="班级关系是权限边界，不是表格装饰。教师工作台、学习记录核实和学情线索都从这里收敛范围。"
+        eyebrow="班级成员管理"
+        title="把教师能看谁、学生属于哪个班级说清楚。"
+        description="班级成员管理是教师权限边界。教师工作台、学习记录核实和学情线索都从这里收敛到真实班级范围。"
         metrics={[
           { label: '班级', value: classes.length, hint: '真实 classes' },
-          { label: '教师关系', value: teacherCount, hint: '教师可负责多个班级' },
-          { label: '学生关系', value: studentCount, hint: '学生自动迁班保持单班级' },
+          { label: '教师成员分配', value: teacherCount, hint: '教师可负责多个班级' },
+          { label: '学生成员分配', value: studentCount, hint: '学生自动迁班保持单班级' },
         ]}
       />
 
@@ -101,7 +101,7 @@ export default async function AdminClassesPage() {
                   </div>
                 </div>
                 {klass.teachers.length === 0 ? (
-                  <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">该班级暂无负责教师，教师看板和教学正确性核实范围会受影响。</p>
+                  <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">该班级暂无负责教师，教师看板和学习记录核实范围会受影响。</p>
                 ) : null}
                 <AdminClassMembersDialog
                   klass={klass}

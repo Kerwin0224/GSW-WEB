@@ -8,6 +8,7 @@ import { getAppSession } from '@/lib/session';
 import { fail, getCapability, ok, resolveEnvSecret, type CapabilityStatus, type DataResult } from './common';
 
 export type DocumentChunkMatch = Database['public']['Functions']['match_document_chunks']['Returns'][number];
+export type ConversationDocumentChunkMatch = Database['public']['Functions']['match_conversation_document_chunks']['Returns'][number];
 
 export type MatchDocumentChunksInput = {
   queryEmbedding: Vector;
@@ -25,6 +26,26 @@ function resolveEmbeddingModel(capability: CapabilityStatus): EmbeddingModel | n
   if (!apiKey) return null;
   if (capability.providerType === 'gateway') return createGateway({ apiKey, baseURL: capability.baseUrl ?? process.env.AI_GATEWAY_BASE_URL }).embedding(capability.modelId);
   return createOpenAI({ apiKey, baseURL: capability.baseUrl ?? process.env.OPENAI_BASE_URL ?? undefined }).embedding(capability.modelId);
+}
+
+async function generateEmbedding(value: string): Promise<DataResult<Vector>> {
+  const trimmed = value.trim();
+  if (!trimmed) return fail('blocked', '检索 query 不能为空。');
+
+  const capability = await getCapability('embedding');
+  if (!capability.ok) return fail(capability.reason, capability.message);
+  if (!capability.data.ready || !capability.data.modelId) {
+    return fail('blocked', capability.data.blockedReason ?? '缺少 embedding 真实模型能力配置。');
+  }
+  const embeddingModel = resolveEmbeddingModel(capability.data);
+  if (!embeddingModel) return fail('blocked', `${capability.data.providerName ?? 'Provider'} 的 secret_ref 未在服务端环境中解析成功；RAG 不会在缺少 embedding 密钥时降级。`);
+
+  const { embedding } = await embed({ model: embeddingModel, value: trimmed });
+  return ok(embedding);
+}
+
+export async function embedText(value: string): Promise<DataResult<Vector>> {
+  return generateEmbedding(value);
 }
 
 export async function matchDocumentChunks({
@@ -54,6 +75,35 @@ export async function matchDocumentChunks({
   return ok(data ?? []);
 }
 
+export async function matchConversationDocumentChunks({
+  queryEmbedding,
+  conversationId,
+  matchCount = 6,
+  matchThreshold = DEFAULT_MATCH_THRESHOLD,
+}: {
+  queryEmbedding: Vector;
+  conversationId: string;
+  matchCount?: number;
+  matchThreshold?: number;
+}): Promise<DataResult<ConversationDocumentChunkMatch[]>> {
+  if (!queryEmbedding.length) return fail('blocked', 'queryEmbedding 不能为空；会话 RAG 检索必须先生成真实 embedding。');
+  if (!conversationId) return fail('blocked', 'conversationId 不能为空；会话 RAG 不允许跨会话检索。');
+
+  const session = await getAppSession();
+  if (!session) return fail('unauthenticated', '需要登录后才能检索当前会话附件。');
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('match_conversation_document_chunks', {
+    query_embedding: queryEmbedding,
+    conversation_id: conversationId,
+    match_count: matchCount,
+    match_threshold: matchThreshold,
+  });
+
+  if (error) return fail('error', `会话 RAG 检索失败：${error.message}`);
+  return ok(data ?? []);
+}
+
 export async function retrieveDocumentChunks({
   query,
   matchCount = DEFAULT_MATCH_COUNT,
@@ -65,21 +115,23 @@ export async function retrieveDocumentChunks({
   matchThreshold?: number;
   projectId?: string | null;
 }): Promise<DataResult<DocumentChunkMatch[]>> {
-  const trimmed = query.trim();
-  if (!trimmed) return fail('blocked', '检索 query 不能为空。');
+  const embedding = await generateEmbedding(query);
+  if (!embedding.ok) return embedding;
+  return matchDocumentChunks({ queryEmbedding: embedding.data, matchCount, matchThreshold, projectId });
+}
 
-  const capability = await getCapability('embedding');
-  if (!capability.ok) return fail(capability.reason, capability.message);
-  if (!capability.data.ready || !capability.data.modelId) {
-    return fail('blocked', capability.data.blockedReason ?? '缺少 embedding 真实模型能力配置。');
-  }
-  const embeddingModel = resolveEmbeddingModel(capability.data);
-  if (!embeddingModel) return fail('blocked', `${capability.data.providerName ?? 'Provider'} 的 secret_ref 未在服务端环境中解析成功；RAG 不会在缺少 embedding 密钥时降级。`);
-
-  const { embedding } = await embed({
-    model: embeddingModel,
-    value: trimmed,
-  });
-
-  return matchDocumentChunks({ queryEmbedding: embedding, matchCount, matchThreshold, projectId });
+export async function retrieveConversationDocumentChunks({
+  query,
+  conversationId,
+  matchCount = 6,
+  matchThreshold = DEFAULT_MATCH_THRESHOLD,
+}: {
+  query: string;
+  conversationId: string;
+  matchCount?: number;
+  matchThreshold?: number;
+}): Promise<DataResult<ConversationDocumentChunkMatch[]>> {
+  const embedding = await generateEmbedding(query);
+  if (!embedding.ok) return embedding;
+  return matchConversationDocumentChunks({ queryEmbedding: embedding.data, conversationId, matchCount, matchThreshold });
 }

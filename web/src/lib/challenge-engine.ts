@@ -6,7 +6,7 @@ import { createGateway } from 'ai';
 import type { LanguageModel } from 'ai';
 import { createClient } from '@/lib/supabase/server';
 import { getChallengeClimbProgress } from '@/lib/challenge-progression';
-import { getModelTier, resolveEnvSecret, type ModelTierStatus } from '@/lib/data/common';
+import { getCapability, resolveEnvSecret, type CapabilityStatus } from '@/lib/data/common';
 
 export type ChallengeData = {
   id: string;
@@ -90,6 +90,23 @@ function extractCoreTask(prompt: string, targetLevel: number) {
   return body.replace(`\n答题时要体现：${getLevelTaskInstruction(targetLevel)}`, '').trim() || prompt;
 }
 
+function dedupeProjectQuestions(rows: Array<{ content: string | null }>) {
+  const seen = new Set<string>();
+  const questions: string[] = [];
+  for (const row of rows) {
+    const content = row.content?.trim();
+    if (!content || seen.has(content)) continue;
+    seen.add(content);
+    questions.push(content);
+  }
+  return questions.slice(-12);
+}
+
+function formatProjectQuestions(questions: string[]) {
+  if (questions.length === 0) return '（暂无历史学生问题，可围绕篇目与当前层级自主设计挑战）';
+  return questions.map((question, index) => `${index + 1}. ${question}`).join('\n');
+}
+
 export type EvaluationResult = {
   id: string;
   achieved: boolean;
@@ -102,46 +119,37 @@ export type ChallengeError = {
   resolution?: string;
 };
 
-function resolveLanguageModel(tier: ModelTierStatus): LanguageModel | null {
-  if (!tier.modelId) return null;
-  const apiKey = resolveEnvSecret(tier.secretRef);
+function resolveLanguageModel(capability: CapabilityStatus): LanguageModel | null {
+  if (!capability.modelId) return null;
+  const apiKey = resolveEnvSecret(capability.secretRef);
   if (!apiKey) return null;
-  if (tier.providerType === 'gateway') {
+  if (capability.providerType === 'gateway') {
     return createGateway({
       apiKey,
-      baseURL: tier.baseUrl ?? process.env.AI_GATEWAY_BASE_URL
-    })(tier.modelId);
+      baseURL: capability.baseUrl ?? process.env.AI_GATEWAY_BASE_URL
+    })(capability.modelId);
   }
   return createOpenAI({
     apiKey,
-    baseURL: tier.baseUrl ?? process.env.OPENAI_BASE_URL ?? undefined
-  })(tier.modelId);
+    baseURL: capability.baseUrl ?? process.env.OPENAI_BASE_URL ?? undefined
+  })(capability.modelId);
 }
 
-/**
- * 生成挑战题目
- * @param projectId 项目 ID
- * @param userId 用户 ID
- * @param targetLevel 目标布鲁姆层级 (1-6)
- * @returns 挑战数据或错误信息
- */
 export async function generateChallenge(
   projectId: string,
   userId: string,
   targetLevel: number
 ): Promise<ChallengeData | ChallengeError> {
   try {
-    // 验证目标层级
     if (targetLevel < 1 || targetLevel > 6) {
       return { error: '目标层级必须在 1-6 之间' };
     }
 
     const supabase = await createClient();
 
-    // 获取项目信息
     const { data: project, error: projectError } = await supabase
       .from('text_projects')
-      .select('id, title, author, text_type, highest_bloom_level')
+      .select('id, title')
       .eq('id', projectId)
       .eq('owner_id', userId)
       .maybeSingle();
@@ -154,22 +162,21 @@ export async function generateChallenge(
       return { error: '项目不存在或无权访问' };
     }
 
-    // 获取用户当前最高层级
-    const { data: userMessages, error: messagesError } = await supabase
+    const { data: projectQuestionRows, error: projectQuestionsError } = await supabase
       .from('conversation_messages')
-      .select('bloom_level, conversations!inner(project_id, owner_id)')
+      .select('content, conversations!inner(project_id, owner_id, source)')
       .eq('conversations.project_id', projectId)
       .eq('conversations.owner_id', userId)
+      .eq('conversations.source', 'student_chat')
       .eq('role', 'user')
-      .not('bloom_level', 'is', null)
-      .order('bloom_level', { ascending: false })
-      .limit(1);
+      .eq('bloom_state', 'classified')
+      .order('created_at', { ascending: true });
 
-    if (messagesError) {
-      return { error: `获取用户历史失败：${messagesError.message}` };
+    if (projectQuestionsError) {
+      return { error: `获取项目问题失败：${projectQuestionsError.message}` };
     }
 
-    const currentMaxLevel = userMessages?.[0]?.bloom_level ?? 0;
+    const projectQuestions = dedupeProjectQuestions((projectQuestionRows ?? []) as Array<{ content: string | null }>);
 
     const { data: practices, error: practicesError } = await supabase
       .from('practice_records')
@@ -191,50 +198,39 @@ export async function generateChallenge(
       };
     }
 
-    // 检查能力配置
-    const flash = await getModelTier('flash');
-    if (!flash.ok || !flash.data.ready) {
+    const capability = await getCapability('practice_generation');
+    if (!capability.ok || !capability.data.ready) {
       return {
-        error: 'Flash Model 未配置',
-        resolution: flash.ok ? flash.data.blockedReason : flash.message
+        error: 'Practice generation provider not configured',
+        resolution: capability.ok ? capability.data.blockedReason : capability.message
       };
     }
 
-    const languageModel = resolveLanguageModel(flash.data);
+    const languageModel = resolveLanguageModel(capability.data);
     if (!languageModel) {
       return {
         error: '服务端模型密钥缺失',
-        resolution: `${flash.data.providerName ?? 'Provider'} 的 secret_ref 未在服务端环境中解析成功`
+        resolution: `${capability.data.providerName ?? 'Provider'} 的 secret_ref 未在服务端环境中解析成功`
       };
     }
 
-    // 构建出题提示词
-    const systemPrompt = `你是文韵智途的古诗文认知核查出题助手。根据项目信息和目标布鲁姆层级生成一个核心任务。
-
-布鲁姆认知层级：
-1. 记忆：回忆基本事实、术语、概念
-2. 理解：解释意义、转述、举例说明
-3. 应用：在新情境中使用知识
-4. 分析：分解结构、识别关系、区分要素
-5. 评价：判断价值、批判性思考、论证观点
-6. 创造：综合信息、设计方案、创作新作品
+    const systemPrompt = `你是文韵智途的古诗文挑战出题助手。请只根据篇目、该项目下学生已经提出的问题，以及当前目标布鲁姆层级，生成一个用于确认认知水平的核心任务。
 
 要求：
-- 核心任务必须与项目《${project.title}》${project.author ? `（作者：${project.author}）` : ''}相关
-- 核心任务难度对应布鲁姆层级 ${targetLevel}
-- 核心任务要能真实核查学生是否具备该层认知能力
-- 不要输出分步骤题面，不要包含答案，只输出一个清晰具体的核心任务
-- 用简洁的中文表述`;
+- 只输出一个清晰具体的核心任务，不输出答案，不拆分为多步题面
+- 即使学生历史问题很少，也要能围绕篇目和当前层级自主补足挑战情境
+- 可选题型包括翻译辨析、证据说明、比较分析、观点论证、迁移应用、改写创作等，但必须服务于当前层级的能力确认
+- 不要引用 AI 回答、教师修订内容、审阅记录或后台流程
+- 用简洁自然的中文表述`;
 
-    const userPrompt = `项目：《${project.title}》
-作者：${project.author ?? '未知'}
-类型：${project.text_type}
-用户当前最高层级：${currentMaxLevel}
-目标层级：${targetLevel}
+    const userPrompt = `篇目：《${project.title}》
+当前挑战层级：L${targetLevel} ${bloomLevelNames[targetLevel] ?? ''}
 
-请生成一道符合层级 ${targetLevel} 的练习题。`;
+该项目下学生已提出的问题：
+${formatProjectQuestions(projectQuestions)}
 
-    // 调用 AI 生成题目
+请生成一道挑战核心任务。`;
+
     const { text: coreTask } = await generateText({
       model: languageModel,
       system: systemPrompt,
@@ -248,7 +244,6 @@ export async function generateChallenge(
     const structuredQuestions = buildStructuredQuestions(targetLevel, coreTask.trim());
     const prompt = formatStructuredChallenge(targetLevel, structuredQuestions);
 
-    // 存储到 practice_records 表
     const { data: record, error: insertError } = await supabase
       .from('practice_records')
       .insert({
@@ -282,26 +277,18 @@ export async function generateChallenge(
   }
 }
 
-/**
- * 评判用户答案
- * @param challengeId 挑战记录 ID
- * @param userAnswer 用户答案
- * @returns 评判结果或错误信息
- */
 export async function evaluateAnswer(
   challengeId: string,
   userId: string,
   userAnswer: string
 ): Promise<EvaluationResult | ChallengeError> {
   try {
-    // 验证答案不为空
     if (!userAnswer || userAnswer.trim().length === 0) {
       return { error: '答案不能为空' };
     }
 
     const supabase = await createClient();
 
-    // 获取挑战记录
     const { data: challenge, error: challengeError } = await supabase
       .from('practice_records')
       .select('id, student_id, project_id, target_bloom_level, prompt, answer, evaluation_state, text_projects(title, author)')
@@ -325,20 +312,19 @@ export async function evaluateAnswer(
       return { error: '挑战题目缺失，无法评判' };
     }
 
-    // 检查能力配置
-    const advanced = await getModelTier('advanced');
-    if (!advanced.ok || !advanced.data.ready) {
+    const capability = await getCapability('practice_evaluation');
+    if (!capability.ok || !capability.data.ready) {
       return {
-        error: 'Advanced Model 未配置',
-        resolution: advanced.ok ? advanced.data.blockedReason : advanced.message
+        error: 'Practice evaluation provider not configured',
+        resolution: capability.ok ? capability.data.blockedReason : capability.message
       };
     }
 
-    const languageModel = resolveLanguageModel(advanced.data);
+    const languageModel = resolveLanguageModel(capability.data);
     if (!languageModel) {
       return {
         error: '服务端模型密钥缺失',
-        resolution: `${advanced.data.providerName ?? 'Provider'} 的 secret_ref 未在服务端环境中解析成功`
+        resolution: `${capability.data.providerName ?? 'Provider'} 的 secret_ref 未在服务端环境中解析成功`
       };
     }
 
@@ -350,7 +336,6 @@ export async function evaluateAnswer(
       extractCoreTask(challenge.prompt, challenge.target_bloom_level)
     );
 
-    // 构建评判提示词
     const systemPrompt = `你是文韵智途的古诗文认知核查评判助手。根据结构化题目和用户答案，评判答案是否达到目标布鲁姆层级要求。
 
 布鲁姆认知层级：
@@ -388,7 +373,6 @@ ${userAnswer.trim()}
 
 请评判该答案是否达到层级 ${challenge.target_bloom_level} 的要求。`;
 
-    // 调用 AI 评判答案
     const { text: evaluationText } = await generateText({
       model: languageModel,
       system: systemPrompt,
@@ -399,15 +383,18 @@ ${userAnswer.trim()}
       return { error: 'AI 评判失败，返回内容为空' };
     }
 
-    // 解析评判结果
     const achievedMatch = evaluationText.match(/ACHIEVED:\s*(true|false)/i);
-    const feedbackMatch = evaluationText.match(/FEEDBACK:\s*([\s\S]+)/);
+    const feedbackMatch = evaluationText.match(/FEEDBACK:\s*([\s\S]+)/i);
 
-    const achieved = achievedMatch?.[1]?.toLowerCase() === 'true';
-    const feedback = feedbackMatch?.[1]?.trim() ?? evaluationText.trim();
+    if (!achievedMatch || !feedbackMatch) {
+      return { error: 'AI 评判结果格式错误' };
+    }
 
-    // 更新 practice_records 表
-    const { data: updatedRecord, error: updateError } = await supabase
+    const achieved = achievedMatch[1].toLowerCase() === 'true';
+    const feedback = feedbackMatch[1].trim();
+    const evaluatedAt = new Date().toISOString();
+
+    const { error: updateError } = await supabase
       .from('practice_records')
       .update({
         answer: userAnswer.trim(),
@@ -416,19 +403,26 @@ ${userAnswer.trim()}
         evaluation_state: 'evaluated',
       })
       .eq('id', challengeId)
-      .eq('student_id', userId)
-      .select('id, created_at')
-      .single();
+      .eq('student_id', userId);
 
-    if (updateError || !updatedRecord) {
-      return { error: `更新评判结果失败：${updateError?.message ?? '未知错误'}` };
+    if (updateError) {
+      return { error: `保存评判结果失败：${updateError.message}` };
+    }
+
+    if (achieved && challenge.project_id) {
+      await supabase
+        .from('text_projects')
+        .update({ highest_bloom_level: challenge.target_bloom_level })
+        .eq('id', challenge.project_id)
+        .eq('owner_id', userId)
+        .or(`highest_bloom_level.is.null,highest_bloom_level.lt.${challenge.target_bloom_level}`);
     }
 
     return {
-      id: updatedRecord.id,
+      id: challengeId,
       achieved,
       feedback,
-      evaluatedAt: new Date().toISOString(),
+      evaluatedAt,
     };
   } catch (error) {
     return {

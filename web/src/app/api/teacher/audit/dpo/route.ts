@@ -8,8 +8,7 @@ export const dynamic = 'force-dynamic';
 
 const bodySchema = z.object({
   sourceMessageId: z.string().uuid(),
-  chosenAnswer: z.string().min(1),
-  rejectedAnswer: z.string().min(1),
+  correctedAnswer: z.string().min(1),
   rationale: z.string().min(1),
 });
 
@@ -26,9 +25,8 @@ export async function POST(req: Request) {
     if (!parsed.success) return Response.json({ error: 'Invalid request', issues: parsed.error.flatten() }, { status: 400 });
 
     const formData = new FormData();
-    formData.set('chosen_answer', parsed.data.chosenAnswer);
-    formData.set('rejected_answer', parsed.data.rejectedAnswer);
-    formData.set('preference_rationale', parsed.data.rationale);
+    formData.set('corrected_answer', parsed.data.correctedAnswer);
+    formData.set('rationale', parsed.data.rationale);
 
     const result = await submitDpoAudit(parsed.data.sourceMessageId, { ok: false, message: '' }, formData);
     if (!result.ok) return Response.json({ error: result.message, errors: result.errors }, { status: 422 });

@@ -44,7 +44,7 @@ function MemberList({ members, roleLabel }: { members: AdminClassListItem['teach
 function AddMemberForm({ klass, users, role }: { klass: AdminClassListItem; users: AdminUserListItem[]; role: 'teacher' | 'student' }) {
   const roleLabel = role === 'teacher' ? '教师' : '学生';
   return (
-    <form action={addClassMember} className="space-y-3 rounded-xl border bg-background/70 p-4">
+    <form action={addClassMember} className="space-y-3 rounded-lg border bg-background/70 p-4">
       <input type="hidden" name="class_id" value={klass.id} />
       <input type="hidden" name="role" value={role} />
       <div className="space-y-2">

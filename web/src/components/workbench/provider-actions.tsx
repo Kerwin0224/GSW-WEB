@@ -19,12 +19,12 @@ import {
 } from '@/lib/data/admin';
 
 const CAPABILITY_LABELS: Record<string, string> = {
-  student_chat: '学生对话',
-  teacher_chat: '教师对话',
+  student_chat: '学生会话回答',
+  teacher_chat: '教师问答',
   bloom_classification: '布鲁姆分类',
   project_classification: '篇目识别',
   practice_generation: '挑战出题',
-  practice_evaluation: '挑战评判',
+  practice_evaluation: '挑战确认评估',
   audit_assist: '核实辅助',
   embedding: '向量嵌入',
 };

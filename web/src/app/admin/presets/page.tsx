@@ -33,10 +33,10 @@ export default async function AdminPresetsPage() {
       <section className="space-y-4">
         <SectionHeader
           title="预设列表"
-          description="发布真实预设前，教师教学对话保持阻塞。"
+          description="发布真实预设前，教师问答保持阻塞。"
           action={<AdminPromptPresetDialog />}
         />
-        <div className="rounded-xl border bg-card">
+        <div className="rounded-lg border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -50,7 +50,7 @@ export default async function AdminPresetsPage() {
               {presets.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4}>
-                    <EmptyState title="暂无 Prompt 预设" description="发布真实预设前，教师教学对话保持阻塞。" />
+                    <EmptyState title="暂无 Prompt 预设" description="发布真实预设前，教师问答保持阻塞。" />
                   </TableCell>
                 </TableRow>
               ) : (

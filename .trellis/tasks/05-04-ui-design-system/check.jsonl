@@ -1,4 +1,0 @@
-{"file": ".trellis/spec/frontend/design-tokens.md", "reason": "验收时检查所有新增组件颜色都走 token，无硬编码"}
-{"file": ".trellis/spec/frontend/ui-ux-guidelines.md", "reason": "验收 Bloom 色仍带 label/数字/描述，无障碍未退化"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "验收 lint/build/类型检查通过"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "验收 design-tokens.md 已被 index 收录"}

@@ -1,3 +1,5 @@
+import 'server-only';
+
 import { createClient } from '@/lib/supabase/server';
 import type { Database } from '@/lib/supabase/database.types';
 import { fail, getCapabilities, ok, requireRole, type DataResult } from './common';
@@ -6,12 +8,15 @@ import type { BloomLevel } from '@/components/workbench/bloom-badge';
 export type ProjectSessionSummary = { id: string; title: string; messageCount: number; updatedLabel: string };
 export type ProjectLevelSummary = { level: BloomLevel; questionCount: number; achievedChallengeCount: number };
 export type ProjectChallengeProgress = {
+  confirmedLevel?: BloomLevel;
   latestTargetLevel?: BloomLevel;
   attemptedCount: number;
   achievedCount: number;
   latestState?: 'pending' | 'evaluated' | 'failed' | 'blocked';
   completedLevels: number;
   currentLevel: BloomLevel;
+  nextLevel: BloomLevel;
+  statusLabel: string;
   isComplete: boolean;
   levels: Array<{ level: BloomLevel; state: 'achieved' | 'current' | 'locked' }>;
 };
@@ -27,31 +32,64 @@ export type ProjectSummary = {
   levelSummary: ProjectLevelSummary[];
   challengeProgress: ProjectChallengeProgress;
 };
-export type StudentWorkspace = { providerBlocked?: string; classificationBlocked?: string; challengeBlocked?: string };
+export type DailyArchiveSummary = { sessions: ProjectSessionSummary[]; updatedLabel?: string };
+export type StudentWorkspace = { providerBlocked?: string; classificationBlocked?: string; challengeBlocked?: string; dailyArchive: DailyArchiveSummary };
 export type ProjectDetail = { project: Database['public']['Tables']['text_projects']['Row']; questions: Database['public']['Tables']['conversation_messages']['Row'][]; practices: Database['public']['Tables']['practice_records']['Row'][]; challengeProgress: ProjectChallengeProgress };
 
 type PracticeSummaryRow = Pick<Database['public']['Tables']['practice_records']['Row'], 'target_bloom_level' | 'achieved' | 'evaluation_state'> & { created_at?: string };
+type ConversationSummaryRow = {
+  id: string;
+  title: string | null;
+  updated_at: string;
+  conversation_messages?: Array<{ id: string }> | null;
+};
 
 function toBloomLevel(value: number | null | undefined): BloomLevel | undefined {
   return value && value >= 1 && value <= 6 ? (value as BloomLevel) : undefined;
 }
 
-function buildChallengeProgress(practices: PracticeSummaryRow[], highestBloomLevel?: number | null): ProjectChallengeProgress {
+function toSessionSummary(conversation: ConversationSummaryRow): ProjectSessionSummary {
+  return {
+    id: conversation.id,
+    title: conversation.title ?? '未命名会话',
+    messageCount: Array.isArray(conversation.conversation_messages) ? conversation.conversation_messages.length : 0,
+    updatedLabel: new Date(conversation.updated_at).toLocaleString('zh-CN'),
+  };
+}
+
+function buildChallengeProgress(practices: PracticeSummaryRow[]): ProjectChallengeProgress {
   const latestPractice = practices[0];
   const achievedLevels = new Set(practices.filter((practice) => practice.achieved).map((practice) => practice.target_bloom_level));
   const completedLevels = Math.min(achievedLevels.size, 6);
-  const currentLevel = Math.min((highestBloomLevel ?? completedLevels) + 1, 6) as BloomLevel;
+  const confirmedLevel = completedLevels > 0 ? (completedLevels as BloomLevel) : undefined;
+  const isComplete = completedLevels >= 6;
+  const nextLevel = (isComplete ? 6 : completedLevels + 1) as BloomLevel;
+  const currentLevel = nextLevel;
+  const statusLabel = (() => {
+    if (isComplete) return '已完成六层挑战';
+    if (!latestPractice) return '等待挑战确认';
+    if (latestPractice.evaluation_state === 'pending') return `L${latestPractice.target_bloom_level} 待作答`;
+    if (latestPractice.evaluation_state === 'blocked') return '挑战暂时被阻塞';
+    if (latestPractice.evaluation_state === 'failed') return '挑战生成失败';
+    if (latestPractice.evaluation_state === 'evaluated' && latestPractice.achieved) return `已确认 L${completedLevels}`;
+    if (latestPractice.evaluation_state === 'evaluated' && latestPractice.achieved === false) return completedLevels > 0 ? '待巩固' : '继续挑战';
+    return '继续挑战';
+  })();
+
   return {
+    confirmedLevel,
     latestTargetLevel: toBloomLevel(latestPractice?.target_bloom_level),
     attemptedCount: practices.length,
     achievedCount: practices.filter((practice) => practice.achieved).length,
     latestState: latestPractice?.evaluation_state,
     completedLevels,
     currentLevel,
-    isComplete: completedLevels >= 6,
+    nextLevel,
+    statusLabel,
+    isComplete,
     levels: ([1, 2, 3, 4, 5, 6] as BloomLevel[]).map((level) => ({
       level,
-      state: achievedLevels.has(level) ? 'achieved' : level === currentLevel ? 'current' : 'locked',
+      state: achievedLevels.has(level) ? 'achieved' : level === currentLevel && !isComplete ? 'current' : 'locked',
     })),
   };
 }
@@ -60,10 +98,30 @@ export async function getStudentWorkspace(): Promise<DataResult<StudentWorkspace
   const role = await requireRole('student');
   if (!role.ok) return role;
   const caps = await getCapabilities(['student_chat', 'bloom_classification', 'project_classification', 'practice_generation', 'practice_evaluation']);
+  const classificationBlocked = [caps.bloom_classification, caps.project_classification]
+    .filter((capability) => !capability.ready)
+    .map((capability) => capability.blockedReason ?? `缺少 ${capability.capability} 真实模型能力配置。`)
+    .join('；') || undefined;
+
+  const supabase = await createClient();
+  const { data: archiveConversations, error: archiveError } = await supabase
+    .from('conversations')
+    .select('id,title,updated_at,conversation_messages(id)')
+    .eq('owner_id', role.data.id)
+    .eq('source', 'student_chat')
+    .is('project_id', null)
+    .order('updated_at', { ascending: false })
+    .limit(8);
+  if (archiveError) return fail('error', `日常会话归档加载失败：${archiveError.message}`);
+
   return ok({
     providerBlocked: caps.student_chat.ready ? undefined : caps.student_chat.blockedReason,
-    classificationBlocked: caps.bloom_classification.ready && caps.project_classification.ready ? undefined : '缺少 bloom_classification / project_classification 真实模型能力配置。',
-    challengeBlocked: caps.practice_generation.ready && caps.practice_evaluation.ready ? undefined : '缺少 practice_generation / practice_evaluation 真实模型能力配置。',
+    classificationBlocked,
+    challengeBlocked: caps.practice_generation.ready && caps.practice_evaluation.ready ? undefined : '挑战生成或挑战确认能力尚未就绪。',
+    dailyArchive: {
+      sessions: (archiveConversations ?? []).map((conversation) => toSessionSummary(conversation as ConversationSummaryRow)),
+      updatedLabel: archiveConversations?.[0]?.updated_at ? new Date(archiveConversations[0].updated_at).toLocaleString('zh-CN') : undefined,
+    },
   });
 }
 
@@ -77,7 +135,7 @@ export async function getStudentProjects(): Promise<DataResult<ProjectSummary[]>
   const summaries = await Promise.all((projects ?? []).map(async (project) => {
     const [{ data: conversations, error: conversationError }, { data: levelRows, error: levelError }, { data: practices, error: practiceError }] = await Promise.all([
       supabase.from('conversations').select('id,title,updated_at,conversation_messages(id)').eq('project_id', project.id).order('updated_at', { ascending: false }).limit(5),
-      supabase.from('conversation_messages').select('bloom_level, conversations!inner(project_id)').eq('conversations.project_id', project.id).eq('role', 'user'),
+      supabase.from('conversation_messages').select('bloom_level, conversations!inner(project_id)').eq('conversations.project_id', project.id).eq('role', 'user').eq('bloom_state', 'classified'),
       supabase.from('practice_records').select('target_bloom_level,achieved,evaluation_state,created_at').eq('project_id', project.id).order('created_at', { ascending: false }),
     ]);
     if (conversationError) throw new Error(`会话统计失败：${conversationError.message}`);
@@ -90,12 +148,8 @@ export async function getStudentProjects(): Promise<DataResult<ProjectSummary[]>
       achievedChallengeCount: (practices ?? []).filter((practice) => practice.target_bloom_level === level && practice.achieved).length,
     }));
     const questionCount = (levelRows ?? []).length;
-    const sessions = (conversations ?? []).map((conversation) => ({
-      id: conversation.id,
-      title: conversation.title ?? '未命名会话',
-      messageCount: Array.isArray(conversation.conversation_messages) ? conversation.conversation_messages.length : 0,
-      updatedLabel: new Date(conversation.updated_at).toLocaleString('zh-CN'),
-    }));
+    const sessions = (conversations ?? []).map((conversation) => toSessionSummary(conversation as ConversationSummaryRow));
+    const challengeProgress = buildChallengeProgress(practices ?? []);
 
     return {
       id: project.id,
@@ -107,7 +161,7 @@ export async function getStudentProjects(): Promise<DataResult<ProjectSummary[]>
       updatedLabel: new Date(project.updated_at).toLocaleString('zh-CN'),
       sessions,
       levelSummary,
-      challengeProgress: buildChallengeProgress(practices ?? [], project.highest_bloom_level),
+      challengeProgress,
     };
   }));
 
@@ -122,12 +176,12 @@ export async function getStudentProject(projectId: string): Promise<DataResult<P
   if (error) return fail('error', `篇目详情加载失败：${error.message}`);
   if (!project) return ok(null);
   const [{ data: questions, error: qError }, { data: practices, error: pError }] = await Promise.all([
-    supabase.from('conversation_messages').select('*, conversations!inner(project_id)').eq('conversations.project_id', project.id).eq('role', 'user').order('created_at', { ascending: false }),
+    supabase.from('conversation_messages').select('*, conversations!inner(project_id)').eq('conversations.project_id', project.id).eq('role', 'user').eq('bloom_state', 'classified').order('created_at', { ascending: false }),
     supabase.from('practice_records').select('*').eq('project_id', project.id).order('created_at', { ascending: false }),
   ]);
   if (qError) return fail('error', `问题记录加载失败：${qError.message}`);
-  if (pError) return fail('error', `练习记录加载失败：${pError.message}`);
-  const challengeProgress = buildChallengeProgress(practices ?? [], project.highest_bloom_level);
+  if (pError) return fail('error', `挑战记录加载失败：${pError.message}`);
+  const challengeProgress = buildChallengeProgress(practices ?? []);
   return ok({ project, questions: (questions ?? []) as Database['public']['Tables']['conversation_messages']['Row'][], practices: practices ?? [], challengeProgress });
 }
 
@@ -136,7 +190,8 @@ export async function getStudentProfileSummary() {
   if (!projects.ok) return projects;
   const distribution = [1, 2, 3, 4, 5, 6].map((level) => ({
     level,
-    count: projects.data.reduce((sum, project) => sum + (project.levelSummary.find((item) => item.level === level)?.questionCount ?? 0), 0),
+    count: projects.data.filter((project) => project.challengeProgress.confirmedLevel === level).length,
   }));
-  return ok({ distribution, projects: projects.data });
+  const awaitingChallengeCount = projects.data.filter((project) => !project.challengeProgress.confirmedLevel).length;
+  return ok({ distribution, projects: projects.data, awaitingChallengeCount });
 }

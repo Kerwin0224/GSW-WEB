@@ -202,7 +202,6 @@ async function seedInteractionTrace({ admin, studentClient, teacher, student, cl
     owner_id: student.id,
     class_id: classId,
     project_id: projectId,
-    workspace_type: 'student',
     source: 'student_chat',
     title: prompt.slice(0, 80),
   }).select('id').single(), `${kind} conversation insert`);
@@ -233,10 +232,6 @@ async function seedInteractionTrace({ admin, studentClient, teacher, student, cl
 
   await assertOk(await admin.from('audit_records').insert({
     id: auditRecordId,
-    source_type: 'message',
-    source_id: assistantMessageId,
-    dataset_type: 'sft',
-    original_prompt: prompt,
     source_message_id: assistantMessageId,
     source_conversation_id: conversationId,
     auditor_id: teacher.id,
@@ -245,7 +240,6 @@ async function seedInteractionTrace({ admin, studentClient, teacher, student, cl
     status: 'pending',
     prompt,
     original_answer: answer,
-    source_metadata: { e2e_run_id: RUN_ID, trace_kind: kind },
     metadata: { e2e_run_id: RUN_ID, trace_kind: kind, generated_from: 'real_supabase_rls_trace' },
   }).select('id').single(), `${kind} pending audit insert`);
   created.auditRecordIds.push(auditRecordId);
@@ -320,34 +314,29 @@ async function main() {
       sftTrace.prompt,
       sftTrace.answer,
       sftTrace.title,
-      'SFT / DPO 标注',
-      '预览最终数据',
-      '正式导出由管理员执行',
+      '学习记录核实',
+      '确认无误或修订回答',
     ]);
 
     await postJson('/api/teacher/audit/sft', teacherSession, {
       sourceMessageId: sftTrace.assistantMessageId,
-      quality: 'needs_correction',
-      correctedAnswer: `${RUN_ID} SFT 修正回答：这句话以色彩、动态和空间层次呈现桃花源入口的理想化审美。`,
-      rationale: '修正后更适合进入 SFT 数据。',
     });
 
     await postJson('/api/teacher/audit/dpo', teacherSession, {
       sourceMessageId: dpoTrace.assistantMessageId,
-      chosenAnswer: `${RUN_ID} DPO chosen：先解释意象，再追问学生如何联系全文理想社会。`,
-      rejectedAnswer: dpoTrace.answer,
-      rationale: 'chosen 更符合苏格拉底式追问和 Bloom 升阶。',
+      correctedAnswer: `${RUN_ID} DPO 修订回答：先解释意象，再追问学生如何联系全文理想社会。`,
+      rationale: '修订版更符合苏格拉底式追问和 Bloom 升阶。',
     });
 
     const sftTeacherPreview = await postJson('/api/teacher/datasets/preview', teacherSession, { type: 'sft' });
     assert(!('downloadUrl' in sftTeacherPreview), 'Teacher preview must not expose a downloadUrl.');
     assert(JSON.stringify(sftTeacherPreview).includes('messages'), 'Teacher SFT preview must expose chat-style messages.');
-    assert(JSON.stringify(sftTeacherPreview).includes(sftTrace.auditRecordId), 'Teacher SFT preview must preserve source_record_id.');
+    assert(JSON.stringify(sftTeacherPreview).includes(sftTrace.assistantMessageId), 'Teacher SFT preview must preserve source_message_id-derived sample ids.');
 
     const dpoTeacherPreview = await postJson('/api/teacher/datasets/preview', teacherSession, { type: 'dpo' });
     assert(!('downloadUrl' in dpoTeacherPreview), 'Teacher preview must not expose a downloadUrl.');
     assert(JSON.stringify(dpoTeacherPreview).includes('chosen'), 'Teacher DPO preview must expose chosen/rejected rows.');
-    assert(JSON.stringify(dpoTeacherPreview).includes(dpoTrace.auditRecordId), 'Teacher DPO preview must preserve source_record_id.');
+    assert(JSON.stringify(dpoTeacherPreview).includes(dpoTrace.assistantMessageId), 'Teacher DPO preview must preserve source_message_id-derived sample ids.');
 
     const adminSftPreview = await postJson('/api/admin/datasets/export', adminSession, {
       type: 'sft',
@@ -377,7 +366,7 @@ async function main() {
     const sftDownload = await fetchApp(sftExportResult.downloadUrl, adminSession);
     const sftJsonl = await sftDownload.text();
     assert(sftDownload.ok, `SFT download route returned ${sftDownload.status}: ${sftJsonl.slice(0, 300)}`);
-    assert(sftJsonl.includes(sftTrace.auditRecordId) && sftJsonl.includes('source_record_id') && sftJsonl.includes('messages'), 'Downloaded SFT JSONL must contain this run traceable chat row.');
+    assert(sftJsonl.includes(sftTrace.assistantMessageId) && sftJsonl.includes('sourceRecordId') && sftJsonl.includes('messages'), 'Downloaded SFT JSONL must contain this run traceable chat row.');
 
     const dpoExportResult = await postJson('/api/admin/datasets/export', adminSession, {
       type: 'dpo',
@@ -391,7 +380,7 @@ async function main() {
     const dpoDownload = await fetchApp(dpoExportResult.downloadUrl, adminSession);
     const dpoJsonl = await dpoDownload.text();
     assert(dpoDownload.ok, `DPO download route returned ${dpoDownload.status}: ${dpoJsonl.slice(0, 300)}`);
-    assert(dpoJsonl.includes(dpoTrace.auditRecordId) && dpoJsonl.includes('source_record_id') && dpoJsonl.includes('prompt') && dpoJsonl.includes('chosen') && dpoJsonl.includes('rejected'), 'Downloaded DPO JSONL must contain this run traceable preference row.');
+    assert(dpoJsonl.includes(dpoTrace.assistantMessageId) && dpoJsonl.includes('sourceRecordId') && dpoJsonl.includes('prompt') && dpoJsonl.includes('chosen') && dpoJsonl.includes('rejected'), 'Downloaded DPO JSONL must contain this run traceable preference row.');
 
     const forbiddenTeacherExport = await fetchApp('/api/admin/datasets/export', teacherSession, {
       method: 'POST',

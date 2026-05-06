@@ -18,17 +18,17 @@ interface AppShellProps { role: Role; displayName: string; breadcrumbs: Breadcru
 const breadcrumbMap: Record<string, string> = {
   '/student': '学习提问',
   '/student/projects': '篇目项目',
-  '/student/challenge': '层级挑战',
-  '/student/me': '我的画像',
-  '/teacher': '教学对话',
+  '/student/challenge': '挑战确认',
+  '/student/me': '学生看板',
+  '/teacher': '教师看板',
   '/teacher/audit': '学习记录核实',
   '/teacher/analytics': '学情线索',
-  '/admin': '系统就绪/用户',
-  '/admin/classes': '班级关系',
+  '/admin': '管理看板',
+  '/admin/classes': '班级成员管理',
   '/admin/providers': '模型 Provider',
   '/admin/mcp': 'MCP 能力',
   '/admin/presets': 'Prompt 预设',
-  '/admin/exports': '数据集导出',
+  '/admin/exports': '教学数据导出',
   '/admin/logs': '运行日志',
 };
 
@@ -75,24 +75,30 @@ export function AppShell({ role, displayName, breadcrumbs, children }: AppShellP
   return (
     <SidebarProvider>
       <AppSidebar role={role} displayName={displayName} />
-      <main className="flex min-h-svh flex-1 flex-col bg-background">
-        <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
-          <Breadcrumb className="min-w-0 flex-1">
-            <BreadcrumbList>
+      <main className="relative flex min-h-svh flex-1 flex-col overflow-hidden bg-transparent">
+        <a
+          href="#workspace-main"
+          className="sr-only fixed left-4 top-4 z-50 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-ink focus:not-sr-only focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+        >
+          跳到主要内容
+        </a>
+        <header className="sticky top-0 z-30 mx-2 mt-2 flex h-14 shrink-0 items-center gap-3 rounded-lg border border-border/70 bg-background/88 px-3 shadow-soft backdrop-blur-xl sm:mx-4 sm:px-5">
+          <SidebarTrigger className="-ml-1 min-h-10 min-w-10 cursor-pointer rounded-lg" aria-label="展开或收起侧边栏" />
+          <Separator orientation="vertical" className="hidden h-5 sm:block" />
+          <Breadcrumb className="min-w-0 flex-1 overflow-hidden">
+            <BreadcrumbList className="flex-nowrap text-xs sm:text-sm">
               {visibleBreadcrumbs.map((seg, i) => (
-                <span key={`${seg.label}-${i}`} className="flex items-center gap-2">
-                  <BreadcrumbItem>
-                    {seg.href ? <BreadcrumbLink href={seg.href}>{seg.label}</BreadcrumbLink> : <BreadcrumbPage>{seg.label}</BreadcrumbPage>}
+                <span key={`${seg.label}-${i}`} className="flex min-w-0 items-center gap-2">
+                  <BreadcrumbItem className="min-w-0">
+                    {seg.href ? <BreadcrumbLink href={seg.href} className="truncate transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{seg.label}</BreadcrumbLink> : <BreadcrumbPage className="truncate font-medium">{seg.label}</BreadcrumbPage>}
                   </BreadcrumbItem>
-                  {i < visibleBreadcrumbs.length - 1 && <BreadcrumbSeparator />}
+                  {i < visibleBreadcrumbs.length - 1 && <BreadcrumbSeparator className="shrink-0" />}
                 </span>
               ))}
             </BreadcrumbList>
           </Breadcrumb>
           <RoleBadge role={role} className="hidden sm:inline-flex" />
-          <Button variant="ghost" size="sm" onClick={handleLogout} disabled={isLoggingOut} aria-label="退出登录">
+          <Button variant="ghost" size="sm" onClick={handleLogout} disabled={isLoggingOut} aria-label="退出登录" className="min-h-10 cursor-pointer gap-2 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
             <LogOut className="size-4" aria-hidden="true" />
             <span className="hidden sm:inline">{isLoggingOut ? '退出中…' : '退出登录'}</span>
           </Button>
@@ -102,7 +108,7 @@ export function AppShell({ role, displayName, breadcrumbs, children }: AppShellP
             {logoutError}
           </div>
         ) : null}
-        <div className="flex-1">{children}</div>
+        <div id="workspace-main" className="flex-1 scroll-mt-20" tabIndex={-1}>{children}</div>
       </main>
     </SidebarProvider>
   );

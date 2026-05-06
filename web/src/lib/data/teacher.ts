@@ -8,6 +8,7 @@ import type { Database } from '@/lib/supabase/database.types';
 export type TeacherWorkspace = { presets: Database['public']['Tables']['prompt_presets']['Row'][]; teacherPresets: Database['public']['Tables']['prompt_presets']['Row'][]; providerBlocked?: string };
 export type TeacherAuditMessage = { id: string; role: 'user' | 'assistant' | 'system' | 'tool'; content: string; createdAt: string; isSource: boolean };
 export type TeacherPreReviewIssue = { quote: string; label: string; severity: 'low' | 'medium' | 'high' };
+export type ReviewState = 'pending' | 'confirmed' | 'revised';
 export type AuditQueueRecord = {
   id: string;
   conversationId: string;
@@ -15,12 +16,43 @@ export type AuditQueueRecord = {
   prompt: string;
   answer: string;
   classId: string | null;
+  classLabel: string;
   studentName: string;
   projectTitle: string;
+  sessionLabel: string;
   createdAt: string;
   transcript: TeacherAuditMessage[];
   preReviewIssues: TeacherPreReviewIssue[];
   preReviewBlocked?: string;
+  reviewState: ReviewState;
+};
+
+type ConversationJoin = {
+  class_id: string | null;
+  project_id: string | null;
+  source: string;
+  title?: string | null;
+  profiles?: { display_name?: string | null } | Array<{ display_name?: string | null }>;
+  text_projects?: { title?: string | null } | Array<{ title?: string | null }>;
+  classes?: { name?: string | null } | Array<{ name?: string | null }>;
+};
+
+type ReviewAuditRow = {
+  kind?: string | null;
+  status?: string | null;
+  corrected_answer?: string | null;
+  chosen_answer?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type CandidateRow = {
+  id: string;
+  conversation_id: string;
+  content: string;
+  created_at: string;
+  audit_records?: ReviewAuditRow[];
+  conversations?: ConversationJoin | ConversationJoin[];
 };
 
 function resolveLanguageModel(capability: CapabilityStatus): LanguageModel | null {
@@ -29,6 +61,25 @@ function resolveLanguageModel(capability: CapabilityStatus): LanguageModel | nul
   if (!apiKey) return null;
   if (capability.providerType === 'gateway') return createGateway({ apiKey, baseURL: capability.baseUrl ?? process.env.AI_GATEWAY_BASE_URL })(capability.modelId);
   return createOpenAI({ apiKey, baseURL: capability.baseUrl ?? process.env.OPENAI_BASE_URL ?? undefined })(capability.modelId);
+}
+
+function firstJoined<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
+function reviewTimestamp(row: ReviewAuditRow) {
+  return row.updated_at ?? row.created_at ?? '';
+}
+
+function resolveReviewState(audits: ReviewAuditRow[] | undefined): ReviewState {
+  const reviewed = (audits ?? []).filter((audit) => audit.status === 'approved' || audit.status === 'exported');
+  if (reviewed.length === 0) return 'pending';
+
+  const latestReviewed = [...reviewed].sort((left, right) => reviewTimestamp(right).localeCompare(reviewTimestamp(left)))[0];
+  if (!latestReviewed) return 'pending';
+  if (latestReviewed.kind === 'dpo' || latestReviewed.corrected_answer || latestReviewed.chosen_answer) return 'revised';
+  return 'confirmed';
 }
 
 const preReviewSchema = z.object({
@@ -49,6 +100,13 @@ async function runPreReview(model: LanguageModel, prompt: string, answer: string
   return issues.filter((issue) => issue.quote.trim() && issue.label.trim()).slice(0, 3);
 }
 
+async function getTeacherClassIds(teacherId: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from('class_memberships').select('class_id').eq('profile_id', teacherId).eq('role', 'teacher');
+  if (error) return { ok: false as const, message: `教师班级范围加载失败：${error.message}` };
+  return { ok: true as const, classIds: (data ?? []).map((row) => row.class_id) };
+}
+
 export async function getTeacherWorkspace(): Promise<DataResult<TeacherWorkspace>> {
   const role = await requireRole('teacher');
   if (!role.ok) return role;
@@ -64,50 +122,71 @@ export async function getTeacherWorkspace(): Promise<DataResult<TeacherWorkspace
 export async function getTeacherAuditQueue(): Promise<DataResult<AuditQueueRecord[]>> {
   const role = await requireRole('teacher');
   if (!role.ok) return role;
+
+  const classScope = await getTeacherClassIds(role.data.id);
+  if (!classScope.ok) return fail('error', classScope.message);
+  if (classScope.classIds.length === 0) return ok([]);
+
   const supabase = await createClient();
   const [messageResult, auditCap] = await Promise.all([
     supabase
       .from('conversation_messages')
-      .select('id,conversation_id,content,created_at,conversations!inner(id,class_id,owner_id,source,profiles(display_name),text_projects(title)), audit_records(id,status)')
+      .select('id,conversation_id,content,created_at,conversations!inner(class_id,project_id,source,title,profiles(display_name),text_projects(title),classes(name)), audit_records(kind,status,corrected_answer,chosen_answer,created_at,updated_at)')
       .eq('role', 'assistant')
       .order('created_at', { ascending: false })
-      .limit(30),
+      .limit(200),
     getCapability('audit_assist'),
   ]);
   if (messageResult.error) return fail('error', `审阅队列加载失败：${messageResult.error.message}`);
 
-  const candidateRows = ((messageResult.data ?? []) as Array<{
-    id: string;
-    conversation_id: string;
-    content: string;
-    created_at: string;
-    audit_records?: Array<{ id: string; status?: string }>;
-    conversations?: { class_id: string | null; owner_id?: string | null; profiles?: { display_name?: string | null } | Array<{ display_name?: string | null }>; text_projects?: { title?: string | null } | Array<{ title?: string | null }> } | Array<{ class_id: string | null; owner_id?: string | null; profiles?: { display_name?: string | null } | Array<{ display_name?: string | null }>; text_projects?: { title?: string | null } | Array<{ title?: string | null }> }>;
-  }>).filter((row) => !row.audit_records?.some((record) => record.status === 'approved' || record.status === 'exported'));
+  const candidateRows = ((messageResult.data ?? []) as CandidateRow[])
+    .filter((row) => {
+      const conversation = firstJoined(row.conversations);
+      return Boolean(
+        conversation?.class_id
+        && classScope.classIds.includes(conversation.class_id)
+        && conversation.source === 'student_chat'
+        && conversation.project_id,
+      );
+    })
+    .map((row) => ({ row, reviewState: resolveReviewState(row.audit_records) }))
+    .sort((left, right) => {
+      if (left.reviewState === right.reviewState) return right.row.created_at.localeCompare(left.row.created_at);
+      if (left.reviewState === 'pending') return -1;
+      if (right.reviewState === 'pending') return 1;
+      if (left.reviewState === 'revised' && right.reviewState === 'confirmed') return -1;
+      if (left.reviewState === 'confirmed' && right.reviewState === 'revised') return 1;
+      return right.row.created_at.localeCompare(left.row.created_at);
+    })
+    .slice(0, 30);
 
   const preReviewModel = auditCap.ok && auditCap.data.ready ? resolveLanguageModel(auditCap.data) : null;
   const preReviewBlocked = preReviewModel ? undefined : auditCap.ok ? auditCap.data.blockedReason : auditCap.message;
 
-  const records = await Promise.all(candidateRows.map(async (row) => {
-    const [{ data: transcriptRows }, { data: promptRow }] = await Promise.all([
-      supabase
-        .from('conversation_messages')
-        .select('id,role,content,created_at')
-        .eq('conversation_id', row.conversation_id)
-        .order('created_at', { ascending: true }),
-      supabase
-        .from('conversation_messages')
-        .select('content')
-        .eq('conversation_id', row.conversation_id)
-        .eq('role', 'user')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ]);
-    const conversation = Array.isArray(row.conversations) ? row.conversations[0] : row.conversations;
-    const profile = Array.isArray(conversation?.profiles) ? conversation?.profiles[0] : conversation?.profiles;
-    const project = Array.isArray(conversation?.text_projects) ? conversation?.text_projects[0] : conversation?.text_projects;
-    const prompt = promptRow?.content ?? '源问题未返回；请先核对完整对话再确认。';
+  const records = await Promise.all(candidateRows.map(async ({ row, reviewState }) => {
+    const { data: transcriptRows, error: transcriptError } = await supabase
+      .from('conversation_messages')
+      .select('id,role,content,created_at')
+      .eq('conversation_id', row.conversation_id)
+      .order('created_at', { ascending: true });
+
+    if (transcriptError) throw new Error(`会话记录加载失败：${transcriptError.message}`);
+
+    const transcript = (transcriptRows ?? []).map((transcriptRow) => ({
+      id: transcriptRow.id,
+      role: transcriptRow.role,
+      content: transcriptRow.content,
+      createdAt: transcriptRow.created_at,
+      isSource: transcriptRow.id === row.id,
+    }));
+
+    const sourceIndex = transcript.findIndex((item) => item.id === row.id);
+    const prompt = sourceIndex <= 0 ? '源问题未返回；请先核对完整对话再确认。' : [...transcript.slice(0, sourceIndex)].reverse().find((item) => item.role === 'user')?.content ?? '源问题未返回；请先核对完整对话再确认。';
+    const conversation = firstJoined(row.conversations);
+    const profile = firstJoined(conversation?.profiles);
+    const project = firstJoined(conversation?.text_projects);
+    const klass = firstJoined(conversation?.classes);
+
     let preReviewIssues: TeacherPreReviewIssue[] = [];
     let rowPreReviewBlocked = preReviewBlocked;
     if (preReviewModel) {
@@ -126,13 +205,16 @@ export async function getTeacherAuditQueue(): Promise<DataResult<AuditQueueRecor
       prompt,
       answer: row.content,
       classId: conversation?.class_id ?? null,
+      classLabel: klass?.name?.trim() || '未命名班级',
       studentName: profile?.display_name ?? '学生',
-      projectTitle: project?.title ?? '未归档篇目',
+      projectTitle: project?.title ?? '未关联篇目',
+      sessionLabel: conversation?.title?.trim() || `会话 ${row.conversation_id.slice(0, 8)}`,
       createdAt: row.created_at,
-      transcript: (transcriptRows ?? []).map((transcriptRow) => ({ id: transcriptRow.id, role: transcriptRow.role, content: transcriptRow.content, createdAt: transcriptRow.created_at, isSource: transcriptRow.id === row.id })),
+      transcript,
       preReviewIssues,
       preReviewBlocked: rowPreReviewBlocked,
-    };
+      reviewState,
+    } satisfies AuditQueueRecord;
   }));
 
   return ok(records);
@@ -141,31 +223,57 @@ export async function getTeacherAuditQueue(): Promise<DataResult<AuditQueueRecor
 export async function getTeacherAnalytics() {
   const role = await requireRole('teacher');
   if (!role.ok) return role;
+
+  const classScope = await getTeacherClassIds(role.data.id);
+  if (!classScope.ok) return fail('error', classScope.message);
+
   const supabase = await createClient();
   const weekStart = new Date();
   weekStart.setDate(weekStart.getDate() - 7);
   const weekStartIso = weekStart.toISOString();
-  const [{ count: classCount, error: classError }, { count: auditCount, error: auditError }, { count: reviewedCount, error: reviewedError }, { count: weeklyEligible, error: weeklyEligibleError }, { count: weeklyAudited, error: weeklyAuditedError }] = await Promise.all([
+
+  const [{ count: classCount, error: classError }, { data: messageRows, error: messageError }] = await Promise.all([
     supabase.from('class_memberships').select('id', { count: 'exact', head: true }).eq('profile_id', role.data.id).eq('role', 'teacher'),
-    supabase.from('conversation_messages').select('id', { count: 'exact', head: true }).eq('role', 'assistant'),
-    supabase.from('audit_records').select('id', { count: 'exact', head: true }).eq('auditor_id', role.data.id).in('status', ['approved', 'rejected', 'exported']),
-    supabase.from('conversation_messages').select('id', { count: 'exact', head: true }).eq('role', 'assistant').gte('created_at', weekStartIso),
-    supabase.from('audit_records').select('id', { count: 'exact', head: true }).eq('auditor_id', role.data.id).gte('updated_at', weekStartIso).in('status', ['approved', 'rejected', 'exported']),
+    supabase
+      .from('conversation_messages')
+      .select('id,created_at,conversations!inner(class_id,project_id,source),audit_records(kind,status,corrected_answer,chosen_answer,created_at,updated_at)')
+      .eq('role', 'assistant')
+      .order('created_at', { ascending: false })
+      .limit(500),
   ]);
+
   if (classError) return fail('error', `班级统计失败：${classError.message}`);
-  if (auditError) return fail('error', `待核实统计失败：${auditError.message}`);
-  if (reviewedError) return fail('error', `已核实统计失败：${reviewedError.message}`);
-  if (weeklyEligibleError) return fail('error', `本周候选统计失败：${weeklyEligibleError.message}`);
-  if (weeklyAuditedError) return fail('error', `本周核实统计失败：${weeklyAuditedError.message}`);
-  const eligible = weeklyEligible ?? 0;
-  const audited = weeklyAudited ?? 0;
+  if (messageError) return fail('error', `学习记录统计失败：${messageError.message}`);
+
+  const eligibleRows = ((messageRows ?? []) as Array<{
+    id: string;
+    created_at: string;
+    audit_records?: ReviewAuditRow[];
+    conversations?: { class_id: string | null; project_id: string | null; source: string } | Array<{ class_id: string | null; project_id: string | null; source: string }>;
+  }>).filter((row) => {
+    const conversation = firstJoined(row.conversations);
+    return Boolean(
+      conversation?.class_id
+      && classScope.classIds.includes(conversation.class_id)
+      && conversation.source === 'student_chat'
+      && conversation.project_id,
+    );
+  });
+
+  const auditStates = eligibleRows.map((row) => ({ createdAt: row.created_at, reviewState: resolveReviewState(row.audit_records) }));
+  const reviewed = auditStates.filter((row) => row.reviewState !== 'pending');
+  const weeklyEligibleRows = auditStates.filter((row) => row.createdAt >= weekStartIso);
+  const weeklyAuditedRows = weeklyEligibleRows.filter((row) => row.reviewState !== 'pending');
+  const eligible = weeklyEligibleRows.length;
+  const audited = weeklyAuditedRows.length;
   const pending = Math.max(eligible - audited, 0);
   const coveragePercent = eligible > 0 ? Math.min(Math.round((audited / eligible) * 100), 100) : 0;
+
   return ok({
     assignedClasses: classCount ?? 0,
-    auditWorkload: auditCount ?? 0,
-    studentsNeedingReview: auditCount ?? 0,
-    reviewedCount: reviewedCount ?? 0,
+    auditWorkload: auditStates.filter((row) => row.reviewState === 'pending').length,
+    studentsNeedingReview: auditStates.filter((row) => row.reviewState === 'pending').length,
+    reviewedCount: reviewed.length,
     weeklyAuditCoverage: { coveragePercent, audited, pending, eligible },
     stuckStudents: [] as Array<{ studentId: string; studentName: string; className: string; lowLevelAttempts: number; attempts: number; auditHref: string }>,
     weakProjects: [] as Array<{ projectId: string; title: string; className: string; notAchieved: number; attempts: number; weakRate: number; auditHref: string }>,

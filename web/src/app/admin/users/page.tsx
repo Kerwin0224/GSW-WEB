@@ -65,8 +65,8 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
       <WorkspaceHero
         eyebrow="用户管理"
         title="学校账号、角色、状态与班级归属一页看清。"
-        description="用户管理页基于真实 profiles 与 class_memberships 展示；CSV 导入必须先预览校验，再提交有效账号。"
-        primaryAction={{ label: '查看班级关系', href: '/admin/classes' }}
+        description="用户管理页基于真实 profiles 与 class_memberships 展示；MVP 只做查看、筛选、导入和班级归属摘要，不提供在线改角色或停用账号。"
+        primaryAction={{ label: '查看班级成员管理', href: '/admin/classes' }}
         metrics={[
           { label: '筛选结果', value: users.length, hint: '匹配当前条件' },
           { label: '启用账号', value: activeCount, hint: 'active profiles' },
@@ -170,7 +170,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
         </Card>
         <Card className="md:col-span-2">
           <CardHeader><CardTitle>班级归属规则</CardTitle></CardHeader>
-          <CardContent className="text-sm leading-7 text-muted-foreground">教师可负责多个班级；学生只允许属于一个班级。需要调整学生班级时，请在班级关系页使用成员分配完成自动迁班。</CardContent>
+          <CardContent className="text-sm leading-7 text-muted-foreground">教师可负责多个班级；学生只允许属于一个班级。需要调整学生班级时，请在班级成员管理页使用成员分配完成自动迁班。</CardContent>
         </Card>
       </section>
     </div>

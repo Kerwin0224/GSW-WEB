@@ -1,6 +1,6 @@
 'use client';
 
-import { isValidElement, type ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -16,7 +16,7 @@ import {
 type AdminDialogShellProps = {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  trigger: ReactNode;
+  trigger?: ReactElement;
   title: string;
   description?: string;
   icon?: ReactNode;
@@ -36,15 +36,9 @@ export function AdminDialogShell({
   footer,
   className = 'max-w-2xl',
 }: AdminDialogShellProps) {
-  const triggerElement = isValidElement(trigger) ? trigger : (
-    <Button type="button" variant="outline">
-      打开
-    </Button>
-  );
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal="trap-focus">
-      <DialogTrigger render={triggerElement} />
+      {trigger ? <DialogTrigger render={trigger} /> : null}
       <DialogContent className={className}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

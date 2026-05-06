@@ -26,9 +26,9 @@ export default async function TeacherAnalyticsPage() {
       <WorkspaceHero
         eyebrow="可行动学情"
         title="下一节课先看哪里卡住。"
-        description="教师看板只呈现能行动的班级线索：低阶卡住的学生、薄弱篇目和本周核实覆盖。v1 不做热力图。"
+        description="教师看板只呈现能行动的班级线索：低阶卡住的学生、薄弱篇目和本周学习记录核实覆盖。v1 不做热力图。"
         primaryAction={{ label: '处理待核实学习记录', href: '/teacher/audit' }}
-        secondaryAction={{ label: '回到备课对话', href: '/teacher#teacher-chat' }}
+        secondaryAction={{ label: '回到教师问答', href: '/teacher#teacher-chat' }}
         metrics={[
           { label: '负责班级', value: result.data.assignedClasses, hint: '由班级关系决定' },
           { label: '待核实记录', value: result.data.auditWorkload, hint: '等待教师确认或修订' },
@@ -46,7 +46,7 @@ export default async function TeacherAnalyticsPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {stuckStudents.length === 0 ? (
-              <EmptyState title="暂无低阶卡住学生" description="只有真实练习记录显示 L1-L2 未达成后，这里才会出现复盘对象。" />
+              <EmptyState title="暂无低阶卡住学生" description="只有真实挑战记录持续显示 L1-L2 未达成后，这里才会出现需要复盘的学生。" />
             ) : stuckStudents.map((student, index) => (
               <div key={student.studentId} className="flex items-center justify-between gap-3 rounded-lg border p-3">
                 <div className="min-w-0">
@@ -56,7 +56,7 @@ export default async function TeacherAnalyticsPage() {
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{student.className} · L1-L2 未达成 {student.lowLevelAttempts}/{student.attempts}</p>
                 </div>
-                <Button nativeButton={false} render={<Link href={student.auditHref}>看对话</Link>} variant="outline" size="sm" />
+                <Button nativeButton={false} render={<Link href={student.auditHref}>看会话</Link>} variant="outline" size="sm" />
               </div>
             ))}
           </CardContent>
@@ -71,7 +71,7 @@ export default async function TeacherAnalyticsPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {weakProjects.length === 0 ? (
-              <EmptyState title="暂无薄弱篇目排行" description="当真实练习出现未达成或失败评估后，这里按薄弱率排序。" />
+              <EmptyState title="暂无薄弱篇目排行" description="当真实挑战记录出现未达成或失败评估后，这里按薄弱率排序。" />
             ) : weakProjects.map((project, index) => (
               <div key={project.projectId} className="rounded-lg border p-3">
                 <div className="flex items-center justify-between gap-3">
@@ -116,7 +116,7 @@ export default async function TeacherAnalyticsPage() {
       <section className="space-y-4">
         <SectionHeader
           title="跨页行动"
-          description="从学情进入具体学习记录筛选，从学习记录核实回到教师问答，保持教师的下一课准备闭环。"
+          description="从学情进入具体学习记录核实，再回到教师问答追问误区，保持下一节课准备的闭环。"
           action={<Button nativeButton={false} render={<Link href="/teacher/instructions"><BarChart3 />编辑教学预设</Link>} variant="outline" />}
         />
       </section>

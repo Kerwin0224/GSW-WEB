@@ -1,8 +1,0 @@
-{"file": ".trellis/tasks/05-05-context-alignment-gaps/prd.md", "reason": "Acceptance criteria and scope for verification"}
-{"file": "CONTEXT.md", "reason": "Verify teacher/admin visible terminology against domain glossary"}
-{"file": ".trellis/spec/frontend/ui-ux-guidelines.md", "reason": "Verify role IA, states, and accessibility"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Verify empty/error/blocked/success states"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify typecheck and typed page data"}
-{"file": ".trellis/spec/frontend/teacher-workspace.md", "reason": "Verify teacher terminology avoids backend data labels"}
-{"file": ".trellis/spec/frontend/admin-workspace.md", "reason": "Verify admin IA and AI-ops terminology boundaries"}
-{"file": ".trellis/spec/backend/supabase-pgvector-guidelines.md", "reason": "Verify Supabase access remains aligned with current schema/RLS"}

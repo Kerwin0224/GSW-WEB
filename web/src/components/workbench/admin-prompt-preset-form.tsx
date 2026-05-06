@@ -31,7 +31,7 @@ export function AdminPromptPresetFormFields() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="scenario">教学场景</Label>
-          <Input id="scenario" name="scenario" placeholder="课堂追问 / 练习设计" />
+          <Input id="scenario" name="scenario" placeholder="课堂追问 / 挑战设计" />
           <FieldError message={state.errors?.scenario} />
         </div>
         <div className="space-y-2">

@@ -68,7 +68,7 @@ export function ChallengeClient({
 
   const generate = async (level: BloomLevel) => {
     if (progress.isComplete || level !== progress.currentLevel) {
-      setError(progress.isComplete ? 'L1 到 L6 已全部达标，请回到项目详情查看挑战核查证据。' : `请先完成当前 L${progress.currentLevel} 挑战，达标后才能进入下一层。`);
+      setError(progress.isComplete ? 'L1 到 L6 已全部达标，请回到项目详情查看挑战确认结果。' : `请先完成当前 L${progress.currentLevel} 挑战，达标后才能进入下一层。`);
       setTargetLevel(progress.currentLevel as BloomLevel);
       return;
     }
@@ -129,9 +129,9 @@ export function ChallengeClient({
   const achieved = state === 'evaluated' && evaluation?.achieved;
 
   return (
-    <div className={cn('min-h-[calc(100vh-4rem)] bg-background px-4 py-4 transition-all duration-700 sm:px-6', achieved && 'scale-[1.01] opacity-95')}>
+    <div className={cn('min-h-[calc(100vh-4rem)] bg-background px-4 py-4 transition-opacity duration-300 sm:px-6', achieved && 'opacity-95')}>
       <div className="mx-auto grid min-h-[calc(100vh-6rem)] max-w-7xl gap-4 lg:grid-cols-[5rem_minmax(0,1fr)_20rem]">
-        <aside className="order-2 flex rounded-xl border bg-card p-3 lg:order-1 lg:flex-col" aria-label="挑战进度">
+        <aside className="order-2 flex rounded-lg border bg-card p-3 lg:order-1 lg:flex-col" aria-label="挑战进度">
           {progress.levels.map((levelProgress) => {
             const level = levelProgress.level as BloomLevel;
             const locked = levelProgress.state === 'locked' || progress.isComplete;
@@ -159,24 +159,24 @@ export function ChallengeClient({
           })}
         </aside>
 
-        <main className="order-1 space-y-4 lg:order-2" aria-label="层级挑战作答区">
+        <main className="order-1 space-y-4 lg:order-2" aria-label="挑战确认作答区">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <Button variant="ghost" size="sm" nativeButton={false} render={<Link href={`/student/projects/${projectId}`} />}>
+            <Button variant="ghost" size="sm" nativeButton={false} render={<Link href={`/student?projectId=${projectId}`} />}>
               <ArrowLeft className="mr-2 size-4" />
-              返回篇目
+              回到项目提问
             </Button>
             <BloomBadge level={targetLevel} />
           </div>
 
           <Card className="min-h-[20rem] border-primary/20 shadow-sm">
             <CardHeader>
-              <CardTitle className="font-heading text-2xl">《{projectTitle}》层级挑战</CardTitle>
+              <CardTitle className="font-heading text-2xl">《{projectTitle}》挑战确认</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
               {state === 'idle' ? (
-                <div className="rounded-xl border border-dashed p-8 text-center">
+                <div className="rounded-lg border border-dashed p-8 text-center">
                   <p className="font-heading text-xl">从当前解锁层级 L{progress.currentLevel} 开始挑战</p>
-                  <p className="mt-2 text-sm text-muted-foreground">挑战用于核查能力：L1 到 L6 必须逐层达标，未达标会停留在当前层补强。</p>
+                  <p className="mt-2 text-sm text-muted-foreground">挑战用于确认当前层级：L1 到 L6 必须逐层达标；如果当前层级仍待巩固，就先回到项目提问补强。</p>
                 </div>
               ) : null}
 
@@ -197,15 +197,15 @@ export function ChallengeClient({
 
               {challenge ? (
                 <div className="space-y-4">
-                  <div className="rounded-xl border bg-muted/60 p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">结构化核查题</p>
-                    <p className="mt-2 text-sm text-muted-foreground">按三步作答：先给文本证据，再完成目标层级任务，最后说明为什么达标。</p>
+                  <div className="rounded-lg border bg-muted/60 p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">结构化确认题</p>
+                    <p className="mt-2 text-sm text-muted-foreground">按三步作答：先给文本证据，再完成目标层级任务，最后说明为什么可以确认当前层级。</p>
                   </div>
                   <div className="grid gap-3">
                     {challenge.structuredQuestions.map((question, index) => (
-                      <article key={`${question.label}-${index}`} className="rounded-xl border bg-background p-4">
+                      <article key={`${question.label}-${index}`} className="rounded-lg border bg-background p-4">
                         <div className="flex items-center gap-2">
-                          <span className="flex size-7 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">{index + 1}</span>
+                          <span className="flex size-7 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">{index + 1}</span>
                           <h3 className="font-heading text-lg">{question.label}</h3>
                         </div>
                         <p className="mt-3 whitespace-pre-wrap text-base leading-8">{question.prompt}</p>
@@ -255,18 +255,23 @@ export function ChallengeClient({
 
         <aside className="order-3 space-y-4" aria-label="挑战操作">
           <Card>
-            <CardHeader><CardTitle>当前目标</CardTitle></CardHeader>
+            <CardHeader><CardTitle>下一步行动</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
               <BloomBadge level={targetLevel} />
               <p>{bloomLevelInfo[targetLevel].hint}</p>
+              <p>优先继续挑战；如果当前层级还不稳，就先回到项目提问补强后再回来。</p>
               <Button type="button" className="w-full" onClick={() => generate(targetLevel)} disabled={progress.isComplete || state === 'loading' || state === 'submitting'}>
                 <Sparkles className="mr-2 size-4" />
-                {progress.isComplete ? '挑战已完成' : challenge ? '换一题' : '生成挑战'}
+                {progress.isComplete ? '挑战已完成' : '继续挑战'}
+              </Button>
+              <Button nativeButton={false} render={<Link href={`/student?projectId=${projectId}`} />} type="button" variant="outline" className="w-full">
+                <ArrowLeft className="mr-2 size-4" />
+                回到项目提问
               </Button>
               {evaluation && !evaluation.achieved ? (
                 <Button type="button" variant="outline" className="w-full" onClick={() => { setAnswer(''); setEvaluation(null); setState('ready'); }}>
                   <RefreshCw className="mr-2 size-4" />
-                  重新作答
+                  继续挑战
                 </Button>
               ) : null}
             </CardContent>

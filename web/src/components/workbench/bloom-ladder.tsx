@@ -29,7 +29,7 @@ export function BloomLadder({ levels, currentMaxLevel }: Props) {
             <div key={level} className="grid gap-3 sm:grid-cols-[7rem_1fr] sm:items-center">
               <div className="sm:text-right"><BloomBadge level={level} /></div>
               <Card
-                className={cn('p-3 transition-all hover:-translate-y-0.5 hover:shadow-md', !isActive && 'border-dashed opacity-70', isCurrent && 'ring-2 ring-accent ring-offset-1')}
+                className={cn('p-3 transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/35 hover:shadow-md', !isActive && 'border-dashed opacity-70', isCurrent && 'ring-2 ring-accent ring-offset-1')}
               >
                 <div className="mb-2 text-xs text-muted-foreground">{info.hint}</div>
                 {data.questions.length > 0 ? (
@@ -39,7 +39,7 @@ export function BloomLadder({ levels, currentMaxLevel }: Props) {
                         <TooltipTrigger render={
                           <button
                             type="button"
-                            className="size-8 rounded-full text-[10px] font-medium transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                            className="size-8 rounded-lg text-[10px] font-medium transition-[box-shadow] duration-200 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                             style={{ backgroundColor: `var(--bloom-${level})`, color: `var(--bloom-${level}-fg)` }}
                             aria-label={`L${level} ${info.label}问题：${q.text}`}
                           >

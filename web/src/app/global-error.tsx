@@ -28,12 +28,12 @@ export default function GlobalError({
   return (
     <html lang="zh-CN">
       <body>
-        <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: 'var(--background, #faf8f1)', color: 'var(--foreground, #2d2d2d)' }}>
-          <section style={{ maxWidth: 560, border: '1px solid var(--border, #d9d0c1)', borderRadius: 20, background: 'var(--card, white)', padding: 28 }}>
-            <p style={{ margin: 0, color: 'var(--destructive, #c04851)', fontSize: 14 }}>运行异常已记录</p>
+        <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: 'var(--background)', color: 'var(--foreground)' }}>
+          <section style={{ maxWidth: 560, border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--card)', padding: 28 }}>
+            <p style={{ margin: 0, color: 'var(--destructive)', fontSize: 14 }}>运行异常已记录</p>
             <h1 style={{ margin: '8px 0 12px', fontSize: 28 }}>文韵智途暂时没有稳定打开</h1>
             <p style={{ margin: 0, lineHeight: 1.7 }}>请重试当前页面；系统会把错误摘要写入本地日志，便于管理员定位。</p>
-            <button type="button" onClick={() => unstable_retry()} style={{ marginTop: 20, borderRadius: 12, border: 0, background: 'var(--primary, #4a6fa5)', color: 'var(--primary-foreground, white)', padding: '10px 16px' }}>
+            <button type="button" onClick={() => unstable_retry()} style={{ marginTop: 20, borderRadius: 'var(--radius)', border: 0, background: 'var(--primary)', color: 'var(--primary-foreground)', padding: '10px 16px' }}>
               重新加载
             </button>
           </section>

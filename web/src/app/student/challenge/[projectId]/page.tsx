@@ -45,7 +45,7 @@ export default async function StudentChallengePage({ params }: { params: Promise
     );
   }
 
-  const { project, practices } = result.data;
+  const { project, practices, challengeProgress } = result.data;
   const latestPractice = practices[0];
   const achievedCount = practices.filter((practice) => practice.achieved).length;
   const currentTarget = latestPractice && latestPractice.evaluation_state !== 'evaluated' ? latestPractice.target_bloom_level : nextLevel(project.highest_bloom_level);
@@ -53,30 +53,30 @@ export default async function StudentChallengePage({ params }: { params: Promise
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="单篇挑战"
-        title={`《${project.title}》认知挑战`}
-        description="挑战生成、作答评估、练习记录保存与项目认知状态更新在此闭环完成。缺少真实 Provider 时会明确阻塞。"
+        eyebrow="项目挑战"
+        title={`《${project.title}》挑战确认`}
+        description="这里围绕单个篇目项目完成挑战生成、作答评估与层级确认。缺少真实 Provider 时会明确阻塞，不伪造题目或结果。"
         primaryAction={{ label: '返回挑战入口', href: '/student/challenge' }}
-        secondaryAction={{ label: '查看项目详情', href: `/student/projects/${project.id}` }}
+        secondaryAction={{ label: '在该项目里继续提问', href: `/student?projectId=${project.id}` }}
         metrics={[
-          { label: '最高层级', value: project.highest_bloom_level ? `L${project.highest_bloom_level}` : '未达成', hint: 'text_projects.highest_bloom_level' },
-          { label: '挑战记录', value: practices.length, hint: 'practice_records' },
-          { label: '达成次数', value: achievedCount, hint: '真实评估结果' },
+          { label: '已确认层级', value: challengeProgress.confirmedLevel ? `L${challengeProgress.confirmedLevel}` : '等待挑战确认', hint: '只看挑战结果' },
+          { label: '挑战记录', value: practices.length, hint: '当前项目下的真实挑战尝试' },
+          { label: '已确认次数', value: achievedCount, hint: '真实评估结果' },
         ]}
       />
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
-          <CardHeader><CardTitle className="font-heading text-base">当前目标</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="font-heading text-base">下一挑战</CardTitle></CardHeader>
           <CardContent><BloomBadge level={currentTarget} /></CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle className="font-heading text-base">最近挑战状态</CardTitle></CardHeader>
-          <CardContent className="text-sm text-muted-foreground">{latestPractice ? `${latestPractice.evaluation_state}${latestPractice.achieved === null ? '' : latestPractice.achieved ? ' · 已达成' : ' · 未达成'}` : '暂无挑战'}</CardContent>
+          <CardHeader><CardTitle className="font-heading text-base">当前项目状态</CardTitle></CardHeader>
+          <CardContent className="text-sm text-muted-foreground">{challengeProgress.statusLabel}</CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle className="font-heading text-base">数据写入</CardTitle></CardHeader>
-          <CardContent className="text-sm text-muted-foreground">评估后写入 practice_records；达成时更新项目最高认知层级。</CardContent>
+          <CardHeader><CardTitle className="font-heading text-base">结果写入</CardTitle></CardHeader>
+          <CardContent className="text-sm text-muted-foreground">评估后保存挑战记录；达成时更新项目当前已确认层级。</CardContent>
         </Card>
       </div>
 

@@ -10,47 +10,161 @@ type SourceMessage = {
   id: string;
   conversation_id: string;
   content: string;
-  conversations?: { class_id: string | null } | Array<{ class_id: string | null }>;
+  created_at: string;
+  parts: unknown;
+  conversations?: {
+    class_id: string | null;
+    project_id: string | null;
+    source: string;
+  } | Array<{
+    class_id: string | null;
+    project_id: string | null;
+    source: string;
+  }>;
 };
 
-async function getSourceMessage(sourceMessageId: string): Promise<{ ok: true; source: SourceMessage; classId: string | null } | { ok: false; message: string }> {
+type AuditRow = {
+  id: string;
+  kind: 'sft' | 'dpo';
+  status: string;
+  original_answer: string | null;
+  corrected_answer: string | null;
+  chosen_answer: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type ReviewState = 'pending' | 'confirmed' | 'revised';
+
+type SourceContext = {
+  source: SourceMessage;
+  classId: string;
+  prompt: string;
+  originalAnswer: string;
+  currentAnswer: string;
+  reviewState: ReviewState;
+};
+
+function firstJoined<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
+function reviewTimestamp(row: AuditRow) {
+  return row.updated_at || row.created_at;
+}
+
+function resolveReviewState(audits: AuditRow[]): ReviewState {
+  const reviewed = audits.filter((audit) => audit.status === 'approved' || audit.status === 'exported');
+  if (reviewed.length === 0) return 'pending';
+
+  const latestReviewed = [...reviewed].sort((left, right) => reviewTimestamp(right).localeCompare(reviewTimestamp(left)))[0];
+  if (!latestReviewed) return 'pending';
+  if (latestReviewed.kind === 'dpo' || latestReviewed.corrected_answer || latestReviewed.chosen_answer) return 'revised';
+  return 'confirmed';
+}
+
+async function getSourceContext(sourceMessageId: string, teacherId: string): Promise<{ ok: true; data: SourceContext } | { ok: false; message: string }> {
   const supabase = await createClient();
   const { data: source, error: sourceError } = await supabase
     .from('conversation_messages')
-    .select('id,conversation_id,content,conversations!inner(class_id)')
+    .select('id,conversation_id,content,created_at,parts,conversations!inner(class_id,project_id,source)')
     .eq('id', sourceMessageId)
     .eq('role', 'assistant')
     .single();
-  if (sourceError || !source) return { ok: false, message: `源记录不可访问：${sourceError?.message ?? 'not found'}` };
-  const conversation = Array.isArray(source.conversations) ? source.conversations[0] : source.conversations;
-  return { ok: true, source: source as SourceMessage, classId: conversation?.class_id ?? null };
+
+  if (sourceError || !source) {
+    return { ok: false, message: `源记录不可访问：${sourceError?.message ?? 'not found'}` };
+  }
+
+  const conversation = firstJoined(source.conversations);
+  if (!conversation?.class_id || conversation.source !== 'student_chat' || !conversation.project_id) {
+    return { ok: false, message: '只有学生项目中的 AI 回答可以进入学习记录核实。' };
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from('class_memberships')
+    .select('id')
+    .eq('class_id', conversation.class_id)
+    .eq('profile_id', teacherId)
+    .eq('role', 'teacher')
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipError) {
+    return { ok: false, message: `教师班级权限校验失败：${membershipError.message}` };
+  }
+
+  if (!membership) {
+    return { ok: false, message: '你无权核实这条学习记录。' };
+  }
+
+  const [{ data: transcriptRows, error: transcriptError }, { data: auditRows, error: auditError }] = await Promise.all([
+    supabase
+      .from('conversation_messages')
+      .select('id,role,content,created_at')
+      .eq('conversation_id', source.conversation_id)
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('audit_records')
+      .select('id,kind,status,original_answer,corrected_answer,chosen_answer,created_at,updated_at')
+      .eq('source_message_id', source.id)
+      .order('created_at', { ascending: true }),
+  ]);
+
+  if (transcriptError) {
+    return { ok: false, message: `学习记录上下文加载失败：${transcriptError.message}` };
+  }
+
+  if (auditError) {
+    return { ok: false, message: `核实历史加载失败：${auditError.message}` };
+  }
+
+  const transcript = transcriptRows ?? [];
+  const sourceIndex = transcript.findIndex((row) => row.id === source.id);
+  const prompt = sourceIndex <= 0
+    ? ''
+    : [...transcript.slice(0, sourceIndex)].reverse().find((row) => row.role === 'user')?.content?.trim() ?? '';
+
+  if (!prompt) {
+    return { ok: false, message: '缺少这条 AI 回答对应的学生问题，不能脱离上下文核实。' };
+  }
+
+  const reviewedAudits = ((auditRows ?? []) as AuditRow[]).filter((row) => row.status === 'approved' || row.status === 'exported');
+  const originalAnswer = reviewedAudits.find((row) => row.original_answer?.trim())?.original_answer?.trim() ?? source.content.trim();
+
+  return {
+    ok: true,
+    data: {
+      source: source as SourceMessage,
+      classId: conversation.class_id,
+      prompt,
+      originalAnswer,
+      currentAnswer: source.content.trim(),
+      reviewState: resolveReviewState(reviewedAudits),
+    },
+  };
 }
 
-export async function confirmLearningRecord(sourceMessageId: string, _previousState: AuditSubmissionState, formData: FormData): Promise<AuditSubmissionState> {
+export async function confirmLearningRecord(sourceMessageId: string, _previousState: AuditSubmissionState, _formData: FormData): Promise<AuditSubmissionState> {
+  void _previousState;
+  void _formData;
   const role = await requireRole('teacher');
   if (!role.ok) return { ok: false, message: role.message };
 
-  const prompt = String(formData.get('prompt') ?? '').trim();
-  const originalAnswer = String(formData.get('original_answer') ?? '').trim();
-  const errors: Record<string, string> = {};
-  if (!prompt) errors.prompt = '缺少源问题，不能脱离上下文确认。';
-  if (!originalAnswer) errors.original_answer = '缺少 AI 原回答。';
-  if (Object.keys(errors).length > 0) return { ok: false, message: '请先选择完整学习记录。', errors };
+  const contextResult = await getSourceContext(sourceMessageId, role.data.id);
+  if (!contextResult.ok) return { ok: false, message: contextResult.message };
 
-  const sourceResult = await getSourceMessage(sourceMessageId);
-  if (!sourceResult.ok) return { ok: false, message: sourceResult.message };
+  const { source, classId, prompt, originalAnswer, reviewState } = contextResult.data;
+  if (reviewState === 'confirmed') {
+    return { ok: true, message: '这条记录已经确认无误；如需调整，请直接保存修订。' };
+  }
+
+  if (reviewState === 'revised') {
+    return { ok: true, message: '这条记录当前已是教师修订版；如需继续调整，请直接保存修订。' };
+  }
+
   const supabase = await createClient();
-  const { source, classId } = sourceResult;
-  const { data: existingApproved, error: existingError } = await supabase
-    .from('audit_records')
-    .select('id,status')
-    .eq('source_message_id', source.id)
-    .in('status', ['approved', 'exported'])
-    .limit(1)
-    .maybeSingle();
-  if (existingError) return { ok: false, message: `核实状态检查失败：${existingError.message}` };
-  if (existingApproved) return { ok: false, message: '这条学习记录已经核实过，不能重复确认或修订。' };
-
   const { error } = await supabase.from('audit_records').insert({
     source_message_id: source.id,
     source_conversation_id: source.conversation_id,
@@ -65,42 +179,37 @@ export async function confirmLearningRecord(sourceMessageId: string, _previousSt
     rationale: '教师确认无误。',
     metadata: { teacher_action: 'confirmed', reviewed_at: new Date().toISOString() },
   });
+
   if (error) return { ok: false, message: `确认记录保存失败：${error.message}` };
+  revalidatePath('/teacher');
   revalidatePath('/teacher/audit');
+  revalidatePath('/teacher/analytics');
   revalidatePath('/admin/exports');
-  return { ok: true, message: '已确认无误，这条记录可进入后台导出集合。' };
+  return { ok: true, message: '已确认无误，这条记录会按当前最新核实版本进入导出集合。' };
 }
 
 export async function reviseLearningRecord(sourceMessageId: string, _previousState: AuditSubmissionState, formData: FormData): Promise<AuditSubmissionState> {
+  void _previousState;
   const role = await requireRole('teacher');
   if (!role.ok) return { ok: false, message: role.message };
 
-  const prompt = String(formData.get('prompt') ?? '').trim();
-  const originalAnswer = String(formData.get('original_answer') ?? '').trim();
   const correctedAnswer = String(formData.get('corrected_answer') ?? '').trim();
   const rationale = String(formData.get('rationale') ?? '').trim();
   const errors: Record<string, string> = {};
-  if (!prompt) errors.prompt = '缺少源问题。';
-  if (!originalAnswer) errors.original_answer = '缺少 AI 原回答。';
   if (!correctedAnswer) errors.corrected_answer = '请直接在回答气泡中写入修订版。';
-  if (correctedAnswer && correctedAnswer === originalAnswer) errors.corrected_answer = '修订版与原回答一致，请修改后再保存。';
   if (!rationale) errors.rationale = '请简要说明修订原因，便于后续复核。';
   if (Object.keys(errors).length > 0) return { ok: false, message: '请补齐修订信息。', errors };
 
-  const sourceResult = await getSourceMessage(sourceMessageId);
-  if (!sourceResult.ok) return { ok: false, message: sourceResult.message };
-  const supabase = await createClient();
-  const { source, classId } = sourceResult;
-  const { data: existingApproved, error: existingError } = await supabase
-    .from('audit_records')
-    .select('id,status')
-    .eq('source_message_id', source.id)
-    .in('status', ['approved', 'exported'])
-    .limit(1)
-    .maybeSingle();
-  if (existingError) return { ok: false, message: `核实状态检查失败：${existingError.message}` };
-  if (existingApproved) return { ok: false, message: '这条学习记录已经核实过，不能重复确认或修订。' };
+  const contextResult = await getSourceContext(sourceMessageId, role.data.id);
+  if (!contextResult.ok) return { ok: false, message: contextResult.message };
+
+  const { source, classId, prompt, originalAnswer, currentAnswer } = contextResult.data;
+  if (correctedAnswer === currentAnswer) {
+    return { ok: false, message: '修订版与当前展示回答一致，请修改后再保存。', errors: { corrected_answer: '修订版与当前展示回答一致，请修改后再保存。' } };
+  }
+
   const metadata = { teacher_action: 'revised', reviewed_at: new Date().toISOString() };
+  const supabase = await createClient();
 
   const { error: updateError } = await supabase
     .from('conversation_messages')
@@ -109,6 +218,7 @@ export async function reviseLearningRecord(sourceMessageId: string, _previousSta
       parts: [{ type: 'text', text: correctedAnswer }, { type: 'data-teacher-revision', data: { revised: true } }],
     })
     .eq('id', source.id);
+
   if (updateError) return { ok: false, message: `学生侧修订同步失败：${updateError.message}` };
 
   const { error: insertError } = await supabase.from('audit_records').insert([
@@ -141,17 +251,21 @@ export async function reviseLearningRecord(sourceMessageId: string, _previousSta
       metadata,
     },
   ]);
+
   if (insertError) {
     await supabase
       .from('conversation_messages')
-      .update({ content: source.content, parts: [{ type: 'text', text: source.content }] })
+      .update({ content: source.content, parts: source.parts as never })
       .eq('id', source.id);
     return { ok: false, message: `修订记录保存失败，学生侧回答已回滚：${insertError.message}` };
   }
+
+  revalidatePath('/teacher');
   revalidatePath('/teacher/audit');
+  revalidatePath('/teacher/analytics');
   revalidatePath('/student');
   revalidatePath('/admin/exports');
-  return { ok: true, message: '修订已保存，学生侧只会看到教师修订版。' };
+  return { ok: true, message: '修订已保存，导出只会使用这条回答的最新核实版本。' };
 }
 
 export async function submitSftAudit(sourceMessageId: string, previousState: AuditSubmissionState, formData: FormData): Promise<AuditSubmissionState> {
@@ -163,6 +277,7 @@ export async function submitDpoAudit(sourceMessageId: string, previousState: Aud
 }
 
 export async function saveTeacherPromptPreset(_previousState: AuditSubmissionState, formData: FormData): Promise<AuditSubmissionState> {
+  void _previousState;
   const role = await requireRole('teacher');
   if (!role.ok) return { ok: false, message: role.message };
 

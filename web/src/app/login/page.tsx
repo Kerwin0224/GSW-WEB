@@ -26,7 +26,7 @@ const promises = [
     icon: PenTool,
     label: '给老师',
     title: '把古诗文真正教好',
-    text: '从课堂目标出发组织讲解、练习和反馈；AI 只做可审阅的教学助手，最终服务于一节更清楚的课。',
+    text: '从课堂目标出发组织讲解、挑战和反馈；AI 只做可审阅的教学助手，最终服务于一节更清楚的课。',
   },
 ] as const;
 
@@ -72,16 +72,14 @@ export default function LoginPage() {
   return (
     <main className="relative min-h-svh overflow-hidden bg-background text-foreground">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,color-mix(in_oklch,var(--primary)_18%,transparent),transparent_30%),linear-gradient(135deg,color-mix(in_oklch,var(--background)_88%,white),var(--background))]" />
-        <div className="absolute left-1/2 top-0 h-[34rem] w-[34rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary/10" />
-        <div className="absolute bottom-10 right-10 hidden h-64 w-64 rounded-full border border-accent/20 lg:block" />
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,color-mix(in_oklch,var(--background)_88%,white),var(--background)),repeating-linear-gradient(90deg,color-mix(in_oklch,var(--border)_18%,transparent)_0_1px,transparent_1px_5rem)]" />
       </div>
 
       <div className="relative mx-auto grid min-h-svh w-full max-w-6xl items-center gap-10 px-5 py-8 lg:grid-cols-[1.05fr_0.95fr] lg:px-10">
         <section className="space-y-10">
           <div className="space-y-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-card/70 px-3 py-2 text-sm text-muted-foreground shadow-sm backdrop-blur">
-              <span className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <div className="inline-flex items-center gap-2 rounded-lg border border-primary/15 bg-card/70 px-3 py-2 text-sm text-muted-foreground shadow-sm backdrop-blur">
+              <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
                 <BookOpenText className="size-4" aria-hidden="true" />
               </span>
               文韵智途 · 古诗文学习与教学平台
@@ -106,8 +104,8 @@ export default function LoginPage() {
                 <Card key={item.label} className="border-border/70 bg-card/78 shadow-[0_22px_70px_rgba(45,38,24,0.09)] backdrop-blur">
                   <CardContent className="space-y-5 p-6">
                     <div className="flex items-center justify-between gap-4">
-                      <span className="rounded-full border bg-background/75 px-3 py-1 text-sm text-muted-foreground">{item.label}</span>
-                      <span className="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                      <span className="rounded-md border bg-background/75 px-3 py-1 text-sm text-muted-foreground">{item.label}</span>
+                      <span className="flex size-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
                         <Icon className="size-5" aria-hidden="true" />
                       </span>
                     </div>
@@ -125,7 +123,7 @@ export default function LoginPage() {
         <section>
           <Card className="mx-auto w-full max-w-[29rem] overflow-hidden border-border/70 bg-card/92 shadow-[0_34px_110px_rgba(26,26,46,0.14)] backdrop-blur-xl">
             <div className="border-b bg-[linear-gradient(135deg,color-mix(in_oklch,var(--primary)_10%,transparent),color-mix(in_oklch,var(--accent)_10%,transparent))] p-7">
-              <div className="mb-5 flex size-14 items-center justify-center rounded-3xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+              <div className="mb-5 flex size-14 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-lg shadow-primary/20">
                 <Sparkles className="size-7" aria-hidden="true" />
               </div>
               <h2 className="font-heading text-3xl">进入平台</h2>
@@ -137,7 +135,7 @@ export default function LoginPage() {
             <CardContent className="space-y-6 p-7">
               <form onSubmit={handleLogin} className="space-y-5" aria-busy={loading}>
                 {error ? (
-                  <Alert variant="destructive" className="rounded-2xl border-destructive/30 bg-destructive/10" role="alert">
+                  <Alert variant="destructive" className="rounded-lg border-destructive/30 bg-destructive/10" role="alert">
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 ) : null}
@@ -149,7 +147,7 @@ export default function LoginPage() {
                     value={loginId}
                     onChange={(event) => setLoginId(event.target.value)}
                     placeholder="例如：20260101 或 20240001"
-                    className="h-12 rounded-2xl border-border/80 bg-background/75 px-4 text-base shadow-inner"
+                    className="h-12 rounded-lg border-border/80 bg-background/75 px-4 text-base shadow-inner"
                     required
                     autoFocus
                     autoComplete="username"
@@ -165,14 +163,14 @@ export default function LoginPage() {
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="输入密码"
-                    className="h-12 rounded-2xl border-border/80 bg-background/75 px-4 text-base shadow-inner"
+                    className="h-12 rounded-lg border-border/80 bg-background/75 px-4 text-base shadow-inner"
                     required
                     autoComplete="current-password"
                     disabled={loading}
                   />
                 </div>
 
-                <Button type="submit" className="h-12 w-full rounded-2xl text-base shadow-lg shadow-primary/20" disabled={loading}>
+                <Button type="submit" className="h-12 w-full rounded-lg text-base shadow-lg shadow-primary/20" disabled={loading}>
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 size-5 animate-spin" aria-hidden="true" />

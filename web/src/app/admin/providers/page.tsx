@@ -26,7 +26,7 @@ export default async function AdminProvidersPage() {
         description="管理员只需要维护 Flash Model 与 Advanced Model；Provider 仍可独立创建、测速、拉取模型、编辑与删除。"
         metrics={[
           { label: 'Flash Model', value: flashStatus, hint: modelTiers.flash.blockedReason ?? '学生与快速任务' },
-          { label: 'Advanced Model', value: advancedStatus, hint: modelTiers.advanced.blockedReason ?? '教师与评估审计' },
+          { label: 'Advanced Model', value: advancedStatus, hint: modelTiers.advanced.blockedReason ?? '教师问答与挑战确认评估' },
           { label: 'Provider', value: providers.length, hint: '已注册基础设施' },
         ]}
       />

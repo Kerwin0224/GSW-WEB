@@ -1,7 +1,0 @@
-{"file": ".trellis/spec/frontend/design-tokens.md", "reason": "本任务的主输出契约 — token 体系、字体、深色模式映射、forbidden 列表"}
-{"file": ".trellis/spec/frontend/ui-ux-guidelines.md", "reason": "现有视觉/IA 契约，token 段已指向 design-tokens；落地时同步对齐"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "shadcn 组件归属规则 — globals.css 修改不能破坏 ui/ 原语契约"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "lint/build gate + forbidden patterns — token 落地需通过此清单"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "loading/empty/error 状态色票必须从新 token 取"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "spec 总览，验证条目齐全"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "改 globals.css 等共享文件前必须搜全仓库硬编码颜色"}

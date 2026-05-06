@@ -13,7 +13,7 @@ export type ProviderCapability =
   | 'embedding';
 export type PromptPresetStatus = 'draft' | 'published' | 'disabled';
 export type InteractionSource = 'student_chat' | 'teacher_chat' | 'practice';
-export type AuditKind = 'sft' | 'dpo' | 'review_metadata';
+export type AuditKind = 'sft' | 'dpo';
 export type AuditStatus = 'pending' | 'approved' | 'rejected' | 'exported';
 export type ExportStatus = 'queued' | 'ready' | 'failed';
 export type Vector = number[];
@@ -67,8 +67,8 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['text_projects']['Insert']>;
       };
       conversations: {
-        Row: { id: string; owner_id: string; class_id: string | null; project_id: string | null; source: InteractionSource; prompt_preset_id: string | null; title: string | null; created_at: string; updated_at: string };
-        Insert: { id?: string; owner_id: string; class_id?: string | null; project_id?: string | null; source: InteractionSource; prompt_preset_id?: string | null; title?: string | null };
+        Row: { id: string; owner_id: string; class_id: string | null; project_id: string | null; source: InteractionSource; prompt_preset_id: string | null; title: string | null; deleted_at: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; owner_id: string; class_id?: string | null; project_id?: string | null; source: InteractionSource; prompt_preset_id?: string | null; title?: string | null; deleted_at?: string | null };
         Update: Partial<Database['public']['Tables']['conversations']['Insert']>;
       };
       conversation_messages: {
@@ -77,29 +77,34 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['conversation_messages']['Insert']>;
       };
       documents: {
-        Row: { id: string; owner_id: string; class_id: string | null; project_id: string | null; title: string; source_uri: string | null; metadata: Json; created_at: string; updated_at: string };
-        Insert: { id?: string; owner_id: string; class_id?: string | null; project_id?: string | null; title: string; source_uri?: string | null; metadata?: Json };
+        Row: { id: string; owner_id: string; class_id: string | null; project_id: string | null; conversation_id: string | null; title: string; author: string | null; dynasty: string | null; content: string | null; source_uri: string | null; metadata: Json; created_at: string; updated_at: string };
+        Insert: { id?: string; owner_id: string; class_id?: string | null; project_id?: string | null; conversation_id?: string | null; title: string; author?: string | null; dynasty?: string | null; content?: string | null; source_uri?: string | null; metadata?: Json };
         Update: Partial<Database['public']['Tables']['documents']['Insert']>;
       };
       document_chunks: {
-        Row: { id: string; document_id: string; owner_id: string; class_id: string | null; project_id: string | null; chunk_index: number; content: string; metadata: Json; embedding: Vector; created_at: string };
-        Insert: { id?: string; document_id: string; owner_id: string; class_id?: string | null; project_id?: string | null; chunk_index: number; content: string; metadata?: Json; embedding: Vector };
+        Row: { id: string; document_id: string; owner_id: string; class_id: string | null; project_id: string | null; conversation_id: string | null; chunk_index: number; content: string; token_count: number | null; metadata: Json; embedding: Vector; created_at: string };
+        Insert: { id?: string; document_id: string; owner_id: string; class_id?: string | null; project_id?: string | null; conversation_id?: string | null; chunk_index: number; content: string; token_count?: number | null; metadata?: Json; embedding: Vector };
         Update: Partial<Database['public']['Tables']['document_chunks']['Insert']>;
       };
       practice_records: {
-        Row: { id: string; student_id: string; project_id: string | null; target_bloom_level: number; prompt: string | null; answer: string | null; feedback: string | null; achieved: boolean | null; evaluation_state: 'pending' | 'evaluated' | 'failed' | 'blocked'; created_at: string };
-        Insert: { id?: string; student_id: string; project_id?: string | null; target_bloom_level: number; prompt?: string | null; answer?: string | null; feedback?: string | null; achieved?: boolean | null; evaluation_state?: 'pending' | 'evaluated' | 'failed' | 'blocked' };
+        Row: { id: string; student_id: string; project_id: string; target_bloom_level: number; prompt: string | null; answer: string | null; feedback: string | null; achieved: boolean | null; evaluation_state: 'pending' | 'evaluated' | 'failed' | 'blocked'; created_at: string };
+        Insert: { id?: string; student_id: string; project_id: string; target_bloom_level: number; prompt?: string | null; answer?: string | null; feedback?: string | null; achieved?: boolean | null; evaluation_state?: 'pending' | 'evaluated' | 'failed' | 'blocked' };
         Update: Partial<Database['public']['Tables']['practice_records']['Insert']>;
       };
       audit_records: {
-        Row: { id: string; source_message_id: string | null; source_conversation_id: string | null; auditor_id: string | null; class_id: string | null; kind: AuditKind; status: AuditStatus; quality: string | null; prompt: string; original_answer: string | null; corrected_answer: string | null; chosen_answer: string | null; rejected_answer: string | null; rationale: string | null; metadata: Json; exported_at: string | null; created_at: string; updated_at: string };
-        Insert: { id?: string; source_message_id?: string | null; source_conversation_id?: string | null; auditor_id?: string | null; class_id?: string | null; kind: AuditKind; status?: AuditStatus; quality?: string | null; prompt: string; original_answer?: string | null; corrected_answer?: string | null; chosen_answer?: string | null; rejected_answer?: string | null; rationale?: string | null; metadata?: Json; exported_at?: string | null };
+        Row: { id: string; source_message_id: string; source_conversation_id: string; auditor_id: string | null; class_id: string; kind: AuditKind; status: AuditStatus; quality: string | null; prompt: string; original_answer: string | null; corrected_answer: string | null; chosen_answer: string | null; rejected_answer: string | null; rationale: string | null; metadata: Json; exported_at: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; source_message_id: string; source_conversation_id: string; auditor_id?: string | null; class_id: string; kind: AuditKind; status?: AuditStatus; quality?: string | null; prompt: string; original_answer?: string | null; corrected_answer?: string | null; chosen_answer?: string | null; rejected_answer?: string | null; rationale?: string | null; metadata?: Json; exported_at?: string | null };
         Update: Partial<Database['public']['Tables']['audit_records']['Insert']>;
       };
       export_batches: {
         Row: { id: string; export_type: AuditKind; status: 'queued' | 'ready' | 'failed'; record_count: number; jsonl: string; created_by: string | null; created_at: string };
         Insert: { id?: string; export_type: AuditKind; status?: 'queued' | 'ready' | 'failed'; record_count?: number; jsonl: string; created_by?: string | null };
         Update: Partial<Database['public']['Tables']['export_batches']['Insert']>;
+      };
+      data_quality_events: {
+        Row: { id: string; event_type: string; table_name: string; record_count: number; reason: string; payload: Json; created_at: string };
+        Insert: { id?: string; event_type: string; table_name: string; record_count?: number; reason: string; payload?: Json };
+        Update: Partial<Database['public']['Tables']['data_quality_events']['Insert']>;
       };
     };
     Views: Record<string, never>;
@@ -113,6 +118,11 @@ export interface Database {
         Args: { query_embedding: Vector; match_count?: number; match_threshold?: number; project_id?: string | null };
         Returns: { id: string; document_id: string; owner_id: string; class_id: string | null; project_id: string | null; chunk_index: number; content: string; metadata: Json; document_title: string; source_uri: string | null; similarity: number }[];
       };
+      match_conversation_document_chunks: {
+        Args: { query_embedding: Vector; conversation_id: string; match_count?: number; match_threshold?: number };
+        Returns: { id: string; document_id: string; owner_id: string; class_id: string | null; project_id: string | null; conversation_id: string | null; chunk_index: number; content: string; metadata: Json; document_title: string; source_uri: string | null; similarity: number }[];
+      };
+      refresh_project_highest_bloom_level: { Args: { p_project_id: string }; Returns: undefined };
     };
     Enums: { app_role: AppRole; model_tier: ModelTier; provider_capability: ProviderCapability; prompt_preset_status: PromptPresetStatus; interaction_source: InteractionSource; audit_kind: AuditKind; audit_status: AuditStatus; export_status: ExportStatus };
     CompositeTypes: Record<string, never>;

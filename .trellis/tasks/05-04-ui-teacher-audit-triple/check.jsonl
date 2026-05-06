@@ -1,5 +1,0 @@
-{"file": ".trellis/spec/frontend/teacher-workspace.md", "reason": "7 个 scenario 契约逐项检查"}
-{"file": ".trellis/spec/frontend/design-tokens.md", "reason": "审计状态 chip 色一致性"}
-{"file": ".trellis/spec/backend/supabase-pgvector-guidelines.md", "reason": "RLS 验证 — 跨班数据不泄露"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "lint/build/类型门"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "表单校验/blocked/empty 完备性"}

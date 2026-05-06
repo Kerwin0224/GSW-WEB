@@ -49,42 +49,45 @@ export default async function StudentProjectDetailPage({ params }: { params: Pro
       <WorkspaceHero
         eyebrow="篇目详情"
         title={`《${project.title}》${project.author ? ` · ${project.author}` : ''}`}
-        description="这里保留这篇文本的真实问题、练习与认知路径。没有真实分类时，就明确显示尚未分类。"
-        primaryAction={{ label: '继续提问', href: '/student' }}
+        description="这里保留这篇文本下的真实问题、会话与布鲁姆认知路径。项目当前确认层级只以挑战结果为准。"
+        primaryAction={{ label: '继续提问', href: `/student?projectId=${project.id}` }}
         secondaryAction={{ label: '返回项目列表', href: '/student/projects' }}
         metrics={[
-          { label: '最高层级', value: project.highest_bloom_level ? `L${project.highest_bloom_level}` : '未分类', hint: '来自真实 Bloom 分类' },
+          { label: '已确认层级', value: challengeProgress.confirmedLevel ? `L${challengeProgress.confirmedLevel}` : '等待挑战确认', hint: '只看挑战确认结果' },
           { label: '问题记录', value: questions.length, hint: '学生真实提问' },
-          { label: '练习记录', value: practices.length, hint: `挑战已达标 ${challengeProgress.completedLevels}/6` },
+          { label: '挑战记录', value: practices.length, hint: challengeProgress.statusLabel },
         ]}
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader><CardTitle>对话画像</CardTitle></CardHeader>
+          <CardHeader><CardTitle>布鲁姆认知路径</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm leading-6 text-muted-foreground">
-            <p>问题记录来自学生在本项目下的真实提问，用来观察认知路径和层级分布。</p>
-            <p>它说明“提问触达过哪些 Bloom 层级”，不是最终能力证明。</p>
+            <p>这里展示的是这一个项目下，学生在会话里提出过哪些层级的问题。</p>
+            <p>它说明“问题触达过哪些层级”，不是最终能力证明；学生看板主统计只使用挑战确认结果。</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle>挑战核查与攀升</CardTitle></CardHeader>
+          <CardHeader><CardTitle>挑战确认状态</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm leading-6 text-muted-foreground">挑战按 L1→L6 出题核查，当前解锁 L{challengeProgress.currentLevel}；未达标会停留当前层，达标后才进入下一层。</p>
-            <div className="grid grid-cols-6 gap-2" aria-label="挑战攀升进度">
+            <p className="text-sm leading-6 text-muted-foreground">挑战按 L1→L6 逐层确认。未通过时先标记为待巩固，并引导回到项目继续学习。</p>
+            <div className="grid grid-cols-6 gap-2" aria-label="挑战攀登进度">
               {challengeProgress.levels.map((levelProgress) => {
                 const level = levelProgress.level as BloomLevel;
                 return (
                   <div key={level} className="rounded-lg border bg-background/60 p-2 text-center text-xs">
                     <BloomBadge level={level} />
                     <p className="mt-2 text-muted-foreground">
-                      {levelProgress.state === 'achieved' ? '已达标' : levelProgress.state === 'current' ? '当前' : '未解锁'}
+                      {levelProgress.state === 'achieved' ? '已确认' : levelProgress.state === 'current' ? '下一挑战' : '未解锁'}
                     </p>
                   </div>
                 );
               })}
             </div>
-            <Button nativeButton={false} render={<Link href={`/student/challenge/${projectId}`}>进入 L{challengeProgress.currentLevel} 挑战</Link>} disabled={challengeProgress.isComplete} />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">当前状态：{challengeProgress.statusLabel}</p>
+              <Button nativeButton={false} render={<Link href={`/student/challenge/${projectId}`}>{challengeProgress.isComplete ? '查看挑战结果' : `继续 L${challengeProgress.nextLevel} 挑战`}</Link>} disabled={false} />
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -97,7 +100,7 @@ export default async function StudentProjectDetailPage({ params }: { params: Pro
         <TabsList>
           <TabsTrigger value="ladder">认知路径</TabsTrigger>
           <TabsTrigger value="questions">问题记录</TabsTrigger>
-          <TabsTrigger value="practice">练习记录</TabsTrigger>
+          <TabsTrigger value="practice">挑战记录</TabsTrigger>
         </TabsList>
         <TabsContent value="ladder">
           <BloomLadder levels={levels} currentMaxLevel={project.highest_bloom_level as BloomLevel | undefined} />
@@ -115,12 +118,12 @@ export default async function StudentProjectDetailPage({ params }: { params: Pro
         </TabsContent>
         <TabsContent value="practice">
           <Card>
-            <CardHeader><CardTitle>练习记录</CardTitle></CardHeader>
+            <CardHeader><CardTitle>挑战记录</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              {practices.length === 0 ? <p className="text-sm text-muted-foreground">暂无真实练习记录。</p> : null}
+              {practices.length === 0 ? <p className="text-sm text-muted-foreground">暂无挑战记录，先从 L1 开始确认。</p> : null}
               {practices.map((practice) => (
                 <p key={practice.id} className="rounded-lg border bg-background/60 p-3 text-sm">
-                  L{practice.target_bloom_level} · {practice.evaluation_state}
+                  L{practice.target_bloom_level} · {practice.evaluation_state}{practice.achieved === true ? ' · 已确认' : practice.achieved === false ? ' · 待巩固' : ''}
                 </p>
               ))}
             </CardContent>

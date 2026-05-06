@@ -186,7 +186,7 @@ export function McpServerDialog({
         onOpenChange={setOpen}
         trigger={trigger}
         title={mode === 'edit' ? '编辑 MCP Server' : '粘贴 JSON 添加 MCP Server'}
-        description="管理员只配置 MCP 能力，不作为 AI 对话工具使用者。运行时授权仅开放给教师或学生。"
+        description="管理员只配置 MCP 能力，不作为 AI 交互工具使用者。运行时授权仅开放给教师或学生。"
         icon={<Puzzle className="size-5" />}
         className="max-w-2xl"
         footer={(
@@ -262,7 +262,7 @@ export function McpServerDialog({
                 </label>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground">管理员只维护配置，不授权为 AI 对话中的工具调用角色。</p>
+            <p className="text-xs text-muted-foreground">管理员只维护配置，不授权为 AI 交互中的工具调用角色。</p>
           </div>
 
           <div className="flex items-center gap-2 rounded-md border p-3">
@@ -283,7 +283,6 @@ export function McpServerDialog({
         <AdminDialogShell
           open={confirmDeleteOpen}
           onOpenChange={setConfirmDeleteOpen}
-          trigger={<span className="hidden" />}
           title={`删除 MCP Server「${name || '未命名'}」`}
           description="删除后该 Server 授权角色将失去对应工具入口。"
           icon={<Trash2 className="size-5" />}

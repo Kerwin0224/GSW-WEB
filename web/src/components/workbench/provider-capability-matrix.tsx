@@ -37,23 +37,23 @@ export const capabilities = [
 ] as const;
 
 const CAPABILITY_LABELS: Record<string, string> = {
-  student_chat: '学生对话',
-  teacher_chat: '教师对话',
+  student_chat: '学生会话回答',
+  teacher_chat: '教师问答',
   bloom_classification: '布鲁姆分类',
   project_classification: '篇目识别',
   practice_generation: '挑战出题',
-  practice_evaluation: '挑战评判',
+  practice_evaluation: '挑战确认评估',
   audit_assist: '核实辅助',
   embedding: '向量嵌入',
 };
 
 const SCENARIO_ROWS = [
-  { role: 'Student /student', scenario: 'student_chat', tier: 'flash', impact: '快速问答反馈' },
+  { role: 'Student /student', scenario: 'student_chat', tier: 'flash', impact: '学生会话即时回答' },
   { role: 'Student /student', scenario: 'bloom_classification', tier: 'flash', impact: '高吞吐 Bloom 标注' },
   { role: 'Student /student/projects', scenario: 'project_classification', tier: 'flash', impact: '篇目与项目识别' },
-  { role: 'Student /student/challenge', scenario: 'practice_generation', tier: 'flash', impact: '低成本练习生成' },
+  { role: 'Student /student/challenge', scenario: 'practice_generation', tier: 'flash', impact: '低成本挑战生成' },
   { role: 'Teacher /teacher', scenario: 'teacher_chat', tier: 'advanced', impact: '教师高质量问答' },
-  { role: 'Practice evaluation', scenario: 'practice_evaluation', tier: 'advanced', impact: '练习强判断评估' },
+  { role: 'Challenge confirmation', scenario: 'practice_evaluation', tier: 'advanced', impact: '挑战确认强判断评估' },
   { role: 'Teacher /teacher/audit', scenario: 'audit_assist', tier: 'advanced', impact: '教学正确性核实辅助' },
   { role: 'RAG /student/projects', scenario: 'embedding', tier: 'embedding', impact: '独立向量嵌入配置' },
 ] as const;
@@ -68,14 +68,14 @@ const TIER_COPY: Record<ModelTier, {
   flash: {
     title: 'Flash Model',
     subtitle: '快速、低成本、高吞吐',
-    intent: '面向学生即时对话、分类与练习生成，优先响应速度和单位成本。',
+    intent: '面向学生会话回答、布鲁姆分类与挑战生成，优先响应速度和单位成本。',
     tone: 'from-primary/15 via-background to-background',
     icon: <Zap className="size-5" />,
   },
   advanced: {
     title: 'Advanced Model',
     subtitle: '更强推理、更高质量',
-    intent: '面向教师问答、练习评判与教学正确性核实辅助，优先复杂推理和输出质量。',
+    intent: '面向教师问答、挑战确认评估与教学正确性核实辅助，优先复杂推理和输出质量。',
     tone: 'from-accent/25 via-background to-background',
     icon: <Brain className="size-5" />,
   },
@@ -224,7 +224,7 @@ function ModelTierCard({ tierView, providers }: { tierView: TierView; providers:
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className="rounded-full border bg-background/80 p-2 text-primary">{copy.icon}</span>
+              <span className="rounded-lg border bg-background/80 p-2 text-primary">{copy.icon}</span>
               <div>
                 <CardTitle className="text-2xl">{copy.title}</CardTitle>
                 <CardDescription>{copy.subtitle}</CardDescription>
@@ -279,7 +279,7 @@ function ModelTierCard({ tierView, providers }: { tierView: TierView; providers:
 
 function ScenarioMappingTable({ tierViews, embeddingReady }: { tierViews: Record<ModelTier, TierView>; embeddingReady: boolean }) {
   return (
-    <div className="overflow-x-auto rounded-xl border bg-card">
+    <div className="overflow-x-auto rounded-lg border bg-card">
       <Table>
         <TableHeader>
           <TableRow>
@@ -333,7 +333,7 @@ function ProviderOperationsTable({ providers, modelTiers }: { providers: Provide
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border bg-card">
+    <div className="overflow-x-auto rounded-lg border bg-card">
       <Table>
         <TableHeader>
           <TableRow>

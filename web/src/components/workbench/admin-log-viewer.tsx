@@ -86,7 +86,7 @@ export function AdminLogViewer({
           <CardContent className="space-y-3">
             {events.length === 0 ? <p className="text-sm text-muted-foreground">还没有 app-events.jsonl 记录。触发登录、API 或错误边界后会写入。</p> : null}
             {events.map((event, index) => (
-              <article key={`${event.timestamp}-${event.event}-${index}`} className="rounded-xl border bg-background/60 p-3">
+              <article key={`${event.timestamp}-${event.event}-${index}`} className="rounded-lg border bg-background/60 p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={levelVariant(event.level)}>{event.level}</Badge>
                   <Badge variant="outline">{event.area}</Badge>
@@ -114,7 +114,7 @@ export function AdminLogViewer({
             {devLines.length === 0 ? (
               <p className="text-sm text-muted-foreground">使用 npm run dev:logged 启动后，这里会显示 .logs/next-dev.log 最近 120 行。</p>
             ) : (
-              <pre className="max-h-[38rem] overflow-auto rounded-xl bg-foreground p-4 text-xs leading-5 text-background">
+              <pre className="max-h-[38rem] overflow-auto rounded-lg bg-foreground p-4 text-xs leading-5 text-background">
                 {devLines.join('\n')}
               </pre>
             )}
