@@ -7,7 +7,6 @@ import { usePathname } from 'next/navigation';
 
 import { AppSidebar } from '@/components/app-sidebar';
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
-import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -143,12 +142,6 @@ export function AppShell({ role, displayName, breadcrumbs, chrome = 'sidebar', c
           </div>
         </DropdownMenuContent>
       </DropdownMenu>
-      {chrome === 'sidebar' ? (
-        <Button variant="ghost" size="sm" onClick={handleLogout} disabled={isLoggingOut} aria-label="退出登录" className="min-h-10 cursor-pointer gap-2 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
-          <LogOut className="size-4" aria-hidden="true" />
-          <span className="hidden sm:inline">{isLoggingOut ? '退出中…' : '退出登录'}</span>
-        </Button>
-      ) : null}
     </header>
   );
 
@@ -176,7 +169,7 @@ export function AppShell({ role, displayName, breadcrumbs, chrome = 'sidebar', c
 
   return (
     <SidebarProvider defaultOpen={false}>
-      <AppSidebar role={role} displayName={displayName} />
+      <AppSidebar role={role} />
       <main className="relative flex min-h-svh flex-1 flex-col overflow-hidden bg-transparent">
         <a
           href="#workspace-main"

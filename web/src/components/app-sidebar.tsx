@@ -4,11 +4,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { BookOpen } from 'lucide-react';
 
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupLabel,
   SidebarHeader,
@@ -16,22 +14,35 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { RoleBadge } from '@/components/workbench/role-badge';
+import { useSidebar } from '@/components/ui/sidebar';
 import { roleNavGroups, roleSubtitle, type Role } from '@/lib/role-nav';
 
-interface AppSidebarProps { role: Role; displayName: string; }
+interface AppSidebarProps { role: Role; }
 
-export function AppSidebar({ role, displayName }: AppSidebarProps) {
+export function AppSidebar({ role }: AppSidebarProps) {
   const pathname = usePathname();
+  const { state, toggleSidebar } = useSidebar();
 
   return (
     <Sidebar collapsible="icon" variant="sidebar">
       <SidebarHeader className="px-3 py-4">
         <div className="rounded-[1.4rem] border border-sidebar-border/80 bg-sidebar-accent/45 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_16px_40px_-30px_rgba(0,0,0,0.85)] group-data-[collapsible=icon]:border-transparent group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:shadow-none">
           <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-sidebar-primary text-sidebar-primary-foreground shadow-sm ring-1 ring-white/10">
-              <BookOpen className="size-5" aria-hidden="true" />
-            </span>
+            {state === 'collapsed' ? (
+              <button
+                type="button"
+                onClick={toggleSidebar}
+                title="展开侧边栏"
+                aria-label="展开侧边栏"
+                className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-2xl bg-sidebar-primary text-sidebar-primary-foreground shadow-sm ring-1 ring-white/10 transition-transform duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+              >
+                <BookOpen className="size-5" aria-hidden="true" />
+              </button>
+            ) : (
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-sidebar-primary text-sidebar-primary-foreground shadow-sm ring-1 ring-white/10">
+                <BookOpen className="size-5" aria-hidden="true" />
+              </span>
+            )}
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
               <span className="block truncate font-heading text-xl leading-none tracking-tight">文韵智途</span>
               <p className="mt-1 truncate text-xs text-sidebar-foreground/70">{roleSubtitle[role]}</p>
@@ -67,17 +78,6 @@ export function AppSidebar({ role, displayName }: AppSidebarProps) {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border/70 p-3">
-        <div className="flex items-center gap-3 rounded-[1.3rem] border border-sidebar-border/65 bg-sidebar-accent/40 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:border-transparent group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:shadow-none">
-          <Avatar className="size-10 shrink-0 ring-1 ring-sidebar-border">
-            <AvatarFallback className="bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground">{displayName.slice(0, 1)}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-            <p className="truncate text-sm font-medium leading-5">{displayName}</p>
-            <RoleBadge role={role} className="mt-1 text-[10px]" />
-          </div>
-        </div>
-      </SidebarFooter>
     </Sidebar>
   );
 }
