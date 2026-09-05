@@ -72,7 +72,7 @@ export default async function TeacherChatPage() {
                 <p className="mt-2 text-3xl font-semibold tracking-tight">{analytics.studentsWaitingChallenge}</p>
               </div>
             </div>
-            <p className="text-sm leading-6 text-muted-foreground">数字来自学生完成的挑战确认，不由 AI 推断。</p>
+            <p className="text-sm leading-6 text-muted-foreground">数字来自学生完成的挑战，不由 AI 推断。</p>
           </CardContent>
         </Card>
 

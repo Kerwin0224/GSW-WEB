@@ -44,7 +44,7 @@ const CAPABILITY_LABELS: Record<string, string> = {
   bloom_classification: '学生问题布鲁姆路径判断',
   project_classification: '篇目识别',
   practice_generation: '挑战出题',
-  practice_evaluation: '挑战确认评估',
+  practice_evaluation: '挑战评估',
   audit_assist: '核实辅助',
   embedding: '向量嵌入',
 };
@@ -79,7 +79,7 @@ const TIER_COPY: Record<ModelTier, {
   advanced: {
     title: 'Advanced Model',
     subtitle: '更强推理、更高质量',
-    intent: '面向教师问答、挑战确认评估与教学正确性核实辅助，优先复杂推理和输出质量。',
+    intent: '面向教师问答、挑战评估与教学正确性核实辅助，优先复杂推理和输出质量。',
     tone: 'from-accent/25 via-background to-background',
     icon: <Brain className="size-5" />,
   },

@@ -104,6 +104,11 @@ export interface Database {
         Insert: { id?: string; student_id: string; project_id: string; target_bloom_level: number; prompt?: string | null; answer?: string | null; feedback?: string | null; achieved?: boolean | null; evaluation_state?: 'pending' | 'evaluated' | 'failed' | 'blocked' };
         Update: Partial<Database['public']['Tables']['practice_records']['Insert']>;
       };
+      app_log_events: {
+        Row: { id: string; created_at: string; level: 'debug' | 'info' | 'warn' | 'error'; area: string; event: string; route: string | null; method: string | null; status: number | null; request_id: string | null; message: string | null; digest: string | null; context: Json | null };
+        Insert: { id?: string; created_at?: string; level: 'debug' | 'info' | 'warn' | 'error'; area: string; event: string; route?: string | null; method?: string | null; status?: number | null; request_id?: string | null; message?: string | null; digest?: string | null; context?: Json | null };
+        Update: Partial<Database['public']['Tables']['app_log_events']['Insert']>;
+      };
       audit_records: {
         Row: { id: string; source_message_id: string; source_conversation_id: string; auditor_id: string | null; class_id: string; kind: AuditKind; status: AuditStatus; quality: string | null; prompt: string; original_answer: string | null; corrected_answer: string | null; chosen_answer: string | null; rejected_answer: string | null; rationale: string | null; metadata: Json; exported_at: string | null; created_at: string; updated_at: string };
         Insert: { id?: string; source_message_id: string; source_conversation_id: string; auditor_id?: string | null; class_id: string; kind: AuditKind; status?: AuditStatus; quality?: string | null; prompt: string; original_answer?: string | null; corrected_answer?: string | null; chosen_answer?: string | null; rejected_answer?: string | null; rationale?: string | null; metadata?: Json; exported_at?: string | null };

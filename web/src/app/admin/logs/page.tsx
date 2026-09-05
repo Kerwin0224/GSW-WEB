@@ -50,8 +50,8 @@ export default async function AdminLogsPage({
             <CardTitle className="flex items-center gap-2"><FileJson className="size-5 text-primary" />结构化日志</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <Badge variant="outline">{status.appLogBytes} 字节</Badge>
-            <p>更新：{status.appLogUpdatedAt ?? '尚未创建'}</p>
+            <Badge variant="outline">app_log_events 表</Badge>
+            <p>生产环境持久写入 Supabase；本地开发同时落盘 .logs。</p>
           </CardContent>
         </Card>
         <Card>

@@ -20,15 +20,15 @@ export default async function StudentProfilePage() {
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="我的学习"
+        eyebrow="学习情况"
         title="看看自己的学习足迹。"
-        description="每个篇目学到了第几层、下一步挑战什么，这里都能看到。层级由挑战确认产生。"
+        description="每个篇目学到了第几层、下一步挑战什么，这里都能看到。层级由挑战产生。"
         primaryAction={{ label: '继续提问', href: '/student' }}
-        secondaryAction={{ label: '去挑战确认', href: '/student/challenge' }}
+        secondaryAction={{ label: '去挑战', href: '/student/challenge' }}
         metrics={[
           { label: '项目', value: projects.length, hint: '正在学习的篇目' },
           { label: '提问记录', value: totalQuestions, hint: '累计提问次数' },
-          { label: '等待挑战确认', value: awaitingChallengeCount, hint: '还没有确认层级的项目' },
+          { label: '待挑战', value: awaitingChallengeCount, hint: '还没有发起挑战的项目' },
         ]}
       />
 

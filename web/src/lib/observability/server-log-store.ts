@@ -3,23 +3,61 @@ import 'server-only';
 import { appendFile, mkdir, open, stat } from 'node:fs/promises';
 import path from 'node:path';
 
+import { createClient } from '@/lib/supabase/server';
 import { emitLogEvent, sanitizeLogEvent, type LogEvent } from '@/lib/observability/log-event';
 
 const LOG_DIR = path.join(process.cwd(), '.logs');
 const APP_LOG_FILE = path.join(LOG_DIR, 'app-events.jsonl');
 const DEV_LOG_FILE = path.join(LOG_DIR, 'next-dev.log');
 
+/**
+ * 日志双通道：本地 .logs 落盘（开发用）+ app_log_events 表（生产唯一持久层）。
+ * Vercel serverless 文件系统只读，本地文件在生产必然写入失败，
+ * 数据库落库才是可在管理后台"运行日志"里回查的通道。
+ */
 export async function writeLogEvent(event: LogEvent) {
   const entry = emitLogEvent(event);
+  const sanitized = sanitizeLogEvent(entry);
+  await Promise.allSettled([appendLogEventToFile(sanitized), insertLogEventRow(sanitized)]);
+}
+
+async function appendLogEventToFile(entry: StoredLogEvent) {
   try {
     await mkdir(LOG_DIR, { recursive: true });
-    await appendFile(APP_LOG_FILE, `${JSON.stringify(sanitizeLogEvent(entry))}\n`, 'utf8');
+    await appendFile(APP_LOG_FILE, `${JSON.stringify(entry)}\n`, 'utf8');
   } catch (error) {
     emitLogEvent({
       level: 'warn',
       area: 'runtime',
       event: 'log_file_write_failed',
       message: error instanceof Error ? error.message : 'failed to write log file',
+    });
+  }
+}
+
+async function insertLogEventRow(entry: StoredLogEvent) {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from('app_log_events').insert({
+      level: entry.level,
+      area: entry.area,
+      event: entry.event,
+      route: entry.route ?? null,
+      method: entry.method ?? null,
+      status: entry.status ?? null,
+      request_id: entry.requestId ?? null,
+      message: entry.message ?? null,
+      digest: entry.digest ?? null,
+      context: entry.context ?? null,
+    });
+    if (error) throw new Error(error.message);
+  } catch (error) {
+    // 只降级到 console，绝不再走 writeLogEvent，避免递归。
+    emitLogEvent({
+      level: 'warn',
+      area: 'runtime',
+      event: 'log_db_insert_failed',
+      message: error instanceof Error ? error.message : 'failed to insert log event row',
     });
   }
 }
@@ -97,7 +135,54 @@ function eventMatchesFilters(event: StoredLogEvent, filters: AppEventFilters) {
   return true;
 }
 
+type AppLogEventRow = {
+  created_at: string;
+  level: string;
+  area: string;
+  event: string;
+  route: string | null;
+  method: string | null;
+  status: number | null;
+  request_id: string | null;
+  message: string | null;
+  digest: string | null;
+  context: Record<string, unknown> | null;
+};
+
+function rowToStoredEvent(row: AppLogEventRow): StoredLogEvent {
+  return {
+    timestamp: row.created_at,
+    level: row.level as StoredLogEvent['level'],
+    area: row.area,
+    event: row.event,
+    route: row.route ?? undefined,
+    method: row.method ?? undefined,
+    status: row.status ?? undefined,
+    requestId: row.request_id ?? undefined,
+    message: row.message ?? undefined,
+    digest: row.digest ?? undefined,
+    context: row.context ?? undefined,
+  } as StoredLogEvent;
+}
+
+/**
+ * 优先读数据库（生产唯一持久通道，管理员经 RLS 读取），
+ * 数据库不可用或非管理员会话（本地开发）时回落本地 .logs 文件。
+ */
 export async function readRecentAppEvents(limit = 80): Promise<StoredLogEvent[]> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('app_log_events')
+      .select('created_at,level,area,event,route,method,status,request_id,message,digest,context')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (!error && data && data.length > 0) {
+      return (data as AppLogEventRow[]).map(rowToStoredEvent);
+    }
+  } catch {
+    // 数据库通道不可用时走本地文件。
+  }
   try {
     return (await readTailUtf8Lines(APP_LOG_FILE, APP_EVENT_TAIL_BYTES))
       .slice(-limit)

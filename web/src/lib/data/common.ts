@@ -70,7 +70,7 @@ export async function requireRole(role: AppRole): Promise<DataResult<Profile>> {
 function tierBlockedMessage(tier: ModelTier) {
   return tier === 'flash'
     ? '缺少 Flash Model 真实模型层配置；学生会话回答、学生问题布鲁姆路径判断与挑战生成不会降级到默认模型。'
-    : '缺少 Advanced Model 真实模型层配置；教师问答、挑战确认评估与教学正确性核实辅助不会降级到默认模型。';
+    : '缺少 Advanced Model 真实模型层配置；教师问答、挑战评估与教学正确性核实辅助不会降级到默认模型。';
 }
 
 function providerHealthBlockedReason(providerName: string, healthStatus: string) {

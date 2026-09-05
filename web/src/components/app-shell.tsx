@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { BookOpen, LogOut } from 'lucide-react';
+import { Activity, BarChart3, BookOpen, ChevronDown, Cpu, FileSearch, LogOut, MessageSquare, ShieldCheck, Swords, Users } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 
 import { AppSidebar } from '@/components/app-sidebar';
@@ -12,7 +12,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -36,8 +35,8 @@ interface AppShellProps {
 
 const breadcrumbMap: Record<string, string> = {
   '/student': '学习提问',
-  '/student/challenge': '挑战确认',
-  '/student/me': '我的学习',
+  '/student/challenge': '挑战',
+  '/student/me': '学习情况',
   '/teacher': '教学总览',
   '/teacher/chat': '教师问答',
   '/teacher/audit': '学习记录核实',
@@ -50,22 +49,22 @@ const breadcrumbMap: Record<string, string> = {
   '/admin/logs': '运行日志',
 };
 
-// 头像菜单里的快捷入口：学生端没有侧边栏，看板/挑战从这里进。
-const avatarMenuLinks: Record<Role, Array<{ label: string; href: string }>> = {
+// 头像菜单里的快捷入口：学生端没有侧边栏，学习情况/挑战从这里进。
+const avatarMenuLinks: Record<Role, Array<{ label: string; href: string; icon: React.ElementType }>> = {
   student: [
-    { label: '我的学习', href: '/student/me' },
-    { label: '挑战确认', href: '/student/challenge' },
+    { label: '学习情况', href: '/student/me', icon: BarChart3 },
+    { label: '挑战', href: '/student/challenge', icon: Swords },
   ],
   teacher: [
-    { label: '教学总览', href: '/teacher' },
-    { label: '教师问答', href: '/teacher/chat' },
-    { label: '学习记录核实', href: '/teacher/audit' },
+    { label: '教学总览', href: '/teacher', icon: BarChart3 },
+    { label: '教师问答', href: '/teacher/chat', icon: MessageSquare },
+    { label: '学习记录核实', href: '/teacher/audit', icon: FileSearch },
   ],
   admin: [
-    { label: '管理看板', href: '/admin' },
-    { label: '用户管理', href: '/admin/users' },
-    { label: '模型接入', href: '/admin/providers' },
-    { label: '运行日志', href: '/admin/logs' },
+    { label: '管理看板', href: '/admin', icon: ShieldCheck },
+    { label: '用户管理', href: '/admin/users', icon: Users },
+    { label: '模型接入', href: '/admin/providers', icon: Cpu },
+    { label: '运行日志', href: '/admin/logs', icon: Activity },
   ],
 };
 
@@ -132,36 +131,51 @@ export function AppShell({ role, displayName, breadcrumbs, chrome = 'sidebar', c
       </Breadcrumb>
       <DropdownMenu>
         <DropdownMenuTrigger
-          className="flex cursor-pointer items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex cursor-pointer items-center gap-2 rounded-full py-1 pl-1 pr-2 outline-none transition-colors hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-muted/70"
           aria-label="打开个人菜单"
         >
           <Avatar className="size-9 ring-1 ring-border">
             <AvatarFallback className="bg-primary text-sm font-semibold text-primary-foreground">{displayName.slice(0, 1)}</AvatarFallback>
           </Avatar>
+          <span className="hidden max-w-24 truncate text-sm font-medium sm:inline">{displayName}</span>
+          <ChevronDown className="hidden size-3.5 text-muted-foreground sm:inline" aria-hidden="true" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuContent align="end" className="w-64 p-0">
           {/* 用户信息块用普通 div：DropdownMenuLabel 包装的是 Base UI GroupLabel，
               必须在 Menu.Group 内，直接放 Content 下会抛 #31 砸掉整页。 */}
-          <div className="px-1.5 py-1" data-slot="dropdown-menu-label">
-            <span className="block truncate text-sm font-medium">{displayName}</span>
-            <RoleBadge role={role} className="mt-1 text-[10px]" />
+          <div className="flex items-center gap-3 border-b border-border/60 bg-muted/40 px-4 py-3" data-slot="dropdown-menu-label">
+            <Avatar className="size-10 ring-1 ring-border">
+              <AvatarFallback className="bg-primary text-base font-semibold text-primary-foreground">{displayName.slice(0, 1)}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">{displayName}</p>
+              <RoleBadge role={role} className="mt-1 text-[10px]" />
+            </div>
           </div>
-          <DropdownMenuSeparator />
-          {avatarMenuLinks[role].map((link) => (
-            <DropdownMenuItem key={link.href} render={<Link href={link.href} />} className="cursor-pointer">
-              {link.label}
+          <div className="p-1">
+            {avatarMenuLinks[role].map((link) => {
+              const Icon = link.icon;
+              return (
+                <DropdownMenuItem key={link.href} render={<Link href={link.href} />} className="cursor-pointer gap-2.5 px-2.5 py-2">
+                  <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+                  {link.label}
+                </DropdownMenuItem>
+              );
+            })}
+          </div>
+          <div className="border-t border-border/60 p-1">
+            {/* 注意：Base UI MenuItem 只有 onClick，没有 Radix 式 onSelect；
+              写 onSelect 会挂成 div 的文本选中事件，点击永远无响应。 */}
+            <DropdownMenuItem
+              variant="destructive"
+              disabled={isLoggingOut}
+              onClick={() => void handleLogout()}
+              className="cursor-pointer gap-2.5 px-2.5 py-2"
+            >
+              <LogOut className="size-4" aria-hidden="true" />
+              {isLoggingOut ? '退出中…' : '退出登录'}
             </DropdownMenuItem>
-          ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            variant="destructive"
-            disabled={isLoggingOut}
-            onSelect={(event) => { event.preventDefault(); void handleLogout(); }}
-            className="cursor-pointer"
-          >
-            <LogOut className="size-4" aria-hidden="true" />
-            {isLoggingOut ? '退出中…' : '退出登录'}
-          </DropdownMenuItem>
+          </div>
         </DropdownMenuContent>
       </DropdownMenu>
       {chrome === 'sidebar' ? (

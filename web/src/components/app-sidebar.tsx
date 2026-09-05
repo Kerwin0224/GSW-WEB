@@ -51,9 +51,9 @@ const studentNavGroups: NavGroup[] = [
   {
     label: '学习',
     items: [
-      { icon: User, label: '我的学习', href: '/student/me', description: '项目和挑战进度总览' },
+      { icon: User, label: '学习情况', href: '/student/me', description: '学习进度与认知分布' },
       { icon: MessageSquare, label: '学习提问', href: '/student', description: '提出问题，自动按篇目整理' },
-      { icon: Swords, label: '挑战确认', href: '/student/challenge', description: '确认每个篇目学到了哪一层' },
+      { icon: Swords, label: '挑战', href: '/student/challenge', description: '选择篇目检验学到了哪一层' },
     ],
   },
 ];

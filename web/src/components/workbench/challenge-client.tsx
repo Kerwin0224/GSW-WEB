@@ -189,7 +189,7 @@ export function ChallengeClient({
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <CardTitle className="font-heading">《{projectTitle}》{projectAuthor ? ` · ${projectAuthor}` : ''}认知攀登路线</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">当前已确认层级：{localConfirmedLevel ? `L${localConfirmedLevel}` : '等待挑战确认'}；本页只调用真实 Provider 生成挑战并确认结果。</p>
+              <p className="mt-1 text-sm text-muted-foreground">当前已确认层级：{localConfirmedLevel ? `L${localConfirmedLevel}` : '等待挑战'}；本页只调用真实 Provider 生成挑战并确认结果。</p>
             </div>
             <Badge variant="outline">目标 L{targetLevel}</Badge>
           </div>

@@ -94,13 +94,13 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <header className="flex flex-col gap-4 rounded-lg border bg-background/80 p-5 sm:flex-row sm:items-start sm:justify-between">
         <SectionHeader
-          eyebrow="挑战确认"
+          eyebrow="挑战"
           title="选择篇目，发起挑战"
           description="选一篇学过的文章，检验自己学到了第几层。"
         />
         <div className="flex shrink-0 flex-wrap gap-2">
           <Button nativeButton={false} render={<Link href="/student/me" />} variant="outline">
-            我的学习
+            学习情况
           </Button>
         </div>
       </header>
@@ -195,7 +195,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <SectionHeader
                       eyebrow="当前挑战项目"
-                      title={`《${selectedProject.title}》挑战确认`}
+                      title={`《${selectedProject.title}》挑战`}
                       description="挑战会告诉你通过与否、达到了哪一层。没通过就先回去再读一读，再来挑战。"
                     />
                     <div className="flex flex-wrap gap-2">
@@ -213,7 +213,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                   <div className="mt-5 grid gap-3 md:grid-cols-3">
                     <div className="rounded-lg border bg-card/60 p-4">
                       <p className="text-xs text-muted-foreground">当前已确认层级</p>
-                      <div className="mt-2">{selectedProgress.confirmedLevel ? <BloomBadge level={selectedProgress.confirmedLevel} /> : <Badge variant="outline">等待挑战确认</Badge>}</div>
+                      <div className="mt-2">{selectedProgress.confirmedLevel ? <BloomBadge level={selectedProgress.confirmedLevel} /> : <Badge variant="outline">等待挑战</Badge>}</div>
                     </div>
                     <div className="rounded-lg border bg-card/60 p-4">
                       <p className="text-xs text-muted-foreground">下一挑战</p>

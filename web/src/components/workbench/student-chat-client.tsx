@@ -547,7 +547,7 @@ export function StudentChatClient({
                             className="mt-1 flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-accent/45 bg-accent/8 px-2 py-2 text-xs text-accent-foreground/85 transition-colors hover:border-accent/70 hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             <Swords className="size-3.5 shrink-0" aria-hidden="true" />
-                            挑战确认《{project.title}》
+                            挑战《{project.title}》
                           </Link>
                         </div>
                       ) : null}

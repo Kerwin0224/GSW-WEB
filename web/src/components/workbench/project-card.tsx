@@ -36,7 +36,7 @@ function BloomMiniBar({ project }: { project: ProjectCardData }) {
 
 export function ProjectCard({ project }: { project: ProjectCardData }) {
   const confirmedLevel = project.challengeProgress.confirmedLevel;
-  const nextLabel = project.challengeProgress.isComplete ? '已完成六层认知挑战确认' : `继续 L${project.challengeProgress.nextLevel} 挑战`;
+  const nextLabel = project.challengeProgress.isComplete ? '已完成全部六层挑战' : `继续 L${project.challengeProgress.nextLevel} 挑战`;
 
   return (
     <Card className="group/card relative flex h-full flex-col overflow-hidden border-border/60 bg-card/95 shadow-soft transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-ink">
@@ -54,7 +54,7 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
           {confirmedLevel ? (
             <BloomBadge level={confirmedLevel} />
           ) : (
-            <span className="shrink-0 rounded-md border border-accent/40 bg-accent/8 px-2.5 py-1 text-xs text-accent-foreground/80">等待挑战确认</span>
+            <span className="shrink-0 rounded-md border border-accent/40 bg-accent/8 px-2.5 py-1 text-xs text-accent-foreground/80">等待挑战</span>
           )}
         </div>
       </CardHeader>

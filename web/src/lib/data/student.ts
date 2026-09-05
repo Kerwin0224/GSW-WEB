@@ -136,8 +136,8 @@ function buildChallengeProgress(practices: PracticeSummaryRow[]): ProjectChallen
   const nextLevel = (isComplete ? 6 : completedLevels + 1) as BloomLevel;
   const currentLevel = nextLevel;
   const statusLabel = (() => {
-    if (isComplete) return '已完成六层认知挑战确认';
-    if (!latestPractice) return '等待挑战确认';
+    if (isComplete) return '已完成全部六层挑战';
+    if (!latestPractice) return '等待挑战';
     if (latestPractice.evaluation_state === 'pending') return `L${latestPractice.target_bloom_level} 待作答`;
     if (latestPractice.evaluation_state === 'blocked') return '挑战暂时被阻塞';
     if (latestPractice.evaluation_state === 'failed') return '挑战生成失败';

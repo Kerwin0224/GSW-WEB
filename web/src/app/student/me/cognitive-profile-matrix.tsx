@@ -30,7 +30,7 @@ function levelCellCopy(row: ProjectBloomMatrixRow, level: BloomLevel) {
   if (state === 'current') {
     return {
       label: row.confirmedLevel ? '当前' : '待确认',
-      ariaLabel: `《${row.title}》L${level} ${info.label} ${row.confirmedLevel ? '当前待挑战' : '等待挑战确认'}`,
+      ariaLabel: `《${row.title}》L${level} ${info.label} ${row.confirmedLevel ? '当前待挑战' : '等待挑战'}`,
       icon: Circle,
       className: 'border-primary/55 bg-primary/10 text-primary ring-1 ring-primary/20',
       style: undefined,
