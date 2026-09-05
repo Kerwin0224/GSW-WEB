@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { submitDpoAudit } from '@/lib/data/teacher-actions';
+import { requireRole } from '@/lib/data/common';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
 
 export const runtime = 'nodejs';
@@ -14,6 +15,10 @@ const bodySchema = z.object({
 
 export async function POST(req: Request) {
   return withApiLogging(req, { area: 'api', event: 'teacher_audit_dpo', route: '/api/teacher/audit/dpo' }, async () => {
+    // 纵深防御：submitDpoAudit 内部也会 requireRole('teacher')，
+    // 这里显式拒绝一次，避免未来换调用点时路由层裸奔。
+    const role = await requireRole('teacher');
+    if (!role.ok) return Response.json({ error: role.message }, { status: role.reason === 'forbidden' ? 403 : 401 });
     let body: unknown;
     try {
       body = await req.json();
