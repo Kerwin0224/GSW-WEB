@@ -55,3 +55,7 @@ Triage uses the default five-role vocabulary: `needs-triage`, `needs-info`, `rea
 ### Domain docs
 
 This repo uses a single-context domain docs layout. See `docs/agents/domain.md`.
+
+### 部署与后端工作流
+
+涉及 Vercel 部署、Supabase 数据库（迁移、种子数据、schema 变更）、环境变量或部署链路验证时，先读 `docs/agents/deployment.md`：里面有免费档硬性约束、标准流程、造数据分流和工具/凭据缺失的补救方法。

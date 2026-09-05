@@ -43,3 +43,7 @@ This project is indexed by GitNexus as **GSW-WEB** (2078 symbols, 4595 relations
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+## 部署与后端工作流
+
+涉及 Vercel 部署、Supabase 数据库（迁移、种子数据、schema 变更）、环境变量或部署链路验证时，先读 `docs/agents/deployment.md`：里面有免费档硬性约束、标准流程、造数据分流和工具/凭据缺失的补救方法。
