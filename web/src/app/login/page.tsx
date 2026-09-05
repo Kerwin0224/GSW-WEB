@@ -121,7 +121,7 @@ export default function LoginPage() {
         </section>
 
         <section>
-          <Card className="mx-auto w-full max-w-[29rem] gap-0 overflow-hidden py-0 border-border/70 bg-card/92 shadow-[0_34px_110px_rgba(26,26,46,0.14)] backdrop-blur-xl">
+          <Card flushHeader className="mx-auto w-full max-w-[29rem] overflow-hidden border-border/70 bg-card/92 shadow-[0_34px_110px_rgba(26,26,46,0.14)] backdrop-blur-xl">
             <div className="border-b bg-[linear-gradient(135deg,color-mix(in_oklch,var(--primary)_10%,transparent),color-mix(in_oklch,var(--accent)_10%,transparent))] p-7">
               <div className="mb-5 flex size-14 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-lg shadow-primary/20">
                 <Sparkles className="size-7" aria-hidden="true" />

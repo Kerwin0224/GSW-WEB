@@ -21,6 +21,11 @@ export async function getProfile(): Promise<Profile | null> {
   return data;
 }
 
+/**
+ * RSC/页面侧的鉴权入口：失败即 redirect。
+ * API 路由侧请用 lib/data/common.ts 的 requireRole（返回 DataResult，不抛转跳）；
+ * 两者都基于 getProfile()（每次调用重新读库，停用账号即时失效），分工不同勿混用。
+ */
 export async function requireProfile(role?: AppRole): Promise<Profile> {
   const profile = await getProfile();
   if (!profile) redirect('/login?error=profile_required');

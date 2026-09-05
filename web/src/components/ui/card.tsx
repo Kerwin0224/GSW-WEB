@@ -5,16 +5,20 @@ import { cn } from "@/lib/utils"
 function Card({
   className,
   size = "default",
+  flushHeader = false,
   ...props
-}: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
-  // 根元素自带 py-4/gap-4 节奏；若第一个子元素是通栏彩色 header（border-b 或渐变底），
-  // 必须在使用处追加 "py-0 gap-0"，否则 header 上下会露出 bg-card 白条。
+}: React.ComponentProps<"div"> & { size?: "default" | "sm"; flushHeader?: boolean }) {
+  // flushHeader：第一个子元素是通栏彩色 header（border-b 色带或渐变底）时开启。
+  // 根元素默认带 py-4/gap-4 节奏，通栏场景会露出 bg-card 白条，这里统一在
+  // 接口内消化，调用方不再需要知道 Card 的内部 padding 模型。
   return (
     <div
       data-slot="card"
       data-size={size}
+      data-flush-header={flushHeader || undefined}
       className={cn(
         "group/card flex flex-col gap-4 overflow-hidden rounded-lg border border-border/55 bg-card/90 py-4 text-sm text-card-foreground shadow-soft backdrop-blur ring-1 ring-white/55 transition-[border-color,box-shadow,background-color] duration-200 has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-lg *:[img:last-child]:rounded-b-lg dark:ring-white/10",
+        flushHeader && "gap-0 py-0",
         className
       )}
       {...props}

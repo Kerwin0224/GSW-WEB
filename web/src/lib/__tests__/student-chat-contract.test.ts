@@ -5,6 +5,7 @@ import {
   buildStudentChatRequestBody,
   buildStudentConversationHref,
   getStudentChatBlockedReasons,
+  parseAssignmentFromHeaders,
   shouldClassifyProjectForStudentTurn,
   shouldReplaceStudentConversationHref,
 } from '../student-chat-contract.ts';
@@ -123,4 +124,25 @@ test('student route is not replaced when it already points at the active convers
     currentSearch: '?conversationId=conversation-1',
     conversationId: 'conversation-1',
   }), false);
+});
+
+// ─── assignment header parsing ───────────────────────────────────────────────
+
+test('parseAssignmentFromHeaders reads immediate project assignment with decoded title', () => {
+  const headers = { get: (name: string) => ({ 'x-assignment-kind': 'project', 'x-project-id': 'p1', 'x-project-title': encodeURIComponent('静夜思') }[name] ?? null) };
+  assert.deepEqual(parseAssignmentFromHeaders(headers), { kind: 'project', projectId: 'p1', title: '静夜思' });
+});
+
+test('parseAssignmentFromHeaders reads archive assignment and ignores unknown or absent kinds', () => {
+  assert.deepEqual(
+    parseAssignmentFromHeaders({ get: (name) => ({ 'x-assignment-kind': 'archive' }[name] ?? null) }),
+    { kind: 'archive', projectId: null, title: null },
+  );
+  assert.equal(parseAssignmentFromHeaders({ get: (name) => ({ 'x-assignment-kind': 'mystery' }[name] ?? null) }), null);
+  assert.equal(parseAssignmentFromHeaders({ get: () => null }), null);
+});
+
+test('parseAssignmentFromHeaders rejects project kind without a title', () => {
+  const headers = { get: (name: string) => ({ 'x-assignment-kind': 'project', 'x-project-id': 'p1' }[name] ?? null) };
+  assert.equal(parseAssignmentFromHeaders(headers), null);
 });

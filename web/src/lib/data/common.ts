@@ -55,6 +55,11 @@ export function resolveLanguageModel(capability: CapabilityStatus): LanguageMode
   }
 }
 
+/**
+ * API 路由/server action 侧的鉴权入口：失败返回 DataResult（403/401 语义由调用方映射）。
+ * RSC/页面侧请用 lib/auth.ts 的 requireProfile（redirect 语义）；
+ * 两者都基于 getProfile()（每次调用重新读库，停用账号即时失效），分工不同勿混用。
+ */
 export async function requireRole(role: AppRole): Promise<DataResult<Profile>> {
   try {
     const profile = await getProfile();

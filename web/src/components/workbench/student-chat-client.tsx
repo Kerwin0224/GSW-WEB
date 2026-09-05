@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import { BookOpen, ChevronDown, FolderOpen, Loader2, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Sparkles, Swords, Trash2 } from 'lucide-react';
-import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,18 +27,18 @@ import {
   buildStudentConversationHref,
   shouldClassifyProjectForStudentTurn,
   shouldReplaceStudentConversationHref,
+  type StudentAssignmentData,
 } from '@/lib/student-chat-contract';
 import { cn } from '@/lib/utils';
 import { useSidebarCollapse } from '@/hooks/use-sidebar-collapse';
 import { useBloomStatus, type StudentBloomData } from '@/hooks/use-bloom-status';
 import { useMessageQueue, type QueuedStudentMessage } from '@/hooks/use-message-queue';
 import { useConversationSync } from '@/hooks/use-conversation-sync';
+import { useStudentAssignment } from '@/hooks/use-student-assignment';
 
 const globalPromptChips = ['《静夜思》的“疑”是什么意思？', '这句怎么翻译？', '诗人为什么这样写？', '帮我从分析层级继续追问'];
 const finalizedConversationBlockedReason = '这条会话已完成教师核实，不能继续追问。请从项目或空白入口新开一个会话继续学习。';
-type StudentAssignmentData =
-  | { kind: 'project'; projectId: string; title: string }
-  | { kind: 'archive'; projectId: null; title: null };
+
 type StudentChatMessage = UIMessage<unknown, {
   'student-assignment': StudentAssignmentData;
   'student-bloom': StudentBloomData;
@@ -64,12 +63,6 @@ export function StudentChatClient({
 }) {
   const router = useRouter();
   const [input, setInput] = useState('');
-  const [activeProjectId, setActiveProjectId] = useState(initialActiveProjectId ?? initialConversation?.projectId ?? '');
-  const [assignmentNotice, setAssignmentNotice] = useState<{ kind: 'project'; title: string } | { kind: 'archive' } | null>(null);
-  // 归档动效：会话被归入项目时高亮左侧对应项目行，几秒后自动退场。
-  const [justArchivedProjectId, setJustArchivedProjectId] = useState('');
-  const [expandedProjectId, setExpandedProjectId] = useState(initialActiveProjectId ?? initialConversation?.projectId ?? '');
-  const { bloomStatus, applyBloomStatus, markQueued: markBloomQueued, markPending: markBloomPending, reset: resetBloomStatus } = useBloomStatus();
   const [conversationId, setConversationId] = useState(initialConversation?.id ?? '');
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
@@ -80,11 +73,11 @@ export function StudentChatClient({
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const { collapsed: sidebarCollapsed, toggle: toggleSidebar } = useSidebarCollapse();
+  const { bloomStatus, applyBloomStatus, markQueued: markBloomQueued, markPending: markBloomPending, reset: resetBloomStatus } = useBloomStatus();
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialConversationSignatureRef = useRef('');
   const conversationIdRef = useRef(conversationId);
-  const activeProjectIdRef = useRef(activeProjectId);
-  const activeProjectTitleRef = useRef(activeProjectId ? projects.find((project) => project.id === activeProjectId)?.title : undefined);
+
   const syncConversationRoute = useCallback((nextConversationId: string) => {
     if (!nextConversationId) return;
     if (typeof window === 'undefined') return;
@@ -96,58 +89,43 @@ export function StudentChatClient({
       window.history.replaceState(null, '', buildStudentConversationHref(nextConversationId));
     }
   }, []);
+
   const refreshStudentRoute = useCallback((routeConversationId?: string) => {
     if (routeConversationId) syncConversationRoute(routeConversationId);
     router.refresh();
   }, [router, syncConversationRoute]);
+
   const acceptConversationId = useCallback((nextConversationId: string) => {
     setConversationId(nextConversationId);
     setConversationLocked(false);
     syncConversationRoute(nextConversationId);
   }, [syncConversationRoute]);
-  const applyAssignment = useCallback((assignment: StudentAssignmentData, routeConversationId = conversationId) => {
-    if (assignment.kind === 'project') {
-      let nextProjectId = assignment.projectId;
-      if (assignment.projectId) {
-        setActiveProjectId(assignment.projectId);
-        setExpandedProjectId(assignment.projectId);
-      } else {
-        const matchedProject = projects.find((project) => project.title === assignment.title);
-        if (matchedProject) {
-          nextProjectId = matchedProject.id;
-          setActiveProjectId(matchedProject.id);
-          setExpandedProjectId(matchedProject.id);
-        }
-      }
-      const alreadyInProjectContext = Boolean(nextProjectId) && activeProjectId === nextProjectId;
-      if (!alreadyInProjectContext) {
-        setAssignmentNotice({ kind: 'project', title: assignment.title });
-        toast.success(`已归档到《${assignment.title}》`, {
-          description: '本次提问已进入左侧项目，可随时回看。',
-          duration: 5000,
-        });
-        if (nextProjectId) {
-          setJustArchivedProjectId(nextProjectId);
-        }
-      }
-      refreshStudentRoute(routeConversationId);
-      return;
-    }
 
-    setAssignmentNotice({ kind: 'archive' });
-    toast('已保存到日常会话归档', {
-      description: '没有识别到明确篇目；这条会话会保留在左侧归档里，可回看续问。',
-      duration: 5000,
-    });
-    refreshStudentRoute(routeConversationId);
-  }, [activeProjectId, conversationId, projects, refreshStudentRoute]);
+  // 会话归属接缝：项目状态、两条到达通路的汇合、归档回执与动效都在 hook 内。
+  const assignment = useStudentAssignment({
+    projects,
+    conversationId,
+    refreshRoute: refreshStudentRoute,
+    initialProjectId: initialActiveProjectId ?? initialConversation?.projectId ?? '',
+  });
+  const {
+    activeProjectId,
+    activeProjectIdRef,
+    activeProjectTitleRef,
+    expandedProjectId,
+    assignmentNotice,
+    justArchivedProjectId,
+    setNotice: setAssignmentNotice,
+    acceptResponseHeaders,
+    acceptAssignmentData,
+    enterProject,
+    resetToBlank,
+    syncFromConversation,
+  } = assignment;
 
   const chatFetch = useCallback(async (input: RequestInfo | URL, init?: RequestInit) => {
     const response = await fetch(input, init);
     const nextConversationId = response.headers.get('x-conversation-id');
-    const assignmentKind = response.headers.get('x-assignment-kind');
-    const projectId = response.headers.get('x-project-id');
-    const projectTitle = response.headers.get('x-project-title');
 
     if (response.status === 409) {
       const payload = await response.clone().json().catch(() => ({})) as { blockedReason?: string };
@@ -159,14 +137,10 @@ export function StudentChatClient({
     if (nextConversationId) {
       acceptConversationId(nextConversationId);
     }
-    if (assignmentKind === 'project' && projectTitle) {
-      applyAssignment({ kind: 'project', projectId: projectId ?? '', title: decodeURIComponent(projectTitle) }, nextConversationId ?? undefined);
-    }
-    if (assignmentKind === 'archive') {
-      applyAssignment({ kind: 'archive', projectId: null, title: null }, nextConversationId ?? undefined);
-    }
+    // 通路一：首问即知归属（点项目开新会话），归属经响应 header 同步到达。
+    acceptResponseHeaders(response.headers, nextConversationId ?? undefined);
     return response;
-  }, [acceptConversationId, applyAssignment]);
+  }, [acceptConversationId, acceptResponseHeaders]);
 
   const chatTransport = useMemo(() => new DefaultChatTransport<StudentChatMessage>({
     api: '/api/student/chat',
@@ -189,7 +163,8 @@ export function StudentChatClient({
     messages: initialConversation?.messages as StudentChatMessage[] | undefined,
     onData: (part) => {
       if (part.type === 'data-student-assignment') {
-        applyAssignment(part.data);
+        // 通路二：空白首问的异步篇目识别，归属经流内 data part 到达。
+        acceptAssignmentData(part.data);
       }
       if (part.type === 'data-student-bloom') {
         applyBloomStatus(part.data);
@@ -228,11 +203,7 @@ export function StudentChatClient({
     setConversationId(initialConversation?.id ?? '');
     conversationIdRef.current = initialConversation?.id ?? '';
     setConversationLocked(Boolean(initialConversation?.conversationFinalized));
-    const nextProjectId = initialConversation?.projectId ?? initialActiveProjectId ?? '';
-    setActiveProjectId(nextProjectId);
-    activeProjectIdRef.current = nextProjectId;
-    activeProjectTitleRef.current = nextProjectId ? projects.find((project) => project.id === nextProjectId)?.title : undefined;
-    setExpandedProjectId(nextProjectId);
+    syncFromConversation(initialConversation, initialActiveProjectId, projects);
     clearQueue();
     // 从服务端载入的历史消息 parts 里提取布鲁姆认知路径状态，恢复 bloomStatus，
     // 使历史会话也能渲染 BloomStatusBadge（而不只是流式期间才显示）。
@@ -253,28 +224,11 @@ export function StudentChatClient({
     }
     resetBloomStatus(initialBloomStatus);
     setMessages((initialConversation?.messages ?? []) as StudentChatMessage[]);
-  }, [busy, initialActiveProjectId, initialConversation, initialConversationSignature, projects, setMessages, resetBloomStatus]);
+  }, [busy, initialActiveProjectId, initialConversation, initialConversationSignature, projects, setMessages, resetBloomStatus, syncFromConversation]);
 
   useEffect(() => {
     conversationIdRef.current = conversationId;
   }, [conversationId]);
-
-  useEffect(() => {
-    activeProjectIdRef.current = activeProjectId;
-    activeProjectTitleRef.current = activeProject?.title;
-  }, [activeProjectId, activeProject?.title]);
-
-  useEffect(() => {
-    if (!assignmentNotice) return;
-    const timer = window.setTimeout(() => setAssignmentNotice(null), 4000);
-    return () => window.clearTimeout(timer);
-  }, [assignmentNotice]);
-
-  useEffect(() => {
-    if (!justArchivedProjectId) return;
-    const timer = window.setTimeout(() => setJustArchivedProjectId(''), 3500);
-    return () => window.clearTimeout(timer);
-  }, [justArchivedProjectId]);
 
   useConversationSync(conversationId, useCallback(() => refreshStudentRoute(conversationId), [conversationId, refreshStudentRoute]));
 
@@ -283,7 +237,7 @@ export function StudentChatClient({
     projectId: activeProjectIdRef.current || activeProjectId,
     projectTitle: activeProjectTitleRef.current || activeProject?.title,
     fallback,
-  }), [activeProject?.title, activeProjectId, conversationId]);
+  }), [activeProject?.title, activeProjectId, activeProjectIdRef, activeProjectTitleRef, conversationId]);
 
   const handleDequeue = useCallback((next: QueuedStudentMessage) => {
     setLastSubmittedInput(next.text);
@@ -309,16 +263,12 @@ export function StudentChatClient({
   );
 
   const openProjectContext = (projectId: string) => {
-    setActiveProjectId(projectId);
-    activeProjectIdRef.current = projectId;
-    activeProjectTitleRef.current = projects.find((project) => project.id === projectId)?.title;
-    setExpandedProjectId(projectId);
+    enterProject(projectId);
     setConversationId('');
     conversationIdRef.current = '';
     setConversationLocked(false);
     resetBloomStatus();
     clearQueue();
-    setAssignmentNotice(null);
     setUploadStatus('');
     setUploadError('');
     clearError();
@@ -327,16 +277,12 @@ export function StudentChatClient({
   };
 
   const openEmptyContext = () => {
-    setActiveProjectId('');
-    activeProjectIdRef.current = '';
-    activeProjectTitleRef.current = undefined;
-    setExpandedProjectId('');
+    resetToBlank();
     setConversationId('');
     conversationIdRef.current = '';
     setConversationLocked(false);
     resetBloomStatus();
     clearQueue();
-    setAssignmentNotice(null);
     setUploadStatus('');
     setUploadError('');
     clearError();
@@ -367,14 +313,13 @@ export function StudentChatClient({
         acceptConversationId(payload.conversationId);
       }
       if (payload.projectId) {
+        // 附件归属走的是与提问相同的接缝：项目态 + 回执 + 高亮动效。
         const matchedProject = projects.find((project) => project.id === payload.projectId);
-        setActiveProjectId(payload.projectId);
-        setExpandedProjectId(payload.projectId);
-        if (matchedProject) {
-          setAssignmentNotice({ kind: 'project', title: matchedProject.title });
-        } else {
-          setAssignmentNotice({ kind: 'project', title: activeProject?.title ?? '对应篇目' });
-        }
+        enterProject(payload.projectId);
+        setAssignmentNotice({
+          kind: 'project',
+          title: matchedProject?.title ?? activeProject?.title ?? '对应篇目',
+        });
       } else {
         setAssignmentNotice({ kind: 'archive' });
       }
@@ -401,17 +346,14 @@ export function StudentChatClient({
       markBloomQueued(messageId);
     } else {
       void sendMessage({ id: messageId, parts: [{ type: 'text', text }] }, { body });
-      if (activeProjectId) setExpandedProjectId(activeProjectId);
       if (activeProject && !bloomUnavailable) markBloomPending(messageId);
     }
-    if (activeProjectId) setExpandedProjectId(activeProjectId);
     setInput('');
   };
 
   const retry = () => {
     if (!error || busy || conversationLocked) return;
     clearError();
-    if (activeProjectId) setExpandedProjectId(activeProjectId);
     void regenerate({ body: buildRequestBody() });
   };
 

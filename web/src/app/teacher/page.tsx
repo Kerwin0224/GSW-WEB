@@ -54,7 +54,7 @@ export default async function TeacherChatPage() {
       />
 
       <section className="grid gap-4 lg:grid-cols-[1.05fr_1.05fr_0.9fr]">
-        <Card className="gap-0 overflow-hidden py-0 border-primary/15 bg-card/92 shadow-soft backdrop-blur-xl">
+        <Card flushHeader className="overflow-hidden border-primary/15 bg-card/92 shadow-soft backdrop-blur-xl">
           <CardHeader className="border-b border-border/60 bg-primary/6">
             <CardTitle className="flex items-center gap-2 font-heading">
               <ClipboardCheck className="size-5 text-primary" aria-hidden="true" />
@@ -76,7 +76,7 @@ export default async function TeacherChatPage() {
           </CardContent>
         </Card>
 
-        <Card className="gap-0 overflow-hidden py-0 border-primary/20 bg-card/95 shadow-ink backdrop-blur-xl">
+        <Card flushHeader className="overflow-hidden border-primary/20 bg-card/95 shadow-ink backdrop-blur-xl">
           <CardHeader className="border-b border-border/60 bg-[linear-gradient(135deg,color-mix(in_oklch,var(--primary)_12%,transparent),transparent)]">
             <CardTitle className="flex items-center gap-2 font-heading">
               <FileSearch className="size-5 text-primary" aria-hidden="true" />
@@ -96,7 +96,7 @@ export default async function TeacherChatPage() {
           </CardContent>
         </Card>
 
-        <Card className="gap-0 overflow-hidden py-0 border-destructive/20 bg-card/92 shadow-soft backdrop-blur-xl">
+        <Card flushHeader className="overflow-hidden border-destructive/20 bg-card/92 shadow-soft backdrop-blur-xl">
           <CardHeader className="border-b border-destructive/15 bg-destructive/5">
             <CardTitle className="flex items-center gap-2 font-heading">
               <AlertTriangle className="size-5 text-destructive" aria-hidden="true" />

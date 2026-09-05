@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Activity, BarChart3, BookOpen, ChevronDown, Cpu, FileSearch, LogOut, MessageSquare, ShieldCheck, Swords, Users } from 'lucide-react';
+import { BookOpen, ChevronDown, LogOut } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 
 import { AppSidebar } from '@/components/app-sidebar';
@@ -17,8 +17,8 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { RoleBadge } from '@/components/workbench/role-badge';
+import { roleAvatarMenuItems, roleBreadcrumbMap, type Role } from '@/lib/role-nav';
 
-type Role = 'admin' | 'teacher' | 'student';
 interface BreadcrumbSegment { label: string; href?: string; }
 interface AppShellProps {
   role: Role;
@@ -28,49 +28,14 @@ interface AppShellProps {
   /**
    * sidebar：经典左侧栏（教师/管理端）。
    * top：无侧边栏的顶栏模式——学生端主路径是提问本身，
-   * 个人中心类入口（看板、挑战）收敛进头像菜单，避免两级侧边栏打架。
+   * 个人中心类入口（学习情况、挑战）收敛进头像菜单，避免两级侧边栏打架。
    */
   chrome?: 'sidebar' | 'top';
 }
 
-const breadcrumbMap: Record<string, string> = {
-  '/student': '学习提问',
-  '/student/challenge': '挑战',
-  '/student/me': '学习情况',
-  '/teacher': '教学总览',
-  '/teacher/chat': '教师问答',
-  '/teacher/audit': '学习记录核实',
-  '/admin': '管理看板',
-  '/admin/classes': '班级成员管理',
-  '/admin/providers': '模型接入',
-  '/admin/mcp': '外部工具',
-  '/admin/presets': '提示词预设',
-  '/admin/exports': '教学数据导出',
-  '/admin/logs': '运行日志',
-};
-
-// 头像菜单里的快捷入口：学生端没有侧边栏，学习情况/挑战从这里进。
-const avatarMenuLinks: Record<Role, Array<{ label: string; href: string; icon: React.ElementType }>> = {
-  student: [
-    { label: '学习情况', href: '/student/me', icon: BarChart3 },
-    { label: '挑战', href: '/student/challenge', icon: Swords },
-  ],
-  teacher: [
-    { label: '教学总览', href: '/teacher', icon: BarChart3 },
-    { label: '教师问答', href: '/teacher/chat', icon: MessageSquare },
-    { label: '学习记录核实', href: '/teacher/audit', icon: FileSearch },
-  ],
-  admin: [
-    { label: '管理看板', href: '/admin', icon: ShieldCheck },
-    { label: '用户管理', href: '/admin/users', icon: Users },
-    { label: '模型接入', href: '/admin/providers', icon: Cpu },
-    { label: '运行日志', href: '/admin/logs', icon: Activity },
-  ],
-};
-
 function derivedBreadcrumbs(pathname: string, fallback: BreadcrumbSegment[]) {
   const root = fallback[0] ?? { label: '工作台' };
-  const exact = breadcrumbMap[pathname];
+  const exact = roleBreadcrumbMap[pathname];
   if (exact && exact !== root.label) return [root, { label: exact }];
 
   if (pathname.startsWith('/teacher/audit/')) {
@@ -110,7 +75,7 @@ export function AppShell({ role, displayName, breadcrumbs, chrome = 'sidebar', c
       {chrome === 'sidebar' ? (
         <SidebarTrigger className="-ml-1 min-h-10 min-w-10 cursor-pointer rounded-lg" aria-label="展开或收起侧边栏" />
       ) : (
-        <Link href={role === 'student' ? '/student' : breadcrumbMap[`/${role}`] ? `/${role}` : '/'} className="flex shrink-0 items-center gap-2 rounded-md px-1 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <Link href={role === 'student' ? '/student' : roleBreadcrumbMap[`/${role}`] ? `/${role}` : '/'} className="flex shrink-0 items-center gap-2 rounded-md px-1 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <BookOpen className="size-4" aria-hidden="true" />
           </span>
@@ -153,7 +118,7 @@ export function AppShell({ role, displayName, breadcrumbs, chrome = 'sidebar', c
             </div>
           </div>
           <div className="p-1">
-            {avatarMenuLinks[role].map((link) => {
+            {roleAvatarMenuItems[role].map((link) => {
               const Icon = link.icon;
               return (
                 <DropdownMenuItem key={link.href} render={<Link href={link.href} />} className="cursor-pointer gap-2.5 px-2.5 py-2">

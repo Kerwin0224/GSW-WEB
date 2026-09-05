@@ -753,14 +753,6 @@ export async function finalizeLearningConversation(conversationId: string, _prev
   return { ok: true, message: `会话级核实已提交；${confirmedCount} 条确认无误，${revisedCount} 条使用教师修订版，学生侧不能再继续追问这个会话。` };
 }
 
-export async function submitSftAudit(sourceMessageId: string, previousState: AuditSubmissionState, formData: FormData): Promise<AuditSubmissionState> {
-  return confirmLearningRecord(sourceMessageId, previousState, formData);
-}
-
-export async function submitDpoAudit(sourceMessageId: string, previousState: AuditSubmissionState, formData: FormData): Promise<AuditSubmissionState> {
-  return reviseLearningRecord(sourceMessageId, previousState, formData);
-}
-
 export async function saveTeacherPromptPreset(_previousState: AuditSubmissionState, formData: FormData): Promise<AuditSubmissionState> {
   void _previousState;
   const role = await requireRole('teacher');

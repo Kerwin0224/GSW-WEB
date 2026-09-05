@@ -374,7 +374,7 @@ export function TeacherChatClient({
             )}
           </section>
 
-          <Card className="gap-0 overflow-hidden rounded-2xl py-0 border-primary/20 bg-card/92 shadow-soft">
+          <Card flushHeader className="overflow-hidden rounded-2xl border-primary/20 bg-card/92 shadow-soft">
             <CardHeader className="border-b border-border/60 bg-primary/6">
               <div className="flex items-start gap-3">
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
