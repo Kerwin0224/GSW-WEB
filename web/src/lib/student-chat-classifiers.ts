@@ -15,7 +15,7 @@
 import { generateObject, type LanguageModel } from 'ai';
 import { z } from 'zod';
 
-import { normalizeConcreteProjectTitle, normalizeProjectAuthor } from './student-chat-prompts';
+import { extractExplicitProjectTitle, normalizeConcreteProjectTitle, normalizeProjectAuthor } from './student-chat-prompts';
 
 // ─── 篇目归属裁决 ────────────────────────────────────────────────────────────
 
@@ -34,6 +34,10 @@ export async function classifyProjectFromQuestion(
   model: LanguageModel,
   question: string,
 ): Promise<{ title: string | null; author: string | null }> {
+  // 快路径：首问自带《书名号》时直接归档，不等模型裁决——
+  // 消除"发起提问后长时间不归档"的最常见原因（模型慢/裁决保守/调用失败）。
+  const explicitTitle = extractExplicitProjectTitle(question);
+  if (explicitTitle) return { title: explicitTitle, author: null };
   try {
     const result = await generateObject({
       model,

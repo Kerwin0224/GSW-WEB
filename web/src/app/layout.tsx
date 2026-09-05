@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Noto_Serif_SC } from "next/font/google";
+import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
@@ -35,6 +36,8 @@ export default function RootLayout({
         <TooltipProvider>
           {children}
         </TooltipProvider>
+        {/* 归档等异步结果的全局回执：学生会话归入篇目时在顶部给出可感知反馈。 */}
+        <Toaster position="top-center" richColors closeButton />
       </body>
     </html>
   );

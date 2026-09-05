@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
-import { BookOpen, ChevronDown, FolderOpen, Loader2, MessageSquare, PanelLeftClose, PanelLeftOpen, Sparkles, Trash2 } from 'lucide-react';
+import { BookOpen, ChevronDown, FolderOpen, Loader2, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Sparkles, Swords, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -65,6 +66,8 @@ export function StudentChatClient({
   const [input, setInput] = useState('');
   const [activeProjectId, setActiveProjectId] = useState(initialActiveProjectId ?? initialConversation?.projectId ?? '');
   const [assignmentNotice, setAssignmentNotice] = useState<{ kind: 'project'; title: string } | { kind: 'archive' } | null>(null);
+  // 归档动效：会话被归入项目时高亮左侧对应项目行，几秒后自动退场。
+  const [justArchivedProjectId, setJustArchivedProjectId] = useState('');
   const [expandedProjectId, setExpandedProjectId] = useState(initialActiveProjectId ?? initialConversation?.projectId ?? '');
   const { bloomStatus, applyBloomStatus, markQueued: markBloomQueued, markPending: markBloomPending, reset: resetBloomStatus } = useBloomStatus();
   const [conversationId, setConversationId] = useState(initialConversation?.id ?? '');
@@ -117,12 +120,25 @@ export function StudentChatClient({
         }
       }
       const alreadyInProjectContext = Boolean(nextProjectId) && activeProjectId === nextProjectId;
-      if (!alreadyInProjectContext) setAssignmentNotice({ kind: 'project', title: assignment.title });
+      if (!alreadyInProjectContext) {
+        setAssignmentNotice({ kind: 'project', title: assignment.title });
+        toast.success(`已归档到《${assignment.title}》`, {
+          description: '本次提问已进入左侧项目，可随时回看。',
+          duration: 5000,
+        });
+        if (nextProjectId) {
+          setJustArchivedProjectId(nextProjectId);
+        }
+      }
       refreshStudentRoute(routeConversationId);
       return;
     }
 
     setAssignmentNotice({ kind: 'archive' });
+    toast('已保存到日常会话归档', {
+      description: '没有识别到明确篇目；这条会话会保留在左侧归档里，可回看续问。',
+      duration: 5000,
+    });
     refreshStudentRoute(routeConversationId);
   }, [activeProjectId, conversationId, projects, refreshStudentRoute]);
 
@@ -253,6 +269,12 @@ export function StudentChatClient({
     const timer = window.setTimeout(() => setAssignmentNotice(null), 4000);
     return () => window.clearTimeout(timer);
   }, [assignmentNotice]);
+
+  useEffect(() => {
+    if (!justArchivedProjectId) return;
+    const timer = window.setTimeout(() => setJustArchivedProjectId(''), 3500);
+    return () => window.clearTimeout(timer);
+  }, [justArchivedProjectId]);
 
   useConversationSync(conversationId, useCallback(() => refreshStudentRoute(conversationId), [conversationId, refreshStudentRoute]));
 
@@ -427,52 +449,37 @@ export function StudentChatClient({
   };
 
   const blocked = conversationLocked ? finalizedConversationBlockedReason : providerBlocked;
-  const currentSpaceLabel = inProjectContext ? projectDisplayName : conversationId ? '日常会话归档' : '空白提问入口';
 
   return (
-    <div className={cn("grid min-h-0 w-full flex-1 bg-background/35 transition-all duration-300", sidebarCollapsed ? "lg:grid-cols-[3rem_minmax(0,1fr)]" : "lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[22rem_minmax(0,1fr)]")}>
-      <aside className={cn("order-2 border-t border-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--primary)_8%,transparent),transparent_18%),color-mix(in_oklch,var(--card)_92%,transparent)] p-3 shadow-soft backdrop-blur-xl lg:order-1 lg:max-h-[calc(100svh-5rem)] lg:overflow-y-auto lg:border-r lg:border-t-0 transition-all duration-300", sidebarCollapsed ? "lg:p-2" : "lg:p-4")} aria-label="当前会话空间">
-        <div className="flex items-center justify-between gap-2 mb-3">
+    <div className={cn("grid min-h-0 w-full flex-1 bg-background/35 transition-all duration-300", sidebarCollapsed ? "lg:grid-cols-[3.5rem_minmax(0,1fr)]" : "lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[22rem_minmax(0,1fr)]")}>
+      <aside className={cn("order-2 border-t border-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--primary)_8%,transparent),transparent_18%),color-mix(in_oklch,var(--card)_92%,transparent)] shadow-soft backdrop-blur-xl lg:order-1 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-t-0 transition-all duration-300", sidebarCollapsed ? "lg:w-[3.5rem] lg:p-1.5" : "lg:w-auto lg:p-3")} aria-label="当前会话空间">
+        {/* 收起态：窄图标栏（新会话 + 展开钮），悬停有 title 提示；展开态：新会话置顶。 */}
+        <div className={cn('flex gap-2', sidebarCollapsed ? 'flex-col items-center' : 'flex-row items-stretch')}>
+          <button
+            type="button"
+            onClick={openEmptyContext}
+            title="开始新会话"
+            className={cn('flex min-h-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-sm font-medium text-primary-foreground shadow-lg shadow-primary/25 transition-[background-color,box-shadow,flex-direction] duration-200 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', sidebarCollapsed ? 'w-full px-0' : 'flex-1 px-4')}
+          >
+            <Plus className="size-4 shrink-0" aria-hidden="true" />
+            <span className={cn('truncate', sidebarCollapsed && 'sr-only')}>开始新会话</span>
+          </button>
           <button
             type="button"
             onClick={toggleSidebar}
-            className="hidden lg:flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background/80 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
-            aria-label={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+            title={sidebarCollapsed ? "展开项目归档" : "收起项目归档"}
+            aria-label={sidebarCollapsed ? "展开项目归档" : "收起项目归档"}
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background/80 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
           >
             {sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
           </button>
         </div>
-        <div className={cn("space-y-4 pb-3 transition-opacity duration-300", sidebarCollapsed && "lg:hidden")}>
-          <section className="rounded-2xl border border-primary/18 bg-background/72 p-4 shadow-soft">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">学习空间</p>
-                <h2 className="mt-2 font-heading text-xl tracking-tight">{currentSpaceLabel}</h2>
-                <p className="mt-2 text-xs leading-5 text-muted-foreground">项目对应具体篇目；无法可靠归属的会话保存在日常会话归档。</p>
-              </div>
-              <Badge className="border-primary/25 bg-primary/8 text-primary" variant="outline">当前</Badge>
-            </div>
-            <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
-              <div className="rounded-xl border border-border/60 bg-card/80 px-2 py-2">
-                <span className="block font-heading text-lg text-foreground">{projects.length}</span>
-                <span className="text-muted-foreground">项目</span>
-              </div>
-              <div className="rounded-xl border border-border/60 bg-card/80 px-2 py-2">
-                <span className="block font-heading text-lg text-foreground">{projects.reduce((sum, project) => sum + project.questionCount, 0)}</span>
-                <span className="text-muted-foreground">问题</span>
-              </div>
-              <div className="rounded-xl border border-border/60 bg-card/80 px-2 py-2">
-                <span className="block font-heading text-lg text-foreground">{dailyArchive.sessions.length}</span>
-                <span className="text-muted-foreground">归档会话</span>
-              </div>
-            </div>
-          </section>
-
+        <div className={cn("space-y-4 pt-3 transition-opacity duration-300", sidebarCollapsed && "lg:hidden")}>
           <section className="rounded-2xl border border-border/65 bg-card/86 p-3 shadow-soft">
             <div className="mb-3 flex items-start justify-between gap-3 px-1">
               <div>
-                <p className="font-heading text-lg">项目</p>
-                <p className="mt-1 text-xs text-muted-foreground">点击项目会开启该篇目的新会话。</p>
+                <p className="font-heading text-lg">项目归档</p>
+                <p className="mt-1 text-xs text-muted-foreground">点项目开新会话；提到篇目的问题会自动归入。</p>
               </div>
               <Badge variant="outline">{projects.length}</Badge>
             </div>
@@ -487,8 +494,9 @@ export function StudentChatClient({
                 {projects.map((project) => {
                   const active = project.id === activeProjectId;
                   const expanded = project.id === expandedProjectId;
+                  const justArchived = project.id === justArchivedProjectId;
                   return (
-                    <div key={project.id} className={cn('overflow-hidden rounded-xl border border-border/65 bg-background/76 shadow-soft transition-[border-color,background-color,box-shadow] duration-200', active && 'border-primary/55 bg-primary/7 shadow-ink ring-1 ring-primary/15')}>
+                    <div key={project.id} className={cn('overflow-hidden rounded-xl border border-border/65 bg-background/76 shadow-soft transition-[border-color,background-color,box-shadow] duration-200', active && 'border-primary/55 bg-primary/7 shadow-ink ring-1 ring-primary/15', justArchived && 'animate-in fade-in zoom-in-[1.02] duration-500 ring-2 ring-primary/45')}>
                       <button
                         type="button"
                         onClick={() => openProjectContext(project.id)}
@@ -534,6 +542,13 @@ export function StudentChatClient({
                               </div>
                             );
                           })}
+                          <Link
+                            href={`/student/challenge?projectId=${project.id}`}
+                            className="mt-1 flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-accent/45 bg-accent/8 px-2 py-2 text-xs text-accent-foreground/85 transition-colors hover:border-accent/70 hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <Swords className="size-3.5 shrink-0" aria-hidden="true" />
+                            挑战确认《{project.title}》
+                          </Link>
                         </div>
                       ) : null}
                     </div>
@@ -547,18 +562,10 @@ export function StudentChatClient({
             <div className="mb-3 flex items-start justify-between gap-3 px-1">
               <div>
                 <p className="font-heading text-lg">日常会话归档</p>
-                <p className="mt-1 text-xs text-muted-foreground">无法可靠归属篇目的会话会保存在这里，可回看并续问。</p>
+                <p className="mt-1 text-xs text-muted-foreground">没识别到篇目的会话保存在这里，可回看续问。</p>
               </div>
               <Badge variant="secondary">{dailyArchive.sessions.length}</Badge>
             </div>
-            <button
-              type="button"
-              onClick={openEmptyContext}
-              className={cn('mb-2 flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-xl border border-dashed px-3 py-3 text-left text-xs transition-[border-color,background-color,color] duration-200 hover:border-primary/35 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', !activeProjectId && !conversationId && 'border-primary/45 bg-primary/7 text-primary')}
-            >
-              <Sparkles className="size-3.5 shrink-0" aria-hidden="true" />
-              从全局空白入口开始新会话
-            </button>
             {dailyArchive.sessions.length === 0 ? (
               <div className="rounded-xl border border-dashed bg-background/50 px-3 py-4 text-xs text-muted-foreground">
                 暂无日常会话归档。
@@ -593,8 +600,8 @@ export function StudentChatClient({
         </div>
       </aside>
 
-      <section className="order-1 flex max-h-[calc(100svh-8rem)] min-w-0 flex-col lg:order-2 lg:max-h-[calc(100svh-5rem)]" aria-label="学生学习提问空间">
-        <div className="border-b border-border/60 bg-card/92 px-4 py-4 shadow-soft backdrop-blur">
+      <section className="order-1 flex min-h-0 min-w-0 flex-col lg:order-2 lg:h-full" aria-label="学生学习提问空间">
+        <div className="shrink-0 border-b border-border/60 bg-card/92 px-4 py-3 shadow-soft backdrop-blur">
           <div className="mx-auto flex max-w-3xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-medium text-muted-foreground">当前会话空间</p>
@@ -602,10 +609,10 @@ export function StudentChatClient({
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 {conversationLocked
                   ? '这条会话已完成教师核实，只能回看，不能继续追问。'
-                  : inProjectContext ? '你现在正在对应篇目的项目里继续学习；新问题直接归入当前项目，不再进行篇目识别。' : conversationId ? '这条会话不会补归属到项目；若要进入篇目学习流，请从项目或空白入口另开新会话。' : '直接提问即可；当问题里明确出现篇目时，系统会自动归入对应项目。'}
+                  : inProjectContext ? '新问题会直接归入当前项目，不再进行篇目识别。' : conversationId ? '这条会话不会补归属到项目；若要进入篇目学习流，请从项目或空白入口另开新会话。' : '直接提问即可；当问题里明确出现篇目时，系统会自动归入对应项目。'}
               </p>
             </div>
-            <Badge className="w-fit border-primary/25 bg-primary/8 text-primary" variant="outline"><Sparkles className="mr-1 size-3" />{conversationLocked ? '教师已核实' : '项目与归档并列'}</Badge>
+            <Badge className="w-fit border-primary/25 bg-primary/8 text-primary" variant="outline"><Sparkles className="mr-1 size-3" />{conversationLocked ? '教师已核实' : '提问 · 归档 · 挑战'}</Badge>
           </div>
         </div>
         <div className="order-2 border-t border-border/60 bg-card/92 p-4 shadow-[0_-18px_48px_-42px_rgba(26,26,46,0.55)] backdrop-blur lg:order-3">
@@ -660,7 +667,7 @@ export function StudentChatClient({
               <AIMessageList messages={displayMessages} userBloomStatus={bloomStatus} />
             )}
             {messages.length > 0 && assignmentNotice ? (
-              <div className={cn('rounded-lg border px-4 py-3 text-sm', assignmentNotice.kind === 'project' ? 'border-primary/20 bg-primary/5' : 'bg-muted/50 text-muted-foreground')} aria-live="polite">
+              <div className={cn('animate-in fade-in slide-in-from-bottom-2 rounded-lg border px-4 py-3 text-sm duration-300', assignmentNotice.kind === 'project' ? 'border-primary/20 bg-primary/5' : 'bg-muted/50 text-muted-foreground')} aria-live="polite">
                 <BookOpen className={cn('mr-2 inline size-4', assignmentNotice.kind === 'project' ? 'text-primary' : 'text-muted-foreground')} aria-hidden="true" />
                 {assignmentNotice.kind === 'project'
                   ? `已归入《${assignmentNotice.title}》项目。`

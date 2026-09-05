@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildStudentSystemPrompt,
+  extractExplicitProjectTitle,
   normalizeConcreteProjectTitle,
   normalizeProjectAuthor,
 } from '../student-chat-prompts.ts';
@@ -115,4 +116,18 @@ test('all ctx kinds accept empty attachmentPrompt without trailing noise', () =>
     const withOmitted = buildStudentSystemPrompt(ctx);
     assert.equal(withEmpty, withOmitted, `empty attachmentPrompt should equal omitted for kind=${kind}`);
   }
+});
+
+// ─── explicit book-title fast path ───────────────────────────────────────────
+
+test('extractExplicitProjectTitle returns the first book-marked title', () => {
+  assert.equal(extractExplicitProjectTitle('《静夜思》的"疑"是什么意思？'), '静夜思');
+  assert.equal(extractExplicitProjectTitle('帮我理解《念奴娇·赤壁怀古》上阕'), '念奴娇·赤壁怀古');
+  assert.equal(extractExplicitProjectTitle('《出师表》和《桃花源记》哪篇更难？'), '出师表');
+});
+
+test('extractExplicitProjectTitle rejects non-titles and empty marks', () => {
+  assert.equal(extractExplicitProjectTitle('没有书名号的泛泛之问'), null);
+  assert.equal(extractExplicitProjectTitle('《》里什么都没有'), null);
+  assert.equal(extractExplicitProjectTitle('《日常会话归档》这种占位词不算篇目'), null);
 });

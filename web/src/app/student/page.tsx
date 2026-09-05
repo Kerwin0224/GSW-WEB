@@ -52,7 +52,7 @@ export default async function StudentChatPage({ searchParams }: { searchParams?:
   });
 
   return (
-    <div className="mx-auto flex min-h-[calc(100svh-4rem)] max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
+    <div className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-[100rem] flex-col px-3 py-3 sm:px-5 lg:h-[calc(100svh-3.5rem)] lg:overflow-hidden">
       {blockedReasons.length > 0 ? (
         <Alert className="shrink-0 border-destructive/30 bg-destructive/8 shadow-soft backdrop-blur">
           <Sparkles className="size-4" aria-hidden="true" />
@@ -63,7 +63,7 @@ export default async function StudentChatPage({ searchParams }: { searchParams?:
 
       <Card className="relative flex min-h-0 flex-1 overflow-hidden border-primary/20 bg-card/92 shadow-ink backdrop-blur-xl">
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-accent to-destructive/70" />
-        <CardContent className="flex min-h-0 flex-1 p-0 pt-1">
+        <CardContent className="flex min-h-0 flex-1 p-0">
           <StudentChatClient
             key={chatClientKey}
             providerBlocked={workspace.data.providerBlocked}

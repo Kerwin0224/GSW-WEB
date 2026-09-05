@@ -28,6 +28,14 @@ export function normalizeProjectAuthor(value?: string | null): string | null {
   return author ? author : null;
 }
 
+// 书名号是"学生明确提到篇目"的确定性信号，不需要模型裁决：
+// 命中即零延迟归档（首问当轮就进项目），模型分类只兜底没有书名号的泛问。
+const explicitBookTitlePattern = /《([^《》\n]{1,40})》/;
+
+export function extractExplicitProjectTitle(question: string): string | null {
+  return normalizeConcreteProjectTitle(explicitBookTitlePattern.exec(question)?.[1] ?? null);
+}
+
 // ─── 系统提示词构建 ───────────────────────────────────────────────────────────
 
 export type StudentSystemPromptContext =
