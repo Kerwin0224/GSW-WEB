@@ -1,71 +1,28 @@
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.egg-info/
-dist/
-build/
-.venv/
-venv/
-
-# Frontend
-web/node_modules/
-web/.next/
-web/*.log
-web/tsconfig.tsbuildinfo
-web/supabase/.temp/
-
-# Data / exports / models
-/data/
-exports/
-models/*
-!models/.gitkeep
-!models/README.md
-*.gguf
-*.db
-*.sqlite
-*.sqlite3
-
-# Env
-.env
-.env.*
-!.env.example
-web/.env*
-!web/.env.local.example
-
-# IDE
-.vscode/
-.idea/
-.VSCodeCounter/
-
 # macOS
 .DS_Store
 
-# Local agent/runtime state
+# 环境变量（密钥一律不提交）
+.env
+.env.*
+!.env.example
+
+# IDE / 本地工具状态
+.vscode/
+.idea/
+.VSCodeCounter/
 .claude/
-.codex/
-.codex-artifacts/
+.codex*/
+.kiro/
 .omc/
+.omo/
+.codegraph/
+.gitnexus
 .playwright-cli/
-.claude/worktrees/
-.claude/settings.local.json
-.codex-logs/
 .playwright-mcp/
-.pytest_cache/
+
+# 本地运行产物
 output/
 *.log
-nul
+*.tsbuildinfo
 output-*.png
 *-playwright-*.png
-
-# Trellis local state
-.trellis/.template-hashes.json
-.trellis/.developer
-.trellis/workspace/
-.trellis/tasks/archive/**/check.jsonl
-.trellis/tasks/archive/**/debug.jsonl
-.trellis/tasks/archive/**/implement.jsonl
-
-# local runtime logs
-web/.logs/
-.gitnexus
