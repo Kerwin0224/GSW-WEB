@@ -237,7 +237,7 @@ export function EditProviderDialog({ provider }: { provider: ProviderListItem })
         </Button>
       }
       title={`编辑 — ${provider.name}`}
-      description="更新 AI 运维 Provider 基础信息。API Key 留空会保留现有密钥。"
+      description="更新模型服务的基础信息。API Key 留空会保留现有密钥。"
       icon={<Pencil className="size-5" />}
       className="max-w-lg"
       footer={(
@@ -346,7 +346,7 @@ export function DeleteProviderButton({ provider }: { provider: ProviderListItem 
       <Alert variant="destructive">
         <XCircle className="size-4" />
         <AlertDescription>
-          下游 AI 能力链路会在删除后重新计算；如果这是唯一绑定，学生会话回答、教师问答或挑战确认会显示断链。
+          删除后会重新计算能力绑定；如果这是唯一绑定，学生提问、教师问答或挑战功能会显示不可用。
         </AlertDescription>
       </Alert>
     </AdminDialogShell>
@@ -372,7 +372,7 @@ export function HealthBadge({ provider }: { provider: ProviderListItem }) {
   } else if (status === 'failed' || status === 'blocked') {
     variant = 'destructive';
     icon = <XCircle className="size-3" />;
-    label = status === 'blocked' ? '已阻塞' : '失败';
+    label = status === 'blocked' ? '不可用' : '失败';
   }
 
   return (

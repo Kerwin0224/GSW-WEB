@@ -9,7 +9,7 @@ export default async function TeacherLayout({ children }: { children: React.Reac
   if (profile.status !== 'active') redirect('/login?error=account_disabled');
 
   return (
-    <AppShell role="teacher" displayName={profile.display_name ?? '老师'} breadcrumbs={[{ label: '教师看板' }]}>
+    <AppShell role="teacher" displayName={profile.display_name ?? '老师'} breadcrumbs={[{ label: '教学总览' }]}>
       {children}
     </AppShell>
   );

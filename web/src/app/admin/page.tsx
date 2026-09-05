@@ -69,13 +69,13 @@ export default async function AdminDashboard() {
         ]}
       />
 
-      <section className="grid gap-4 lg:grid-cols-3" aria-label="AI Native 后台链路诊断">
+      <section className="grid gap-4 lg:grid-cols-3" aria-label="AI 服务状态">
         <Card className={studentMissing.length ? 'border-destructive/35 bg-destructive/6' : 'border-primary/25 bg-primary/6'}>
           <CardHeader>
             <CardTitle className="flex items-center justify-between gap-3">
               <span className="flex items-center gap-2">
                 {studentMissing.length ? <AlertTriangle className="size-5 text-destructive" aria-hidden="true" /> : <CheckCircle2 className="size-5 text-primary" aria-hidden="true" />}
-                学生 AI 链路
+                学生 AI 能力
               </span>
               <Badge variant={studentMissing.length ? 'destructive' : 'secondary'}>{studentMissing.length ? '有缺口' : '就绪'}</Badge>
             </CardTitle>
@@ -95,7 +95,7 @@ export default async function AdminDashboard() {
             <CardTitle className="flex items-center justify-between gap-3">
               <span className="flex items-center gap-2">
                 {teacherMissing.length ? <AlertTriangle className="size-5 text-destructive" aria-hidden="true" /> : <CheckCircle2 className="size-5 text-primary" aria-hidden="true" />}
-                教师 AI 链路
+                教师 AI 能力
               </span>
               <Badge variant={teacherMissing.length ? 'destructive' : 'secondary'}>{teacherMissing.length ? '有缺口' : '就绪'}</Badge>
             </CardTitle>
@@ -154,7 +154,7 @@ export default async function AdminDashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Cpu className="size-5 text-primary" />
-              AI 运维摘要
+              AI 服务摘要
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
@@ -251,7 +251,7 @@ export default async function AdminDashboard() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Database className="size-5 text-primary" />
-                学校管理 / AI 运维入口
+                快捷入口
               </CardTitle>
             </CardHeader>
             <CardContent className="grid gap-2 text-sm">

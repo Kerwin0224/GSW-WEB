@@ -340,12 +340,12 @@ export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] })
       <main className="min-w-0 overflow-y-auto p-4 xl:h-full xl:min-h-0 xl:p-6" aria-label="完整会话记录">
         {selected ? (
           <div className="mx-auto max-w-4xl space-y-4">
-            <Card className="overflow-hidden border-primary/20 bg-card/95 shadow-ink backdrop-blur-xl">
+            <Card className="gap-0 overflow-hidden py-0 border-primary/20 bg-card/95 shadow-ink backdrop-blur-xl">
               <CardHeader className="border-b border-border/60 bg-primary/6">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <CardTitle className="font-heading">{selected.classLabel} · {selected.studentName}</CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">《{selected.projectTitle}》 · {selected.sessionLabel}；右侧展示完整会话，所有 AI 回答气泡都可在最终提交前直接修订。</p>
+                    <p className="mt-1 text-sm text-muted-foreground">《{selected.projectTitle}》 · {selected.sessionLabel}；右侧是完整对话，提交前每条 AI 回答都可以修订。</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Badge variant={selected.conversationFinalized ? 'secondary' : 'outline'}>{reviewStateLabel(selected.reviewState)}</Badge>
@@ -353,7 +353,7 @@ export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] })
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 p-5">
                 <div className="grid gap-3 text-sm md:grid-cols-4">
                   <div className="rounded-lg border border-border/65 bg-background/78 p-3"><span className="text-muted-foreground">AI 回答</span><p className="mt-1 text-2xl font-semibold">{selected.assistantCount}</p></div>
                   <div className="rounded-lg border border-primary/20 bg-primary/6 p-3"><span className="text-muted-foreground">待最终提交</span><p className="mt-1 text-2xl font-semibold text-primary">{selected.pendingAssistantCount}</p></div>
@@ -423,10 +423,10 @@ export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] })
           </div>
         ) : (
           <div className="mx-auto max-w-5xl space-y-4">
-            <Card className="overflow-hidden border-primary/20 bg-card/95 shadow-ink backdrop-blur-xl">
+            <Card className="gap-0 overflow-hidden py-0 border-primary/20 bg-card/95 shadow-ink backdrop-blur-xl">
               <CardHeader className="border-b border-border/60 bg-primary/6">
                 <CardTitle className="font-heading">班级总览</CardTitle>
-                <p className="text-sm text-muted-foreground">从左侧先选班级，再逐层进入学生、项目和会话。右侧只在选中会话后显示完整上下文、AI 辅助审计和会话级最终提交。</p>
+                <p className="text-sm text-muted-foreground">从左侧选班级，再进入学生和会话。选中会话后，右侧会显示完整对话和核实操作。</p>
               </CardHeader>
               <CardContent className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-xl border border-primary/20 bg-primary/6 p-4 shadow-soft">

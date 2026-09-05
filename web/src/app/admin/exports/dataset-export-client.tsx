@@ -86,7 +86,7 @@ export default function DatasetExportClient() {
           </Button>
         }
         title="筛选与预览"
-        description="预览接口返回前 100 条、篇目分布和有效样本覆盖率；不从客户端伪造样本。"
+        description="预览返回前 100 条、篇目分布和样本覆盖率。"
         icon={<Filter className="size-5" />}
         className="max-w-3xl"
         footer={(

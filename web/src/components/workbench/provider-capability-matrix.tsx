@@ -102,7 +102,7 @@ function getTierView(tier: ModelTier, providers: ProviderListItem[], modelTiers:
   const scenarios = scenarioTierBindings.filter((binding) => binding.tier === tier).map((binding) => binding.scenario);
 
   if (status.ready) return { tier, status, provider, viewStatus: 'ready', statusText: '可用', scenarios };
-  if (status.providerId || status.modelId || status.blockedReason) return { tier, status, provider, viewStatus: 'blocked', statusText: '已阻塞', scenarios };
+  if (status.providerId || status.modelId || status.blockedReason) return { tier, status, provider, viewStatus: 'blocked', statusText: '不可用', scenarios };
   return { tier, status, provider, viewStatus: 'missing', statusText: '未配置', scenarios };
 }
 
@@ -391,7 +391,7 @@ function ProviderOperationsTable({ providers, modelTiers }: { providers: Provide
     return (
       <EmptyState
         title="尚未配置模型 Provider"
-        description="先添加 AI 运维 Provider；然后健康检查、拉取模型，并在 Flash / Advanced 卡片中选择模型。"
+        description="先在“模型接入”里添加服务；然后做健康检查、拉取模型，并在 Flash / Advanced 卡片中绑定模型。"
       />
     );
   }

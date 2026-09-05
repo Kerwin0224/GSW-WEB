@@ -57,7 +57,7 @@ export function ProviderConfigDialog() {
         </Button>
       )}
       title="添加 Provider"
-      description="注册一个 AI 运维 Provider。保存后在列表中独立执行健康检查、模型拉取与场景路由绑定。"
+      description="添加一个模型服务。保存后可以单独做健康检查、拉取模型和绑定场景。"
       icon={<ServerCog className="size-5" />}
       className="max-w-lg"
       footer={(

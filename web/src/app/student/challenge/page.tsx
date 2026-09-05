@@ -95,8 +95,8 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
       <header className="flex flex-col gap-4 rounded-lg border bg-background/80 p-5 sm:flex-row sm:items-start sm:justify-between">
         <SectionHeader
           eyebrow="挑战确认"
-          title="筛选项目并直接发起挑战"
-          description="挑战确认页只承载项目筛选、认知攀登路线和同页挑战流程。"
+          title="选择篇目，发起挑战"
+          description="选一篇学过的文章，检验自己学到了第几层。"
         />
         <div className="flex shrink-0 flex-wrap gap-2">
           <Button nativeButton={false} render={<Link href="/student" />} variant="outline">
@@ -104,17 +104,17 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
             学习提问
           </Button>
           <Button nativeButton={false} render={<Link href="/student/me" />} variant="outline">
-            学生看板
+            我的学习
           </Button>
         </div>
       </header>
 
       {workspace.data.challengeBlocked ? (
-        <BlockedState title="挑战生成与评估被阻塞" description={workspace.data.challengeBlocked} />
+        <BlockedState title="挑战功能暂不可用" description={workspace.data.challengeBlocked} />
       ) : null}
 
       {projects.length === 0 ? (
-        <EmptyState title="暂无可挑战项目" description="先在学习提问里形成真实项目，再进入挑战确认当前认知水平。" />
+        <EmptyState title="还没有可挑战的篇目" description="先在学习提问里形成项目，再来发起挑战。" />
       ) : (
         <section className="grid gap-5 lg:grid-cols-[22rem_minmax(0,1fr)]">
           <aside className="space-y-4">
@@ -200,7 +200,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                     <SectionHeader
                       eyebrow="当前挑战项目"
                       title={`《${selectedProject.title}》挑战确认`}
-                      description="挑战结果只展示通过与否、对应布鲁姆层级和下一步行动；未通过时先回到项目会话继续学习，再回来挑战。"
+                      description="挑战会告诉你通过与否、达到了哪一层。没通过就先回去再读一读，再来挑战。"
                     />
                     <div className="flex flex-wrap gap-2">
                       <Button nativeButton={false} render={<Link href={`/student?projectId=${selectedProject.id}`} />} variant="outline">
@@ -229,7 +229,6 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                     </div>
                   </div>
                 </div>
-
                 {selectedProjectResult && !selectedProjectResult.ok ? (
                   <ErrorState title="篇目挑战加载失败" description={selectedProjectResult.message} />
                 ) : selectedProjectDetail ? (

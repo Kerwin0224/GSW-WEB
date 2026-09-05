@@ -34,13 +34,13 @@ export default async function AdminLogsPage({
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="observability"
-        title="后台再崩，也要留下证据。"
-        description="本页集中查看登录、API、渲染错误和 Next dev 原始日志。日志只写结构化摘要，密码、cookie、token、密钥字段会脱敏。"
+        eyebrow="运行日志"
+        title="出了问题，这里有迹可循。"
+        description="集中查看登录、API、渲染错误和开发日志。日志只记录摘要，密码、cookie、token、密钥等敏感字段会脱敏。"
         metrics={[
           { label: '结构化事件', value: events.length, hint: status.appLogPath },
-          { label: '错误', value: errorCount, hint: 'error level' },
-          { label: '警告', value: warnCount, hint: 'warn level' },
+          { label: '错误', value: errorCount, hint: '需要优先处理的错误' },
+          { label: '警告', value: warnCount, hint: '值得留意的警告' },
         ]}
       />
 
@@ -50,7 +50,7 @@ export default async function AdminLogsPage({
             <CardTitle className="flex items-center gap-2"><FileJson className="size-5 text-primary" />结构化日志</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <Badge variant="outline">{status.appLogBytes} bytes</Badge>
+            <Badge variant="outline">{status.appLogBytes} 字节</Badge>
             <p>更新：{status.appLogUpdatedAt ?? '尚未创建'}</p>
           </CardContent>
         </Card>

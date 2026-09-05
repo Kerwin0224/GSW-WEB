@@ -56,7 +56,7 @@ export default async function StudentChatPage({ searchParams }: { searchParams?:
       {blockedReasons.length > 0 ? (
         <Alert className="shrink-0 border-destructive/30 bg-destructive/8 shadow-soft backdrop-blur">
           <Sparkles className="size-4" aria-hidden="true" />
-          <AlertTitle className="font-heading">AI 学习链路还没有完全就绪</AlertTitle>
+          <AlertTitle className="font-heading">AI 服务还没有准备好</AlertTitle>
           <AlertDescription>{blockedReasons.join('；')}</AlertDescription>
         </Alert>
       ) : null}

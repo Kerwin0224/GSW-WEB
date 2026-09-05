@@ -49,22 +49,22 @@ interface NavGroup {
 
 const studentNavGroups: NavGroup[] = [
   {
-    label: '学生工作区',
+    label: '学习',
     items: [
-      { icon: User, label: '学生看板', href: '/student/me', description: '查看项目概览与挑战确认状态' },
-      { icon: MessageSquare, label: '学习提问', href: '/student', description: '从空白提问开始并自动归入项目' },
-      { icon: Swords, label: '挑战确认', href: '/student/challenge', description: '按项目确认当前布鲁姆层级' },
+      { icon: User, label: '我的学习', href: '/student/me', description: '项目和挑战进度总览' },
+      { icon: MessageSquare, label: '学习提问', href: '/student', description: '提出问题，自动按篇目整理' },
+      { icon: Swords, label: '挑战确认', href: '/student/challenge', description: '确认每个篇目学到了哪一层' },
     ],
   },
 ];
 
 const teacherNavGroups: NavGroup[] = [
   {
-    label: '教师工作区',
+    label: '教学',
     items: [
-      { icon: BarChart3, label: '教师看板', href: '/teacher', description: '风险、认知与待核实优先级' },
-      { icon: MessageSquare, label: '教师问答', href: '/teacher/chat', description: '备课、追问与教学判断的 AI 交互' },
-      { icon: FileSearch, label: '学习记录核实', href: '/teacher/audit', description: '按班级、学生、项目、会话核实 AI 回答' },
+      { icon: BarChart3, label: '教学总览', href: '/teacher', description: '全班学情与待核实任务' },
+      { icon: MessageSquare, label: '教师问答', href: '/teacher/chat', description: '备课提问，和 AI 讨论教学' },
+      { icon: FileSearch, label: '学习记录核实', href: '/teacher/audit', description: '逐条核实学生的 AI 对话' },
     ],
   },
 ];
@@ -73,25 +73,25 @@ const adminNavGroups: NavGroup[] = [
   {
     label: '学校管理',
     items: [
-      { icon: ShieldCheck, label: '管理看板', href: '/admin', description: '学校账号、班级与管理摘要' },
-      { icon: Users, label: '用户管理', href: '/admin/users', description: '账号、角色、状态与班级归属' },
-      { icon: School, label: '班级成员管理', href: '/admin/classes', description: '教师与学生的班级分配' },
+      { icon: ShieldCheck, label: '管理看板', href: '/admin', description: '账号、班级与 AI 服务状态' },
+      { icon: Users, label: '用户管理', href: '/admin/users', description: '创建和管理全校账号' },
+      { icon: School, label: '班级成员管理', href: '/admin/classes', description: '安排教师和学生的班级' },
     ],
   },
   {
-    label: 'AI 运维',
+    label: 'AI 服务',
     items: [
-      { icon: Cpu, label: 'Provider', href: '/admin/providers', description: '模型能力路由与密钥引用' },
-      { icon: Puzzle, label: 'MCP', href: '/admin/mcp', description: '外部工具治理' },
-      { icon: FileText, label: 'Prompt 预设', href: '/admin/presets', description: '全局预设生命周期' },
-      { icon: Download, label: '教学数据导出', href: '/admin/exports', description: '教师确认与修订样本' },
-      { icon: Activity, label: '运行日志', href: '/admin/logs', description: '错误与请求追踪' },
+      { icon: Cpu, label: '模型接入', href: '/admin/providers', description: '配置 AI 模型与调用方式' },
+      { icon: Puzzle, label: '外部工具', href: '/admin/mcp', description: '管理 AI 可用的外部工具' },
+      { icon: FileText, label: '提示词预设', href: '/admin/presets', description: '维护教师问答的提示词模板' },
+      { icon: Download, label: '教学数据导出', href: '/admin/exports', description: '导出教师确认过的样本' },
+      { icon: Activity, label: '运行日志', href: '/admin/logs', description: '排查系统问题' },
     ],
   },
 ];
 
 const navMap: Record<Role, NavGroup[]> = { student: studentNavGroups, teacher: teacherNavGroups, admin: adminNavGroups };
-const roleTitle: Record<Role, string> = { student: '学生看板', teacher: '教师看板', admin: 'AI Native 后台' };
+const roleTitle: Record<Role, string> = { student: '学习台', teacher: '教学台', admin: '管理后台' };
 
 interface AppSidebarProps { role: Role; displayName: string; }
 

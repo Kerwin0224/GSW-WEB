@@ -20,7 +20,7 @@ export default async function AdminPresetsPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="Prompt 预设"
+        eyebrow="提示词预设"
         title="教师端的 AI，要先被学校定义好。"
         description="预设不是随手填 prompt。它定义课堂场景、变量和版本，教师只能使用 published 版本。"
         metrics={[

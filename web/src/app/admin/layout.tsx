@@ -9,7 +9,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (profile.status !== 'active') redirect('/login?error=account_disabled');
 
   return (
-    <AppShell role="admin" displayName={profile.display_name ?? '管理员'} breadcrumbs={[{ label: '管理控制台' }]}>
+    <AppShell role="admin" displayName={profile.display_name ?? '管理员'} breadcrumbs={[{ label: '管理看板' }]}>
       {children}
     </AppShell>
   );

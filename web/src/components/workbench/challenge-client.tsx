@@ -199,9 +199,9 @@ export function ChallengeClient({
         </CardContent>
       </Card>
 
-      {challengeBlocked ? <BlockedState title="挑战能力未就绪" description={challengeBlocked} /> : null}
-      {message && state === 'blocked' ? <BlockedState title="挑战流程被阻塞" description={message} /> : null}
-      {message && (state === 'failed' || state === 'error') ? <ErrorState title={state === 'failed' ? 'Provider 调用失败' : '挑战流程失败'} description={message} /> : null}
+      {challengeBlocked ? <BlockedState title="挑战功能未就绪" description={challengeBlocked} /> : null}
+      {message && state === 'blocked' ? <BlockedState title="挑战暂不可用" description={message} /> : null}
+      {message && (state === 'failed' || state === 'error') ? <ErrorState title={state === 'failed' ? '模型调用失败' : '挑战流程失败'} description={message} /> : null}
       {message && ['pending', 'evaluated'].includes(state) ? (
         <Alert className="border-primary/30 bg-primary/5" role="status">
           <CheckCircle2 className="size-4" />

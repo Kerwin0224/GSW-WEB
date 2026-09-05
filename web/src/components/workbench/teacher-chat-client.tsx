@@ -374,7 +374,7 @@ export function TeacherChatClient({
             )}
           </section>
 
-          <Card className="overflow-hidden rounded-2xl border-primary/20 bg-card/92 shadow-soft">
+          <Card className="gap-0 overflow-hidden rounded-2xl py-0 border-primary/20 bg-card/92 shadow-soft">
             <CardHeader className="border-b border-border/60 bg-primary/6">
               <div className="flex items-start gap-3">
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
@@ -386,7 +386,7 @@ export function TeacherChatClient({
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-3 px-4 py-4">
               {recentPresets.length === 0 ? (
                 <BlockedState title="暂无可用提示词模板" description="可以先直接提问；需要复用固定问法时，点击下方按钮创建模板。" />
               ) : (

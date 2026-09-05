@@ -94,7 +94,7 @@ export default async function AdminMcpPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="MCP 能力"
+        eyebrow="外部工具"
         title="把外部工具收敛成可审计、可投放的远程能力。"
         description="这里优先回答三个问题：这个 Server 能不能连、会开放给谁、到底会暴露几个工具。管理员只需要维护远程 URL、角色与白名单。"
         metrics={[

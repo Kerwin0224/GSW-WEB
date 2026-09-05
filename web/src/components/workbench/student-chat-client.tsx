@@ -479,7 +479,7 @@ export function StudentChatClient({
             {projects.length === 0 ? (
               <EmptyState
                 title="先自然提问"
-                description="系统会在识别到明确篇目后自动归入项目；缺少识别能力时会诚实显示阻塞原因。"
+                description="系统会在识别到篇目后自动归档；无法识别时会提示原因。"
                 className="bg-background/60"
               />
             ) : (
