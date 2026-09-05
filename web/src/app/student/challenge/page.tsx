@@ -99,10 +99,6 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
           description="选一篇学过的文章，检验自己学到了第几层。"
         />
         <div className="flex shrink-0 flex-wrap gap-2">
-          <Button nativeButton={false} render={<Link href="/student" />} variant="outline">
-            <BookOpenText className="mr-2 size-4" />
-            学习提问
-          </Button>
           <Button nativeButton={false} render={<Link href="/student/me" />} variant="outline">
             我的学习
           </Button>

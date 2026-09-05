@@ -11,9 +11,7 @@ import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -142,18 +140,18 @@ export function AppShell({ role, displayName, breadcrumbs, chrome = 'sidebar', c
           </Avatar>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel>
+          {/* 用户信息块用普通 div：DropdownMenuLabel 包装的是 Base UI GroupLabel，
+              必须在 Menu.Group 内，直接放 Content 下会抛 #31 砸掉整页。 */}
+          <div className="px-1.5 py-1" data-slot="dropdown-menu-label">
             <span className="block truncate text-sm font-medium">{displayName}</span>
             <RoleBadge role={role} className="mt-1 text-[10px]" />
-          </DropdownMenuLabel>
+          </div>
           <DropdownMenuSeparator />
-          <DropdownMenuGroup>
-            {avatarMenuLinks[role].map((link) => (
-              <DropdownMenuItem key={link.href} render={<Link href={link.href} />} className="cursor-pointer">
-                {link.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuGroup>
+          {avatarMenuLinks[role].map((link) => (
+            <DropdownMenuItem key={link.href} render={<Link href={link.href} />} className="cursor-pointer">
+              {link.label}
+            </DropdownMenuItem>
+          ))}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
