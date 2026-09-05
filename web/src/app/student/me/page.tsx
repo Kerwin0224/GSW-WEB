@@ -20,22 +20,22 @@ export default async function StudentProfilePage() {
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="学生看板"
-        title="看见自己在不同篇目上的挑战确认结果。"
-        description="看板主统计只使用挑战确认后的布鲁姆结果；学生问题的布鲁姆认知路径反馈只作为挑战参考。"
+        eyebrow="我的学习"
+        title="看看自己的学习足迹。"
+        description="每个篇目学到了第几层、下一步挑战什么，这里都能看到。层级由挑战确认产生。"
         primaryAction={{ label: '继续提问', href: '/student' }}
-        secondaryAction={{ label: '进入挑战确认', href: '/student/challenge' }}
+        secondaryAction={{ label: '去挑战确认', href: '/student/challenge' }}
         metrics={[
-          { label: '项目', value: projects.length, hint: '真实学习项目' },
-          { label: '提问记录', value: totalQuestions, hint: '学生提出的问题' },
-          { label: '等待挑战确认', value: awaitingChallengeCount, hint: '尚无确认层级的项目' },
+          { label: '项目', value: projects.length, hint: '正在学习的篇目' },
+          { label: '提问记录', value: totalQuestions, hint: '累计提问次数' },
+          { label: '等待挑战确认', value: awaitingChallengeCount, hint: '还没有确认层级的项目' },
         ]}
       />
 
       <section className="space-y-4">
         <SectionHeader
           title="我的项目"
-          description="项目卡片只展示项目级概览与挑战状态，点击后直接进入该项目的新会话空白状态。"
+          description="点击项目，直接开始新的提问。"
         />
         {projects.length === 0 ? (
           <EmptyState
@@ -54,14 +54,14 @@ export default async function StudentProfilePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>布鲁姆认知攀登进度</CardTitle>
-          <CardDescription>每行对应一个项目，六列对应 L1 到 L6 的挑战确认状态。</CardDescription>
+          <CardTitle>认知攀登进度</CardTitle>
+          <CardDescription>每一行是一个篇目，从 L1 记忆到 L6 创造，看你登到了第几层。</CardDescription>
         </CardHeader>
         <CardContent>
           {hasRecords ? null : (
             <EmptyState
-              title="等待挑战确认"
-              description="完成挑战后，这里会展示各项目的 L1 到 L6 攀登进度；在此之前，学生问题的布鲁姆认知路径反馈只作为挑战参考。"
+              title="等待第一次挑战"
+              description="完成第一次挑战后，这里会出现你的攀登路线图。"
               action={<Button nativeButton={false} render={<Link href="/student/challenge">去挑战</Link>} />}
             />
           )}
@@ -69,7 +69,7 @@ export default async function StudentProfilePage() {
           <div className="mt-6 rounded-lg border border-border/60 bg-background/60 p-4">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">已确认项目分布</p>
-              <p className="text-xs text-muted-foreground">按项目最高确认层级计数</p>
+              <p className="text-xs text-muted-foreground">按最高确认层级统计</p>
             </div>
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
               {distribution.map((item) => (
@@ -80,7 +80,7 @@ export default async function StudentProfilePage() {
               ))}
             </div>
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">累计挑战记录 {totalChallenges} 条；矩阵展示项目攀登状态，分布只按项目最高确认层级计数。</p>
+          <p className="mt-3 text-xs text-muted-foreground">累计挑战 {totalChallenges} 次。</p>
         </CardContent>
       </Card>
     </div>

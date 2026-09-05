@@ -44,6 +44,7 @@ GitHub 是唯一 hub：代码和 schema 都从提交流出，Vercel 和 Supabase
 |---|---|
 | Vercel 项目 | `gsw-web`，Root Directory=`web`，main 分支=生产 |
 | 生产域名 | https://gsw-web-kerwin01130224-1532s-projects.vercel.app |
+| 自定义域名 | https://www.04251688.xyz（裸域 308 跳转到 www）；DNS 在 Cloudflare 免费档，两条 CNAME（`@` 和 `www`）指向 `f3c6fcae1a46b090.vercel-dns-017.com`，均 DNS only（灰色云，勿开代理）；域名在 Vercel 侧经 TXT 验证使用（曾被旧账号占用，占用权未释放，续期/迁移见 Vercel 工单通道） |
 | Supabase 项目 ref | `fxlfjwlwvsnjbgxmjtog` |
 | 迁移 CI | `.github/workflows/supabase-db-push.yml`（migrations 变更触发，支持 workflow_dispatch 手动跑） |
 | GitHub secrets | `SUPABASE_ACCESS_TOKEN`、`SUPABASE_DB_PASSWORD` |

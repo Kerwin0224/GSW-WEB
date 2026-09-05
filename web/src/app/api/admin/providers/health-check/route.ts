@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { requireRole, resolveEnvSecret } from '@/lib/data/common';
 import { saveProviderHealthCheck } from '@/lib/data/admin';
+import { providerModelsRequest, toProviderProtocol } from '@/lib/provider-protocol';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -17,7 +18,7 @@ export const dynamic = 'force-dynamic';
  */
 const bodySchema = z.union([
   z.object({ providerId: z.string().uuid() }),
-  z.object({ baseUrl: z.string().url(), apiKey: z.string().min(1) }),
+  z.object({ baseUrl: z.string().url(), apiKey: z.string().min(1), providerType: z.string().optional() }),
 ]);
 
 export async function POST(req: Request) {
@@ -36,6 +37,7 @@ export async function POST(req: Request) {
 
     let baseUrl: string;
     let apiKey: string;
+    let providerType: string | undefined;
     let providerId: string | null = null;
 
     if ('providerId' in parsed.data) {
@@ -43,22 +45,24 @@ export async function POST(req: Request) {
       const supabase = await createClient();
       const { data: cfg, error } = await supabase
         .from('provider_configs')
-        .select('base_url, secret_ref')
+        .select('provider_type, base_url, secret_ref')
         .eq('id', providerId)
         .maybeSingle();
       if (error || !cfg) return Response.json({ error: 'Provider 不存在' }, { status: 404 });
       if (!cfg.base_url) return Response.json({ error: 'Provider 未配置 baseUrl' }, { status: 400 });
       const secret = resolveEnvSecret(cfg.secret_ref);
       if (!secret) return Response.json({ error: 'Provider API Key 解密失败' }, { status: 400 });
+      providerType = cfg.provider_type;
       baseUrl = cfg.base_url;
       apiKey = secret;
       await supabase.from('provider_configs').update({ secret_last_used_at: new Date().toISOString() }).eq('id', providerId);
     } else {
       baseUrl = parsed.data.baseUrl;
       apiKey = parsed.data.apiKey;
+      providerType = parsed.data.providerType;
     }
 
-    const url = baseUrl.replace(/\/+$/, '') + '/models';
+    const { url, headers } = providerModelsRequest(baseUrl, apiKey, toProviderProtocol(providerType));
     const startedAt = Date.now();
 
     let healthy = false;
@@ -70,7 +74,7 @@ export async function POST(req: Request) {
       const timeout = setTimeout(() => controller.abort(), 15000);
       const response = await fetch(url, {
         method: 'GET',
-        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        headers,
         signal: controller.signal,
       });
       clearTimeout(timeout);

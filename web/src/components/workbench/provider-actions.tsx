@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Loader2, Activity, Download, SlidersHorizontal, Pencil, Trash2, CheckCircle2, XCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { AdminDialogShell, AdminDialogCancelButton } from '@/components/workbench/admin-dialog-shell';
+import { ModelCombobox } from '@/components/workbench/model-combobox';
+import { PROVIDER_PROTOCOLS, PROVIDER_PROTOCOL_LABELS, DEFAULT_BASE_URLS, toProviderProtocol, type ProviderProtocol } from '@/lib/provider-protocol';
 import { toast } from 'sonner';
 import {
   updateProviderConfig,
@@ -71,9 +74,11 @@ export function HealthCheckButton({ provider }: { provider: ProviderListItem }) 
 }
 
 /**
- * 独立的"拉取模型"按钮 — 点击立即调用 list-models API。
+ * 独立的"拉取模型"按钮 — 点击立即调用 list-models API，成功后就地刷新页面数据，
+ * 使能力配置对话框中的候选模型立即可见。
  */
 export function FetchModelsButton({ provider }: { provider: ProviderListItem }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   function fetchModels() {
@@ -87,6 +92,7 @@ export function FetchModelsButton({ provider }: { provider: ProviderListItem }) 
         const data = await res.json();
         if (res.ok && Array.isArray(data.models)) {
           toast.success(`✓ ${provider.name}：发现 ${data.count} 个模型`);
+          router.refresh();
         } else {
           toast.error(data.error ?? '拉取失败');
         }
@@ -154,16 +160,21 @@ export function CapabilityAssignmentDialog({ provider }: { provider: ProviderLis
           </div>
           <div className="space-y-2">
             <Label htmlFor={`embedding-model-${provider.id}`}>Embedding 模型 ID</Label>
-            <Input
-              id={`embedding-model-${provider.id}`}
-              value={modelId}
-              onChange={(event) => setModelId(event.target.value)}
-              placeholder="输入或选择 Embedding 模型 ID"
-              list={`embedding-models-list-${provider.id}`}
-            />
-            <datalist id={`embedding-models-list-${provider.id}`}>
-              {provider.apiModels.map((model) => <option key={model.id} value={model.id} />)}
-            </datalist>
+            {toProviderProtocol(provider.providerType) === 'anthropic' ? (
+              <Alert>
+                <AlertDescription className="text-xs">
+                  Anthropic 协议不提供 Embedding API；请使用 OpenAI Compatible 协议的 Provider 配置向量嵌入。
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <ModelCombobox
+                id={`embedding-model-${provider.id}`}
+                value={modelId}
+                onValueChange={setModelId}
+                models={provider.apiModels}
+                placeholder="输入或选择 Embedding 模型 ID"
+              />
+            )}
           </div>
 
           {provider.apiModels.length === 0 ? (
@@ -191,7 +202,7 @@ export function CapabilityAssignmentDialog({ provider }: { provider: ProviderLis
 export function EditProviderDialog({ provider }: { provider: ProviderListItem }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(provider.name);
-  const [providerType, setProviderType] = useState(provider.providerType);
+  const [providerType, setProviderType] = useState<ProviderProtocol>(toProviderProtocol(provider.providerType));
   const [baseUrl, setBaseUrl] = useState(provider.baseUrl ?? '');
   const [apiKey, setApiKey] = useState('');
   const [submitting, startTransition] = useTransition();
@@ -241,33 +252,22 @@ export function EditProviderDialog({ provider }: { provider: ProviderListItem })
             <Input id={`edit-name-${provider.id}`} value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`edit-type-${provider.id}`}>类型</Label>
+            <Label htmlFor={`edit-type-${provider.id}`}>协议</Label>
             <Select
               value={providerType}
-              items={[
-                { value: 'cloud', label: 'Cloud' },
-                { value: 'local', label: 'Local' },
-                { value: 'proxy', label: 'Proxy' },
-                { value: 'openai-compatible', label: 'OpenAI Compatible' },
-                { value: 'openai', label: 'OpenAI 官方' },
-                { value: 'anthropic', label: 'Anthropic' },
-                { value: 'ollama', label: 'Ollama' },
-                { value: 'azure', label: 'Azure' },
-                { value: 'gateway', label: 'Gateway' },
-              ]}
-              onValueChange={(v) => setProviderType(v ?? 'openai-compatible')}
+              items={PROVIDER_PROTOCOLS.map((protocol) => ({ value: protocol, label: PROVIDER_PROTOCOL_LABELS[protocol] }))}
+              onValueChange={(v) => {
+                const nextType = toProviderProtocol(v);
+                setProviderType(nextType);
+                // 切换协议时若 base_url 还是上一个协议的官方默认值，一并切换，减少手工修改。
+                if (Object.values(DEFAULT_BASE_URLS).includes(baseUrl)) setBaseUrl(DEFAULT_BASE_URLS[nextType]);
+              }}
             >
               <SelectTrigger id={`edit-type-${provider.id}`}><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="cloud">Cloud</SelectItem>
-                <SelectItem value="local">Local</SelectItem>
-                <SelectItem value="proxy">Proxy</SelectItem>
-                <SelectItem value="openai-compatible">OpenAI Compatible</SelectItem>
-                <SelectItem value="openai">OpenAI 官方</SelectItem>
-                <SelectItem value="anthropic">Anthropic</SelectItem>
-                <SelectItem value="ollama">Ollama</SelectItem>
-                <SelectItem value="azure">Azure</SelectItem>
-                <SelectItem value="gateway">Gateway</SelectItem>
+                {PROVIDER_PROTOCOLS.map((protocol) => (
+                  <SelectItem key={protocol} value={protocol}>{PROVIDER_PROTOCOL_LABELS[protocol]}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

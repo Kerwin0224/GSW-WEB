@@ -20,13 +20,13 @@ const promises = [
     icon: GraduationCap,
     label: '给学生',
     title: '把古诗文真正读懂',
-    text: '从一句话、一首诗、一篇文开始提问；平台陪你梳理字词、意象、情感和表达，最后形成自己的理解。',
+    text: '从一个字、一首诗、一篇文开始提问。AI 帮你梳理字词、意象和情感，一层一层读进深处。',
   },
   {
     icon: PenTool,
     label: '给老师',
     title: '把古诗文真正教好',
-    text: '从课堂目标出发组织讲解、挑战和反馈；AI 只做可审阅的教学助手，最终服务于一节更清楚的课。',
+    text: '围绕课堂目标组织讲解、挑战和反馈。AI 的每个回答都可以审阅和修订，最终服务于课堂。',
   },
 ] as const;
 
@@ -86,13 +86,13 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-5">
-              <p className="font-heading text-sm tracking-[0.35em] text-primary">LEARN WELL · TEACH WELL</p>
+              <p className="font-heading text-sm tracking-[0.35em] text-primary">博学 · 审问 · 慎思 · 明辨</p>
               <h1 className="font-heading text-5xl leading-[1.06] tracking-tight md:text-6xl xl:text-7xl">
                 学好古诗文，
                 <span className="block text-primary">教好古诗文。</span>
               </h1>
               <p className="max-w-2xl text-xl leading-9 text-muted-foreground">
-                这不是一个信息面板。它只服务两条主线：学生把文本读进去、说出来；老师把课堂讲清楚、练扎实。
+                学生把文章读进去、说出来，老师把课堂讲清楚、练扎实。AI 负责陪伴和梳理，老师负责核实与把关。
               </p>
             </div>
           </div>
@@ -121,14 +121,14 @@ export default function LoginPage() {
         </section>
 
         <section>
-          <Card className="mx-auto w-full max-w-[29rem] overflow-hidden border-border/70 bg-card/92 shadow-[0_34px_110px_rgba(26,26,46,0.14)] backdrop-blur-xl">
+          <Card className="mx-auto w-full max-w-[29rem] gap-0 overflow-hidden py-0 border-border/70 bg-card/92 shadow-[0_34px_110px_rgba(26,26,46,0.14)] backdrop-blur-xl">
             <div className="border-b bg-[linear-gradient(135deg,color-mix(in_oklch,var(--primary)_10%,transparent),color-mix(in_oklch,var(--accent)_10%,transparent))] p-7">
               <div className="mb-5 flex size-14 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-lg shadow-primary/20">
                 <Sparkles className="size-7" aria-hidden="true" />
               </div>
-              <h2 className="font-heading text-3xl">进入平台</h2>
+              <h2 className="font-heading text-3xl">登录</h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                使用学校配发的 8 位学号或工号登录，进入你的学习台或教学台。
+                使用学校发放的学号或工号进入你的学习台。
               </p>
             </div>
 
@@ -178,7 +178,7 @@ export default function LoginPage() {
                     </>
                   ) : (
                     <>
-                      开始学习或教学
+                      登录
                       <ArrowRight className="ml-2 size-5" aria-hidden="true" />
                     </>
                   )}
@@ -186,7 +186,7 @@ export default function LoginPage() {
               </form>
 
               <p className="text-center text-xs leading-5 text-muted-foreground">
-                初始密码与学号/工号相同；首次登录后按学校要求修改。
+                初始密码与学号相同，首次登录后请及时修改。
               </p>
             </CardContent>
           </Card>

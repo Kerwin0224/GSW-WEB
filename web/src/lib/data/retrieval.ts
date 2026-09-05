@@ -1,7 +1,8 @@
 import 'server-only';
 
-import { createGateway, embed, type EmbeddingModel } from 'ai';
+import { embed, type EmbeddingModel } from 'ai';
 import { createOpenAI, type OpenAIEmbeddingModelOptions } from '@ai-sdk/openai';
+import { toProviderProtocol } from '@/lib/provider-protocol';
 import { createClient } from '@/lib/supabase/server';
 import type { Database, Vector } from '@/lib/supabase/database.types';
 import { getAppSession } from '@/lib/session';
@@ -30,12 +31,8 @@ function resolveEmbeddingModel(capability: CapabilityStatus): ResolvedEmbeddingM
   if (!capability.modelId) return null;
   const apiKey = resolveEnvSecret(capability.secretRef);
   if (!apiKey) return null;
-  if (capability.providerType === 'gateway') {
-    return {
-      model: createGateway({ apiKey, baseURL: capability.baseUrl ?? process.env.AI_GATEWAY_BASE_URL }).embedding(capability.modelId),
-      modelId: capability.modelId,
-    };
-  }
+  // Anthropic 不提供 Embedding API；绑定 anthropic 协议的 embedding 能力一律视为未就绪（ADR-0001）。
+  if (toProviderProtocol(capability.providerType) === 'anthropic') return null;
   return {
     model: createOpenAI({ apiKey, baseURL: capability.baseUrl ?? process.env.OPENAI_BASE_URL ?? undefined }).embedding(capability.modelId),
     modelId: capability.modelId,

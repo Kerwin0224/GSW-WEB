@@ -1,7 +1,9 @@
 import 'server-only';
 
-import { createGateway, type LanguageModel } from 'ai';
+import { type LanguageModel } from 'ai';
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
+import { toProviderProtocol, normalizeAnthropicBaseURL } from '@/lib/provider-protocol';
 import { createClient } from '@/lib/supabase/server';
 import type { AppRole, Database, ModelTier, ProviderCapability } from '@/lib/supabase/database.types';
 import { getProfile, type Profile } from '@/lib/auth';
@@ -33,17 +35,24 @@ export function fail<T = never>(reason: DataResult<T> extends infer R ? R extend
 
 /**
  * 根据 CapabilityStatus 解析出可用的 LanguageModel 实例。
- * 所有 AI 功能的 Provider 路由逻辑集中在此处；新增 Provider 类型只需修改这一处。
+ * 所有 AI 功能的 Provider 路由逻辑集中在此处；新增协议只需修改这一处（ADR-0001）。
  * 返回 null 表示 secret 未就绪，调用方应向客户端返回 503。
  */
 export function resolveLanguageModel(capability: CapabilityStatus): LanguageModel | null {
   if (!capability.modelId) return null;
   const apiKey = resolveEnvSecret(capability.secretRef);
   if (!apiKey) return null;
-  if (capability.providerType === 'gateway') {
-    return createGateway({ apiKey, baseURL: capability.baseUrl ?? process.env.AI_GATEWAY_BASE_URL })(capability.modelId);
+  switch (toProviderProtocol(capability.providerType)) {
+    case 'anthropic':
+      return createAnthropic({
+        apiKey,
+        baseURL: capability.baseUrl ? normalizeAnthropicBaseURL(capability.baseUrl) : undefined,
+      })(capability.modelId);
+    case 'openai-responses':
+      return createOpenAI({ apiKey, baseURL: capability.baseUrl ?? process.env.OPENAI_BASE_URL ?? undefined }).responses(capability.modelId);
+    default:
+      return createOpenAI({ apiKey, baseURL: capability.baseUrl ?? process.env.OPENAI_BASE_URL ?? undefined }).chat(capability.modelId);
   }
-  return createOpenAI({ apiKey, baseURL: capability.baseUrl ?? process.env.OPENAI_BASE_URL ?? undefined }).chat(capability.modelId);
 }
 
 export async function requireRole(role: AppRole): Promise<DataResult<Profile>> {

@@ -9,7 +9,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -25,6 +24,7 @@ import {
   type ProviderListItem,
 } from '@/components/workbench/provider-actions';
 import { saveModelTierBinding, saveScenarioTierBindings, type AdminModelTierStatus, type AdminScenarioTierBinding } from '@/lib/data/admin';
+import { ModelCombobox } from '@/components/workbench/model-combobox';
 import type { ModelTier } from '@/lib/supabase/database.types';
 
 export const capabilities = [
@@ -196,16 +196,13 @@ function TierAssignmentDialog({ tierView, providers }: { tierView: TierView; pro
         </div>
         <div className="space-y-2">
           <Label htmlFor={`tier-model-${tierView.tier}`}>模型 ID</Label>
-          <Input
+          <ModelCombobox
             id={`tier-model-${tierView.tier}`}
             value={modelId}
-            onChange={(event) => setModelId(event.target.value)}
+            onValueChange={setModelId}
+            models={selectedProvider?.apiModels ?? []}
             placeholder="输入或选择模型 ID（如 gpt-4o-mini）"
-            list={`tier-model-list-${tierView.tier}`}
           />
-          <datalist id={`tier-model-list-${tierView.tier}`}>
-            {(selectedProvider?.apiModels ?? []).map((model) => <option key={model.id} value={model.id} />)}
-          </datalist>
         </div>
         {selectedProvider && selectedProvider.apiModels.length === 0 ? (
           <Alert>

@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AdminDialogShell } from '@/components/workbench/admin-dialog-shell';
 import { saveProviderConfigV2 } from '@/lib/data/admin';
+import { PROVIDER_PROTOCOLS, PROVIDER_PROTOCOL_LABELS, DEFAULT_BASE_URLS, BASE_URL_PLACEHOLDERS, toProviderProtocol, type ProviderProtocol } from '@/lib/provider-protocol';
 
 /**
  * 单一职责：只负责创建一个 Provider。
@@ -18,8 +19,8 @@ import { saveProviderConfigV2 } from '@/lib/data/admin';
 export function ProviderConfigDialog() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
-  const [providerType, setProviderType] = useState('openai-compatible');
-  const [baseUrl, setBaseUrl] = useState('https://api.openai.com/v1');
+  const [providerType, setProviderType] = useState<ProviderProtocol>('openai-compatible');
+  const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URLS['openai-compatible']);
   const [apiKey, setApiKey] = useState('');
 
   const [submitting, startTransition] = useTransition();
@@ -28,7 +29,7 @@ export function ProviderConfigDialog() {
   function reset() {
     setName('');
     setProviderType('openai-compatible');
-    setBaseUrl('https://api.openai.com/v1');
+    setBaseUrl(DEFAULT_BASE_URLS['openai-compatible']);
     setApiKey('');
     setError(null);
   }
@@ -72,54 +73,31 @@ export function ProviderConfigDialog() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="provider-type">类型</Label>
+            <Label htmlFor="provider-type">协议</Label>
             <Select
               value={providerType}
-              items={[
-                { value: 'local-lmstudio', label: 'LM Studio 本机（OpenAI Compatible）' },
-                { value: 'cloud', label: 'Cloud（云端 OpenAI 兼容）' },
-                { value: 'local', label: 'Local（本地部署）' },
-                { value: 'proxy', label: 'Proxy（API 中转）' },
-                { value: 'openai-compatible', label: 'OpenAI Compatible' },
-                { value: 'openai', label: 'OpenAI 官方' },
-                { value: 'anthropic', label: 'Anthropic' },
-                { value: 'ollama', label: 'Ollama' },
-                { value: 'azure', label: 'Azure OpenAI' },
-                { value: 'gateway', label: 'Gateway' },
-              ]}
+              items={PROVIDER_PROTOCOLS.map((protocol) => ({ value: protocol, label: PROVIDER_PROTOCOL_LABELS[protocol] }))}
               onValueChange={(v) => {
-                const nextType = v ?? 'openai-compatible';
+                const nextType = toProviderProtocol(v);
                 setProviderType(nextType);
-                if (nextType === 'local-lmstudio') {
-                  setName((current) => current || 'LM Studio 本机');
-                  setBaseUrl('http://localhost:1234/v1');
-                  setApiKey((current) => current || 'lm-studio');
-                }
+                if (Object.values(DEFAULT_BASE_URLS).includes(baseUrl)) setBaseUrl(DEFAULT_BASE_URLS[nextType]);
               }}
             >
               <SelectTrigger id="provider-type"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="local-lmstudio">LM Studio 本机（OpenAI Compatible）</SelectItem>
-                <SelectItem value="cloud">Cloud（云端 OpenAI 兼容）</SelectItem>
-                <SelectItem value="local">Local（本地部署）</SelectItem>
-                <SelectItem value="proxy">Proxy（API 中转）</SelectItem>
-                <SelectItem value="openai-compatible">OpenAI Compatible</SelectItem>
-                <SelectItem value="openai">OpenAI 官方</SelectItem>
-                <SelectItem value="anthropic">Anthropic</SelectItem>
-                <SelectItem value="ollama">Ollama</SelectItem>
-                <SelectItem value="azure">Azure OpenAI</SelectItem>
-                <SelectItem value="gateway">Gateway</SelectItem>
+                {PROVIDER_PROTOCOLS.map((protocol) => (
+                  <SelectItem key={protocol} value={protocol}>{PROVIDER_PROTOCOL_LABELS[protocol]}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
-          </div>
-
             <p className="text-xs text-muted-foreground">
-              本机 LM Studio 默认地址：http://localhost:1234/v1。Embedding 能力可作为独立模型配置，不进入 Flash / Advanced 路由层。
+              部署位置不是协议：DeepSeek / 学校网关 / Ollama / LM Studio 等一切 OpenAI 兼容端点都选 OpenAI Compatible，填各自地址即可（如 Ollama：http://localhost:11434/v1）。
             </p>
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="provider-baseurl">Base URL</Label>
-            <Input id="provider-baseurl" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" />
+            <Input id="provider-baseurl" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={BASE_URL_PLACEHOLDERS[providerType]} />
           </div>
 
           <div className="space-y-2">

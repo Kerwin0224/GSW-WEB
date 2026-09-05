@@ -27,43 +27,45 @@ export default async function AdminDashboard() {
 
   const { users, classes, readyCaps, mcp, exports } = result.data;
   const capabilityLabels = {
-    student_chat: '学生会话回答',
-    bloom_classification: '学生问题布鲁姆路径判断',
-    project_classification: '篇目项目归属',
+    student_chat: '学生提问回答',
+    bloom_classification: '问题层级判断',
+    project_classification: '篇目归档',
     teacher_chat: '教师问答',
     practice_generation: '挑战生成',
-    practice_evaluation: '挑战确认评估',
+    practice_evaluation: '挑战评估',
   } as const;
   const studentRequired = ['student_chat', 'bloom_classification', 'project_classification'] as const;
   const teacherRequired = ['teacher_chat', 'practice_generation', 'practice_evaluation'] as const;
   const studentMissing = studentRequired.filter((capability) => !readyCaps.has(capability));
   const teacherMissing = teacherRequired.filter((capability) => !readyCaps.has(capability));
   const incidentReady = logStatus.appLogBytes > 0 || logEvents.length > 0 || exports.length > 0;
+  const teacherCount = users.filter((user) => user.role === 'teacher').length;
+  const studentCount = users.filter((user) => user.role === 'student').length;
   const schoolManagementItems = [
-    { label: '用户账号', value: users.length, hint: 'profiles' },
-    { label: '班级', value: classes.length, hint: 'classes' },
-    { label: '启用账号', value: users.filter((user) => user.status === 'active').length, hint: 'active accounts' },
-    { label: '活跃情况', value: '真实采集中', hint: '不使用创建时间伪造登录' },
+    { label: '用户账号', value: users.length, hint: '全校注册账号' },
+    { label: '班级', value: classes.length, hint: '正在进行教学的班级' },
+    { label: '启用账号', value: users.filter((user) => user.status === 'active').length, hint: '当前可以登录' },
+    { label: '账号构成', value: `师 ${teacherCount} · 生 ${studentCount}`, hint: '按角色统计' },
   ];
   const aiOpsItems = [
-    { label: 'Provider', value: readyCaps.size, hint: 'ready capability bindings' },
-    { label: 'MCP', value: mcp.length, hint: 'enabled servers' },
-    { label: '技术错误', value: logEvents.filter((event) => event.level === 'error').length, hint: 'recent technical events' },
-    { label: '教师确认/修订样本', value: exports.reduce((sum, batch) => sum + batch.record_count, 0), hint: 'exportable reviewed samples' },
+    { label: '模型能力', value: readyCaps.size, hint: '已就绪的能力绑定' },
+    { label: '外部工具', value: mcp.length, hint: '已启用的 MCP 服务' },
+    { label: '技术错误', value: logEvents.filter((event) => event.level === 'error').length, hint: '近期错误事件' },
+    { label: '教学样本', value: exports.reduce((sum, batch) => sum + batch.record_count, 0), hint: '可导出的确认/修订样本' },
   ];
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
         eyebrow="管理看板"
-        title="学生能不能学，教师能不能教，事故能不能追。"
-        description="AI Native 后台第一屏只回答真实链路状态：学校管理负责账号、班级与成员归属；AI 运维负责 Provider、MCP、日志与教学数据导出。"
+        title="账号、班级、AI 服务，一处总览。"
+        description="这里检查三件事：账号和班级是否就绪、学生和老师的 AI 能力是否可用、出了问题能否从日志追查。"
         primaryAction={{ label: '查看用户管理', href: '/admin/users' }}
-        secondaryAction={{ label: '查看模型 Provider', href: '/admin/providers' }}
+        secondaryAction={{ label: '查看模型接入', href: '/admin/providers' }}
         metrics={[
-          { label: '账号', value: users.length, hint: '真实 profile 与角色' },
-          { label: '班级', value: classes.length, hint: '教学范围边界' },
-          { label: '日志', value: logEvents.length, hint: `${logStatus.appLogBytes} bytes 本地事件` },
+          { label: '账号', value: users.length, hint: '教师、学生与管理员' },
+          { label: '班级', value: classes.length, hint: '教学范围' },
+          { label: '日志事件', value: logEvents.length, hint: '最近写入的技术事件' },
         ]}
       />
 
@@ -75,14 +77,14 @@ export default async function AdminDashboard() {
                 {studentMissing.length ? <AlertTriangle className="size-5 text-destructive" aria-hidden="true" /> : <CheckCircle2 className="size-5 text-primary" aria-hidden="true" />}
                 学生 AI 链路
               </span>
-              <Badge variant={studentMissing.length ? 'destructive' : 'secondary'}>{studentMissing.length ? 'blocked' : 'ready'}</Badge>
+              <Badge variant={studentMissing.length ? 'destructive' : 'secondary'}>{studentMissing.length ? '有缺口' : '就绪'}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <p className="leading-6 text-muted-foreground">
               {studentMissing.length
-                ? `学习提问、学生问题布鲁姆路径判断或篇目归属会被阻塞：缺少 ${studentMissing.map((capability) => capabilityLabels[capability]).join('、')}。`
-                : '学习提问、学生问题布鲁姆路径判断和篇目项目归属均有可用能力绑定。'}
+                ? `学生提问暂时用不了：还缺 ${studentMissing.map((capability) => capabilityLabels[capability]).join('、')}。`
+                : '学生提问、层级判断和篇目归档能力都已就绪。'}
             </p>
             <Button nativeButton={false} render={<a href="/admin/providers">检查 Provider 能力</a>} variant="outline" className="rounded-lg" />
           </CardContent>
@@ -95,14 +97,14 @@ export default async function AdminDashboard() {
                 {teacherMissing.length ? <AlertTriangle className="size-5 text-destructive" aria-hidden="true" /> : <CheckCircle2 className="size-5 text-primary" aria-hidden="true" />}
                 教师 AI 链路
               </span>
-              <Badge variant={teacherMissing.length ? 'destructive' : 'secondary'}>{teacherMissing.length ? 'blocked' : 'ready'}</Badge>
+              <Badge variant={teacherMissing.length ? 'destructive' : 'secondary'}>{teacherMissing.length ? '有缺口' : '就绪'}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <p className="leading-6 text-muted-foreground">
               {teacherMissing.length
-                ? `教师问答或挑战确认闭环会被阻塞：缺少 ${teacherMissing.map((capability) => capabilityLabels[capability]).join('、')}。`
-                : '教师问答、挑战生成和挑战确认评估均有可用能力绑定。'}
+                ? `教师问答和挑战暂时用不了：还缺 ${teacherMissing.map((capability) => capabilityLabels[capability]).join('、')}。`
+                : '教师问答、挑战生成和挑战评估能力都已就绪。'}
             </p>
             <Button nativeButton={false} render={<a href="/admin/providers">补齐模型能力</a>} variant="outline" className="rounded-lg" />
           </CardContent>
@@ -115,14 +117,14 @@ export default async function AdminDashboard() {
                 {incidentReady ? <CheckCircle2 className="size-5 text-primary" aria-hidden="true" /> : <AlertTriangle className="size-5 text-primary" aria-hidden="true" />}
                 事故定位
               </span>
-              <Badge variant={incidentReady ? 'secondary' : 'outline'}>{incidentReady ? 'observable' : 'empty'}</Badge>
+              <Badge variant={incidentReady ? 'secondary' : 'outline'}>{incidentReady ? '可定位' : '暂无记录'}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <p className="leading-6 text-muted-foreground">
               {incidentReady
-                ? `已有 ${logEvents.length} 条近期技术事件、${exports.length} 个教师确认/修订导出批次可用于定位运行状态。`
-                : '暂无结构化技术日志或导出批次；这里保持空状态，不用假数据伪装可观测。'}
+                ? `已有 ${logEvents.length} 条近期事件和 ${exports.length} 个导出批次，出问题可以回查。`
+                : '暂无日志和导出记录。系统开始使用后，这里会出现可追溯的事件。'}
             </p>
             <Button nativeButton={false} render={<a href="/admin/logs">查看运行日志</a>} variant="outline" className="rounded-lg" />
           </CardContent>
@@ -169,16 +171,16 @@ export default async function AdminDashboard() {
 
       <section className="grid gap-4 md:grid-cols-3">
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Download className="size-5 text-primary" />教师确认样本</CardTitle></CardHeader>
-          <CardContent className="text-sm leading-7 text-muted-foreground">只导出教师确认无误或修订回答形成的 supervised 样本，不提供普通学生会话明细入口。</CardContent>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Download className="size-5 text-primary" />教师确认的回答</CardTitle></CardHeader>
+          <CardContent className="text-sm leading-7 text-muted-foreground">老师确认无误的 AI 回答，可导出为高质量训练样本。</CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Download className="size-5 text-primary" />教师修订偏好样本</CardTitle></CardHeader>
-          <CardContent className="text-sm leading-7 text-muted-foreground">教师修订场景自然形成 chosen/rejected 偏好对。</CardContent>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Download className="size-5 text-primary" />老师修订过的回答</CardTitle></CardHeader>
+          <CardContent className="text-sm leading-7 text-muted-foreground">老师修改前后的回答自动配对，形成偏好对比数据。</CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Database className="size-5 text-primary" />教学数据治理</CardTitle></CardHeader>
-          <CardContent className="text-sm leading-7 text-muted-foreground">围绕可导出样本与审阅元数据治理质量；只展示教师确认/修订样本与技术汇总。</CardContent>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Database className="size-5 text-primary" />数据边界</CardTitle></CardHeader>
+          <CardContent className="text-sm leading-7 text-muted-foreground">导出内容仅限教师确认或修订过的样本，不包含学生的原始对话。</CardContent>
         </Card>
       </section>
 
@@ -195,10 +197,9 @@ export default async function AdminDashboard() {
                 <UserImportDialog />
               </div>
             </div>
-          </CardHeader>
-          <CardContent>
+          </CardHeader>          <CardContent>
             {users.length === 0 ? (
-              <EmptyState title="暂无用户" description="创建真实学校账号与 profile 后，角色工作台才会开放。" />
+              <EmptyState title="暂无用户" description="通过“导入用户”创建账号后，各角色工作台才会开放。" />
             ) : (
               <Table>
                 <TableHeader>
@@ -233,7 +234,7 @@ export default async function AdminDashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {logEvents.length === 0 ? <p className="text-sm text-muted-foreground">暂无结构化技术日志。触发登录、Provider、MCP 或导出事件后会写入。</p> : null}
+              {logEvents.length === 0 ? <p className="text-sm text-muted-foreground">暂无日志。使用登录、模型调用或导出功能后会自动记录。</p> : null}
               {logEvents.slice(0, 4).map((event, index) => (
                 <a key={`${event.timestamp}-${index}`} href="/admin/logs" className="group block rounded-lg border border-border/65 bg-background/78 p-4 shadow-soft backdrop-blur transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/35 hover:bg-primary/6 hover:shadow-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <div className="flex items-center justify-between gap-2">

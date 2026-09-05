@@ -42,43 +42,41 @@ export default async function TeacherChatPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="教师看板"
-        title="把待核实学习记录变成下一步教学判断。"
-        description="看板只呈现班级整体、优先关注对象、高风险项目和待核实积压；确认无误与修订回答都进入学习记录核实，不在这里完成处理。"
+        eyebrow="教学总览"
+        title="先看今天要核实什么。"
+        description="各班的待核实会话和风险提示都汇总在这里；具体的核实与批注在“学习记录核实”里完成。"
         primaryAction={{ label: '进入学习记录核实', href: '/teacher/audit' }}
         metrics={[
-          { label: '负责班级', value: analytics.assignedClasses, hint: '由班级关系限定可见范围' },
-          { label: '待核实会话', value: auditWorkload, hint: '需要查看完整会话后处理' },
-          { label: '已核实会话', value: reviewedCount, hint: '会话级最终提交形成' },
+          { label: '负责班级', value: analytics.assignedClasses, hint: '你任课的班级' },
+          { label: '待核实会话', value: auditWorkload, hint: '等待你查看和提交' },
+          { label: '已核实会话', value: reviewedCount, hint: '已完成最终提交' },
         ]}
       />
 
       <section className="grid gap-4 lg:grid-cols-[1.05fr_1.05fr_0.9fr]">
-        <Card className="overflow-hidden border-primary/15 bg-card/92 shadow-soft backdrop-blur-xl">
+        <Card className="gap-0 overflow-hidden py-0 border-primary/15 bg-card/92 shadow-soft backdrop-blur-xl">
           <CardHeader className="border-b border-border/60 bg-primary/6">
             <CardTitle className="flex items-center gap-2 font-heading">
               <ClipboardCheck className="size-5 text-primary" aria-hidden="true" />
-              学生认知主概览
+              班级学情
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 p-5">
-            <div className="rounded-lg border border-border/65 bg-background/78 p-4">
-              <p className="text-sm leading-7 text-muted-foreground">看板只承接真实挑战确认状态与待核实学习记录，不用会话推断路径替代学生认知确认。</p>
-            </div>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-lg border border-primary/20 bg-primary/6 p-4">
                 <p className="text-xs text-muted-foreground">负责班级</p>
                 <p className="mt-2 text-3xl font-semibold tracking-tight">{analytics.assignedClasses}</p>
               </div>
               <div className="rounded-lg border border-border/65 bg-background/78 p-4">
-                <p className="text-xs text-muted-foreground">等待挑战确认</p>
+                <p className="text-xs text-muted-foreground">还没确认层级的学生</p>
                 <p className="mt-2 text-3xl font-semibold tracking-tight">{analytics.studentsWaitingChallenge}</p>
               </div>
             </div>
+            <p className="text-sm leading-6 text-muted-foreground">数字来自学生完成的挑战确认，不由 AI 推断。</p>
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden border-primary/20 bg-card/95 shadow-ink backdrop-blur-xl">
+        <Card className="gap-0 overflow-hidden py-0 border-primary/20 bg-card/95 shadow-ink backdrop-blur-xl">
           <CardHeader className="border-b border-border/60 bg-[linear-gradient(135deg,color-mix(in_oklch,var(--primary)_12%,transparent),transparent)]">
             <CardTitle className="flex items-center gap-2 font-heading">
               <FileSearch className="size-5 text-primary" aria-hidden="true" />
@@ -88,17 +86,17 @@ export default async function TeacherChatPage() {
           <CardContent className="space-y-4 p-5">
             <div className="flex items-end justify-between gap-4 rounded-lg border border-primary/20 bg-primary/6 p-4">
               <div>
-                <p className="text-xs font-medium text-muted-foreground">当前待处理</p>
+                <p className="text-xs font-medium text-muted-foreground">待核实</p>
                 <p className="mt-2 text-4xl font-semibold tracking-tight text-primary">{auditWorkload}</p>
               </div>
-              <p className="max-w-44 text-right text-xs leading-5 text-muted-foreground">按班级 → 学生 → 项目 → 会话逐层完成会话级核实</p>
+              <p className="max-w-44 text-right text-xs leading-5 text-muted-foreground">从班级点进去，逐个学生会话核实</p>
             </div>
-            <p className="text-sm leading-7 text-muted-foreground">教师在完整会话中修订每个 AI 回答气泡，最后一次性提交会话级核实。</p>
+            <p className="text-sm leading-6 text-muted-foreground">逐条查看 AI 回答，需要时直接修订，最后一次性提交。</p>
             <Button nativeButton={false} render={<a href="/teacher/audit">打开核实工作台</a>} className="min-h-11 w-full cursor-pointer rounded-lg shadow-ink" />
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden border-destructive/20 bg-card/92 shadow-soft backdrop-blur-xl">
+        <Card className="gap-0 overflow-hidden py-0 border-destructive/20 bg-card/92 shadow-soft backdrop-blur-xl">
           <CardHeader className="border-b border-destructive/15 bg-destructive/5">
             <CardTitle className="flex items-center gap-2 font-heading">
               <AlertTriangle className="size-5 text-destructive" aria-hidden="true" />
@@ -106,7 +104,7 @@ export default async function TeacherChatPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 p-5">
-            {highRiskRecords.length === 0 ? <EmptyState title="暂无高风险提示" description="AI 预审未发现疑点或预审能力未就绪时，这里保持诚实为空。" /> : null}
+            {highRiskRecords.length === 0 ? <EmptyState title="暂无高风险提示" description="AI 预审没有发现疑点。发现后会第一时间列在这里。" /> : null}
             {highRiskRecords.map((record) => (
               <a key={record.id} href="/teacher/audit" className="group block rounded-lg border border-destructive/25 bg-destructive/5 p-4 shadow-soft transition-[border-color,background-color,box-shadow] duration-200 hover:border-destructive/45 hover:bg-destructive/8 hover:shadow-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <div className="flex items-start justify-between gap-3">
@@ -127,7 +125,7 @@ export default async function TeacherChatPage() {
         <Card className="border-border/70 bg-card/88 shadow-soft">
           <CardHeader><CardTitle className="flex items-center gap-2 font-heading"><FileSearch className="size-5 text-primary" aria-hidden="true" />班级核实压力</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            {classSummaries.length === 0 ? <EmptyState title="暂无班级积压" description="班级下出现待核实学习记录后，这里按风险与最近学习时间排序。" /> : null}
+            {classSummaries.length === 0 ? <EmptyState title="暂无班级积压" description="各班有待核实的会话后，会按风险高低排在这里。" /> : null}
             {classSummaries.map((summary) => (
               <a key={summary.classLabel} href="/teacher/audit" className="block rounded-lg border border-border/65 bg-background/78 p-4 shadow-sm transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/35 hover:bg-background/95 hover:shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <div className="flex items-center justify-between gap-3">

@@ -110,6 +110,10 @@ _Avoid_: 组织后台、用户中心
 管理员维护 Provider、MCP、Prompt 预设、运行日志和教学数据导出的后台能力组。
 _Avoid_: 系统工具、开发者后台
 
+**协议类型**:
+Provider 对话协议的唯一枚举，恰有三种：`anthropic`（Anthropic Messages API）、`openai-responses`（OpenAI Responses API，仅官方等原生支持端点）、`openai-compatible`（Chat Completions，覆盖第三方中转、学校网关与本地部署的一切兼容端点）。区别只是报文协议；端点位置由 Provider 的 base_url 表达，不是协议的一部分。
+_Avoid_: 云端/本地/中转等部署位置标签、Ollama/Azure/LM Studio 等厂商标签、Gateway
+
 **教学数据导出**:
 管理员导出教师最终核实后形成的 SFT/DPO 样本和审阅元数据的能力。
 _Avoid_: 原始对话导出、二次审核

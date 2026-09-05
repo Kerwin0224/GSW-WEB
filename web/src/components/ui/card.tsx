@@ -7,6 +7,8 @@ function Card({
   size = "default",
   ...props
 }: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
+  // 根元素自带 py-4/gap-4 节奏；若第一个子元素是通栏彩色 header（border-b 或渐变底），
+  // 必须在使用处追加 "py-0 gap-0"，否则 header 上下会露出 bg-card 白条。
   return (
     <div
       data-slot="card"
