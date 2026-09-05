@@ -45,3 +45,6 @@ next-env.d.ts
 /.logs
 
 supabase/.temp
+
+# 工具本地缓存
+.cloudflare/
