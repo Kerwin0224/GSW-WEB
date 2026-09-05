@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { BloomStatusBadge, type BloomStatus } from '@/components/workbench/bloom-status-badge';
+import { MarkdownContent } from '@/components/workbench/markdown-content';
 
 interface MessageLike {
   id: string;
@@ -24,10 +25,10 @@ function partType(part: unknown): string {
   return typeof value === 'string' ? value : 'unknown';
 }
 
-export function AIMessagePart({ part }: { part: unknown }) {
+export function AIMessagePart({ part, markdown = false }: { part: unknown; markdown?: boolean }) {
   const text = partText(part);
   if (text !== null) {
-    return <div className="whitespace-pre-wrap leading-7" aria-live="polite">{text}</div>;
+    return markdown ? <MarkdownContent content={text} aria-live="polite" /> : <div className="whitespace-pre-wrap leading-7" aria-live="polite">{text}</div>;
   }
 
   const type = partType(part);
@@ -38,7 +39,12 @@ export function AIMessagePart({ part }: { part: unknown }) {
     return <Badge variant="outline">检索 / 引用状态</Badge>;
   }
   if (type === 'data-teacher-revision') {
-    return <Badge variant="outline">教师修订提示</Badge>;
+    return (
+      <div className="flex items-center gap-1.5 rounded-md border border-primary/25 bg-primary/6 px-2 py-1 text-xs text-primary">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="size-3.5" aria-hidden="true"><path fillRule="evenodd" d="M8 1a3.5 3.5 0 0 0-3.5 3.5V7A1.5 1.5 0 0 0 3 8.5v5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 7V4.5A3.5 3.5 0 0 0 8 1Zm2 6V4.5a2 2 0 1 0-4 0V7h4Z" clipRule="evenodd" /></svg>
+        <span className="font-medium">该回答已由教师修订</span>
+      </div>
+    );
   }
   if (type.includes('classification')) {
     return <Badge variant="outline">分类状态更新</Badge>;
@@ -46,7 +52,7 @@ export function AIMessagePart({ part }: { part: unknown }) {
   return null;
 }
 
-export function AIMessageList({ messages, userBloomStatus }: { messages: MessageLike[]; userBloomStatus?: Record<string, BloomStatus> }) {
+export function AIMessageList({ messages, userBloomStatus, assistantCardClassName }: { messages: MessageLike[]; userBloomStatus?: Record<string, BloomStatus>; assistantCardClassName?: string }) {
   return (
     <div className="space-y-5" aria-live="polite">
       {messages.map((message) => {
@@ -59,9 +65,9 @@ export function AIMessageList({ messages, userBloomStatus }: { messages: Message
             </div>
             <div className={cn('max-w-[84%] space-y-2', isUser && 'items-end text-right')}>
               {status ? <BloomStatusBadge status={status} /> : null}
-              <Card className={cn('px-4 py-3 text-left shadow-soft', isUser ? 'border-primary/20 bg-primary text-primary-foreground ring-primary/20' : 'border-border/60 bg-card/92')}>
+              <Card className={cn('px-4 py-3 text-left shadow-soft', isUser ? 'border-primary/20 bg-primary text-primary-foreground ring-primary/20' : 'border-border/60 bg-card/92', !isUser && assistantCardClassName)}>
                 <div className="space-y-2 text-sm">
-                  {(message.parts ?? []).map((part, index) => <AIMessagePart key={`${message.id}-${index}`} part={part} />)}
+                  {(message.parts ?? []).map((part, index) => <AIMessagePart key={`${message.id}-${index}`} part={part} markdown={!isUser} />)}
                 </div>
               </Card>
             </div>

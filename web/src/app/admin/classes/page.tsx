@@ -36,7 +36,7 @@ export default async function AdminClassesPage() {
       <WorkspaceHero
         eyebrow="班级成员管理"
         title="把教师能看谁、学生属于哪个班级说清楚。"
-        description="班级成员管理是教师权限边界。教师工作台、学习记录核实和学情线索都从这里收敛到真实班级范围。"
+        description="班级成员管理是教师权限边界。教师看板、学习记录核实和班级分析都从这里收敛到真实班级范围。"
         metrics={[
           { label: '班级', value: classes.length, hint: '真实 classes' },
           { label: '教师成员分配', value: teacherCount, hint: '教师可负责多个班级' },

@@ -64,7 +64,7 @@ export function UserImportDialog() {
       title="CSV 导入账号"
       description="先解析并显示行级预览；存在错误时不会提交。表头必须包含 display_name, login_id, role。"
       icon={<Upload className="size-5" />}
-      className="max-w-4xl"
+      className="sm:max-w-4xl"
       footer={(
         <div className="flex w-full flex-wrap justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => requestPreview(false)} disabled={pending || !csvText.trim()}>

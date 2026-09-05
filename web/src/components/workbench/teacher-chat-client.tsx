@@ -1,92 +1,260 @@
 'use client';
 
-import { useActionState, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useActionState, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
-import Link from 'next/link';
-import { Braces, Loader2, Plus } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ClipboardList, Loader2, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Sparkles, Trash2 } from 'lucide-react';
 
 import type { Database } from '@/lib/supabase/database.types';
+import type { TeacherConversationInitial, TeacherSessionSummary } from '@/lib/data/teacher';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { AIMessageList } from '@/components/workbench/ai-message-list';
 import { ChatComposer } from '@/components/workbench/chat-composer';
 import { BlockedState, EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
-import { SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { saveTeacherPromptPreset, type AuditSubmissionState } from '@/lib/data/teacher-actions';
+import { cn } from '@/lib/utils';
 
 const teacherPrompts = ['这首诗的课堂导入怎么设计？', '学生容易误解哪个典故？', '设计三个分层追问', '把这段文言文讲得更清楚'];
+const teacherChatSidebarStorageKey = 'teacher-chat-sidebar-collapsed';
+const teacherChatSidebarStorageEvent = 'teacher-chat-sidebar-collapsed-change';
+let teacherChatSidebarCollapsedMemory = false;
 
 type Preset = Database['public']['Tables']['prompt_presets']['Row'];
 const instructionInitialState: AuditSubmissionState = { ok: false, message: '' };
-const presetVariables = ['学生姓名', '当前篇目', '年级', '课堂目标', '常见误区', '挑战层级'];
-const placeholderPattern = /\{\{\s*([a-zA-Z0-9_\u4e00-\u9fff-]+)\s*\}\}/g;
-const unsupportedTemplatePattern = /\{\{\s*(?:[#/^>!&]|\{)|\}\}\}/;
 
-function presetVariableLabels(variables: Preset['variables']) {
-  if (!Array.isArray(variables)) return '见预设 JSON';
-  const labels = variables
-    .map((variable) => {
-      if (typeof variable === 'string') return variable;
-      if (variable && typeof variable === 'object' && !Array.isArray(variable)) {
-        const name = variable.name;
-        return typeof name === 'string' ? name : null;
-      }
-      return null;
-    })
-    .filter((value): value is string => Boolean(value));
-  return labels.length > 0 ? labels.join('、') : '未定义变量';
+function presetText(preset: Preset) {
+  return [preset.system_instruction, preset.user_template].filter(Boolean).join('\n\n');
 }
 
-export function TeacherChatClient({ presets, providerBlocked }: { presets: Preset[]; providerBlocked?: string }) {
+function FieldError({ message }: { message?: string }) {
+  return message ? <p className="text-xs text-destructive" role="alert">{message}</p> : null;
+}
+
+function readTeacherChatSidebarCollapsed() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(teacherChatSidebarStorageKey) === 'true';
+  } catch {
+    return teacherChatSidebarCollapsedMemory;
+  }
+}
+
+function subscribeTeacherChatSidebarCollapsed(onStoreChange: () => void) {
+  if (typeof window === 'undefined') return () => {};
+
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === teacherChatSidebarStorageKey) onStoreChange();
+  };
+  window.addEventListener('storage', handleStorage);
+  window.addEventListener(teacherChatSidebarStorageEvent, onStoreChange);
+  return () => {
+    window.removeEventListener('storage', handleStorage);
+    window.removeEventListener(teacherChatSidebarStorageEvent, onStoreChange);
+  };
+}
+
+function writeTeacherChatSidebarCollapsed(collapsed: boolean) {
+  teacherChatSidebarCollapsedMemory = collapsed;
+  try {
+    localStorage.setItem(teacherChatSidebarStorageKey, String(collapsed));
+  } catch {
+    // localStorage 不可用时，内存快照仍能维持当前标签页交互。
+  }
+  window.dispatchEvent(new Event(teacherChatSidebarStorageEvent));
+}
+
+function CreatePresetDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const router = useRouter();
+  const [state, action, pending] = useActionState(saveTeacherPromptPreset, instructionInitialState);
+
+  useEffect(() => {
+    if (!state.ok) return;
+    onOpenChange(false);
+    router.refresh();
+  }, [onOpenChange, router, state.ok]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>新建提示词模板</DialogTitle>
+          <DialogDescription>只保存模板名称和提示词内容；保存后会回到教师问答继续使用。</DialogDescription>
+        </DialogHeader>
+        <form action={action} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="quick-preset-title">模板名称</Label>
+            <Input id="quick-preset-title" name="title" placeholder="例如：课堂追问设计" />
+            <FieldError message={state.errors?.title} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="quick-preset-content">提示词内容</Label>
+            <Textarea id="quick-preset-content" name="system_instruction" className="min-h-44" placeholder="写下希望填入输入框的常用问法或教学处理要求。" />
+            <FieldError message={state.errors?.system_instruction} />
+          </div>
+          <input type="hidden" name="scenario" value="教师自建模板" />
+          {state.message ? (
+            <p className={state.ok ? 'rounded-lg border border-primary/30 bg-primary/10 p-2 text-sm text-primary' : 'rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive'} role={state.ok ? 'status' : 'alert'}>
+              {state.message}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
+            <Button disabled={pending} className="cursor-pointer shadow-ink">保存模板</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PresetConflictDialog({ preset, onCancel, onReplace, onAppend }: { preset: Preset | null; onCancel: () => void; onReplace: () => void; onAppend: () => void }) {
+  return (
+    <Dialog open={Boolean(preset)} onOpenChange={(open) => { if (!open) onCancel(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>如何使用这个模板？</DialogTitle>
+          <DialogDescription>当前输入框已有内容，可以替换、追加，或取消本次填入。</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onCancel}>取消</Button>
+          <Button type="button" variant="secondary" onClick={onAppend}>追加到当前输入</Button>
+          <Button type="button" onClick={onReplace}>替换当前输入</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function TeacherChatClient({
+  presets,
+  sessions: initialSessions,
+  initialConversation,
+  providerBlocked,
+}: {
+  presets: Preset[];
+  sessions: TeacherSessionSummary[];
+  initialConversation?: TeacherConversationInitial;
+  providerBlocked?: string;
+}) {
   const [input, setInput] = useState('');
-  const [presetId, setPresetId] = useState<string>(presets[0]?.id ?? '');
-  const [conversationId, setConversationId] = useState('');
+  const [conversationId, setConversationId] = useState(initialConversation?.id ?? '');
+  const [sessions, setSessions] = useState(initialSessions);
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploadError, setUploadError] = useState('');
+  const [createPresetOpen, setCreatePresetOpen] = useState(false);
+  const [pendingPreset, setPendingPreset] = useState<Preset | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TeacherSessionSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [lastSubmittedInput, setLastSubmittedInput] = useState('');
+  const sidebarCollapsed = useSyncExternalStore(subscribeTeacherChatSidebarCollapsed, readTeacherChatSidebarCollapsed, () => false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { messages, sendMessage, status, error } = useChat({
+  const { messages, setMessages, sendMessage, clearError, status, error } = useChat({
+    messages: initialConversation?.messages,
     transport: new DefaultChatTransport({
       api: '/api/teacher/chat',
       fetch: async (input, init) => {
         const response = await fetch(input, init);
         const nextConversationId = response.headers.get('x-conversation-id');
-        if (nextConversationId) setConversationId(nextConversationId);
+        if (nextConversationId) {
+          setConversationId(nextConversationId);
+          setSessions((current) => {
+            const existing = current.find((session) => session.id === nextConversationId);
+            const fallbackTitle = (lastSubmittedInput || '未命名会话').slice(0, 80);
+            const nextSession = existing
+              ? { ...existing, updatedLabel: '刚刚', messageCount: Math.max(existing.messageCount + 2, 2) }
+              : { id: nextConversationId, title: fallbackTitle, messageCount: 2, updatedLabel: '刚刚' };
+            return [nextSession, ...current.filter((session) => session.id !== nextConversationId)].slice(0, 12);
+          });
+        }
         return response;
       },
     }),
   });
   const busy = status === 'submitted' || status === 'streaming';
-  const selectedPreset = presets.find((preset) => preset.id === presetId);
+  const recentPresets = useMemo(() => presets.slice(0, 5), [presets]);
+  const currentSession = sessions.find((session) => session.id === conversationId);
+  const currentSessionTitle = conversationId ? currentSession?.title ?? initialConversation?.title ?? '当前会话' : '新会话';
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+    const nextUrl = conversationId ? `/teacher/chat?conversationId=${conversationId}` : '/teacher/chat';
+    window.history.replaceState(null, '', nextUrl);
+  }, [conversationId]);
+
+  const applyPreset = (preset: Preset) => {
+    if (input.trim()) {
+      setPendingPreset(preset);
+      return;
+    }
+    setInput(presetText(preset));
+  };
+
+  const replaceWithPendingPreset = () => {
+    if (!pendingPreset) return;
+    setInput(presetText(pendingPreset));
+    setPendingPreset(null);
+  };
+
+  const appendPendingPreset = () => {
+    if (!pendingPreset) return;
+    setInput((current) => `${current.trimEnd()}\n\n${presetText(pendingPreset)}`.trim());
+    setPendingPreset(null);
+  };
+
+  const openNewConversation = () => {
+    if (busy) return;
+    setConversationId('');
+    setInput('');
+    setUploadStatus('');
+    setUploadError('');
+    setPendingPreset(null);
+    clearError();
+    setMessages([]);
+  };
+
   const uploadAttachment = async (file: File) => {
-    if (uploading || !selectedPreset || providerBlocked) return;
+    if (uploading || providerBlocked) return;
     setUploading(true);
     setUploadStatus('');
     setUploadError('');
+    const uploadStartTime = Date.now();
     const form = new FormData();
     form.set('file', file);
     form.set('metadata', JSON.stringify({
       workspace: 'teacher',
       conversationId: conversationId || undefined,
-      presetId: selectedPreset.id,
     }));
     try {
       const response = await fetch('/api/attachments', { method: 'POST', body: form });
       const payload = await response.json() as { ok?: boolean; message?: string; conversationId?: string; fileName?: string; chunkCount?: number };
       if (!response.ok || !payload.ok) throw new Error(payload.message || '附件上传失败。');
-      if (payload.conversationId) setConversationId(payload.conversationId);
-      setUploadStatus(`已上传《${payload.fileName ?? file.name}》，生成 ${payload.chunkCount ?? 0} 段仅限当前会话检索的附件片段。`);
+      if (payload.conversationId) {
+        const nextConversationId = payload.conversationId;
+        setConversationId(nextConversationId);
+        setSessions((current) => {
+          const existing = current.find((session) => session.id === nextConversationId);
+          const title = existing?.title ?? (payload.fileName ?? file.name).slice(0, 80);
+          const nextSession = existing
+            ? { ...existing, updatedLabel: '刚刚' }
+            : { id: nextConversationId, title, messageCount: 0, updatedLabel: '刚刚' };
+          return [nextSession, ...current.filter((session) => session.id !== nextConversationId)].slice(0, 12);
+        });
+      }
+      const elapsedSeconds = Math.round((Date.now() - uploadStartTime) / 1000);
+      setUploadStatus(`已上传《${payload.fileName ?? file.name}》，生成 ${payload.chunkCount ?? 0} 段检索片段（耗时约 ${elapsedSeconds} 秒）。`);
     } catch (uploadError) {
       setUploadError(uploadError instanceof Error ? uploadError.message : '附件上传失败。');
     } finally {
@@ -96,78 +264,194 @@ export function TeacherChatClient({ presets, providerBlocked }: { presets: Prese
 
   const submit = () => {
     const text = input.trim();
-    if (!text || busy || !selectedPreset || providerBlocked) return;
-    sendMessage({ parts: [{ type: 'text', text }] }, { body: { presetId: selectedPreset.id, ...(conversationId ? { conversationId } : {}) } });
+    if (!text || busy || providerBlocked) return;
+    clearError();
+    setLastSubmittedInput(text);
+    sendMessage({ parts: [{ type: 'text', text }] }, { body: { ...(conversationId ? { conversationId } : {}) } });
     setInput('');
   };
 
+  const confirmDeleteSession = async () => {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const response = await fetch('/api/teacher/conversations', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: deleteTarget.id }),
+      });
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? '会话删除失败。');
+      setSessions((current) => current.filter((session) => session.id !== deleteTarget.id));
+      if (conversationId === deleteTarget.id) openNewConversation();
+      setDeleteTarget(null);
+    } catch (deleteError) {
+      setDeleteError(deleteError instanceof Error ? deleteError.message : '会话删除失败。');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const toggleSidebar = () => {
+    writeTeacherChatSidebarCollapsed(!sidebarCollapsed);
+  };
+
   return (
-    <div className="grid min-h-[42rem] bg-background/40 lg:grid-cols-[22rem_1fr]">
-      <aside className="border-b bg-card/90 p-4 lg:border-b-0 lg:border-r">
-        <div className="space-y-4 lg:sticky lg:top-16">
-          <Card>
-            <CardHeader>
-              <CardTitle>教学预设</CardTitle>
-              <CardDescription>教师使用真实预设，也可以沉淀自己的草稿。</CardDescription>
+    <div className={cn("grid min-h-0 w-full flex-1 bg-background/35 transition-all duration-300", sidebarCollapsed ? "lg:grid-cols-[3rem_minmax(0,1fr)]" : "lg:grid-cols-[21rem_minmax(0,1fr)] xl:grid-cols-[23rem_minmax(0,1fr)]")}>
+      <CreatePresetDialog open={createPresetOpen} onOpenChange={setCreatePresetOpen} />
+      <PresetConflictDialog preset={pendingPreset} onCancel={() => setPendingPreset(null)} onReplace={replaceWithPendingPreset} onAppend={appendPendingPreset} />
+
+      <aside className={cn("order-2 border-t border-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--primary)_8%,transparent),transparent_18%),color-mix(in_oklch,var(--card)_92%,transparent)] p-3 shadow-soft backdrop-blur-xl lg:order-1 lg:max-h-[calc(100svh-5rem)] lg:overflow-y-auto lg:border-r lg:border-t-0 transition-all duration-300", sidebarCollapsed ? "lg:p-2" : "lg:p-4")} aria-label="教师问答会话管理">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className="hidden lg:flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background/80 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+            aria-label={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+          </button>
+        </div>
+        <div className={cn("space-y-4 pb-3 transition-opacity duration-300", sidebarCollapsed && "lg:hidden")}>
+          <section className="rounded-2xl border border-primary/18 bg-background/72 p-4 shadow-soft">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">会话管理</p>
+                <h2 className="mt-2 font-heading text-xl tracking-tight">教师问答</h2>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">左侧切换历史会话，右侧专注当前问答，不再展示看板式概览。</p>
+              </div>
+              <Button type="button" size="sm" onClick={openNewConversation} disabled={busy} className="min-h-10 cursor-pointer rounded-xl shadow-ink">
+                <Plus className="size-4" />新会话
+              </Button>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-border/65 bg-card/86 p-3 shadow-soft">
+            <div className="mb-3 flex items-start justify-between gap-3 px-1">
+              <div>
+                <p className="font-heading text-lg">历史会话</p>
+                <p className="mt-1 text-xs text-muted-foreground">支持续问、回看与删除。</p>
+              </div>
+              <Badge variant="outline">{sessions.length}</Badge>
+            </div>
+            <button
+              type="button"
+              onClick={openNewConversation}
+              disabled={busy}
+              className={cn('mb-2 flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-xl border border-dashed px-3 py-3 text-left text-xs transition-[border-color,background-color,color] duration-200 hover:border-primary/35 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', !conversationId && 'border-primary/45 bg-primary/7 text-primary')}
+            >
+              <Sparkles className="size-3.5 shrink-0" aria-hidden="true" />
+              从空白输入开始一个新会话
+            </button>
+            {sessions.length === 0 ? (
+              <div className="rounded-xl border border-dashed bg-background/50 px-3 py-4 text-xs text-muted-foreground">暂无历史会话。</div>
+            ) : (
+              <div className="space-y-1 rounded-xl border bg-background/60 p-2">
+                {sessions.map((session) => {
+                  const current = session.id === conversationId;
+                  return (
+                    <div key={session.id} className={cn('group/session flex min-h-11 items-start gap-1 rounded-lg text-xs text-muted-foreground transition-colors duration-200 hover:bg-muted focus-within:bg-muted', current && 'bg-primary/8 text-primary')}>
+                      <Link href={`/teacher/chat?conversationId=${session.id}`} aria-current={current ? 'page' : undefined} className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded-lg px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <MessageSquare className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-foreground">{session.title}</span>
+                          <span>{session.messageCount} 条消息 · {session.updatedLabel}</span>
+                        </span>
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => { setDeleteTarget(session); setDeleteError(''); }}
+                        className="mt-1.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-70 transition hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:opacity-0 sm:group-hover/session:opacity-100 sm:group-focus-within/session:opacity-100"
+                        aria-label={`删除会话 ${session.title}`}
+                      >
+                        <Trash2 className="size-3.5" aria-hidden="true" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <Card className="overflow-hidden rounded-2xl border-primary/20 bg-card/92 shadow-soft">
+            <CardHeader className="border-b border-border/60 bg-primary/6">
+              <div className="flex items-start gap-3">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+                  <ClipboardList className="size-4" aria-hidden="true" />
+                </span>
+                <div>
+                  <CardTitle className="font-heading">提示词模板</CardTitle>
+                  <CardDescription>点击模板只填入输入框，不会自动发送。</CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {presets.length === 0 ? (
-                <BlockedState title="暂无已发布预设" description="请管理员先发布教学 Prompt；这里不会提供通用模拟预设。" />
-              ) : null}
-              <div className="space-y-2">
-                <Label htmlFor="preset">选择预设</Label>
-                <Select value={presetId} onValueChange={(value) => setPresetId(value ?? '')} disabled={presets.length === 0}>
-                  <SelectTrigger id="preset">
-                    <SelectValue placeholder="选择已发布预设" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {presets.map((preset) => (
-                      <SelectItem key={preset.id} value={preset.id}>
-                        {preset.title} v{preset.version}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button nativeButton={false} render={<Link href="/teacher/instructions"><Plus />新建教师预设</Link>} variant="outline" className="w-full" />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>预设说明</CardTitle>
-              <CardDescription>发给模型前先确认教学目标。</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm text-muted-foreground">
-              {selectedPreset ? (
-                <dl className="grid gap-2">
-                  <dt className="font-medium text-foreground">场景</dt>
-                  <dd>{selectedPreset.scenario}</dd>
-                  <dt className="font-medium text-foreground">版本</dt>
-                  <dd>v{selectedPreset.version}</dd>
-                  <dt className="font-medium text-foreground">变量</dt>
-                  <dd>{presetVariableLabels(selectedPreset.variables)}</dd>
-                </dl>
+              {recentPresets.length === 0 ? (
+                <BlockedState title="暂无可用提示词模板" description="可以先直接提问；需要复用固定问法时，点击下方按钮创建模板。" />
               ) : (
-                '尚未选择真实发布预设。'
+                <div className="grid gap-2">
+                  {recentPresets.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => applyPreset(preset)}
+                      className="cursor-pointer rounded-xl border border-border/65 bg-background/78 p-3 text-left shadow-sm transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/35 hover:bg-primary/6 hover:shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="font-medium">{preset.title}</span>
+                        <Badge variant="outline" className="bg-card/80">填入</Badge>
+                      </span>
+                      <span className="mt-2 line-clamp-2 block text-xs leading-5 text-muted-foreground">{preset.system_instruction}</span>
+                    </button>
+                  ))}
+                </div>
               )}
+              <Button type="button" variant="outline" onClick={() => setCreatePresetOpen(true)} className="min-h-11 w-full cursor-pointer rounded-xl bg-background/78 transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/35 hover:bg-primary/5 hover:shadow-soft">
+                <Plus className="size-4" />新建提示词模板
+              </Button>
             </CardContent>
           </Card>
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-col">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6">
-          <div className="mx-auto max-w-3xl space-y-6">
+      <section className="order-1 flex max-h-[calc(100svh-8rem)] min-w-0 flex-col lg:order-2 lg:max-h-[calc(100svh-5rem)]" aria-label="教师问答工作区">
+        <div className="border-b border-border/60 bg-card/92 px-4 py-4 shadow-soft backdrop-blur">
+          <div className="mx-auto flex max-w-4xl flex-col gap-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">当前会话</p>
+                <p className="font-heading text-2xl tracking-tight">{currentSessionTitle}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {conversationId ? '继续围绕当前问题链追问、上传附件或套用模板。' : '从空白输入开始，不打断教师问答节奏。'}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge className="w-fit border-primary/25 bg-primary/8 text-primary" variant="outline">{conversationId ? '继续会话' : '新会话'}</Badge>
+                <Badge className="w-fit" variant="secondary">{uploadStatus ? '已含附件' : '可传附件'}</Badge>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {teacherPrompts.map((prompt) => (
+                <button key={prompt} type="button" className="min-h-10 cursor-pointer rounded-full border border-primary/20 bg-background/78 px-3 py-1.5 text-xs shadow-soft transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/40 hover:bg-primary/6 hover:shadow-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setInput(prompt)}>
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div ref={scrollRef} className="order-2 min-h-0 flex-1 overflow-y-auto px-4 py-6">
+          <div className="mx-auto flex max-w-4xl flex-col gap-6">
             {providerBlocked ? <BlockedState title="教师 AI 能力未就绪" description={providerBlocked} /> : null}
             {messages.length === 0 ? (
               <EmptyState
-                title="选择预设，开始设计一节可上好的课"
-                description="围绕篇目、年级、学生误区或挑战目标提问；输出会进入可核实闭环。"
+                title="开始一个新的教师问答会话"
+                description="围绕篇目、课堂目标、学生误区或追问设计直接提问；需要时再补模板或附件。"
                 action={(
                   <div className="flex flex-wrap justify-center gap-2">
                     {teacherPrompts.map((prompt) => (
-                      <button key={prompt} type="button" className="rounded-md border px-3 py-1 text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setInput(prompt)}>
+                      <button key={prompt} type="button" className="min-h-11 cursor-pointer rounded-full border border-primary/20 bg-card/86 px-4 py-2 text-sm shadow-soft transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/40 hover:bg-primary/6 hover:shadow-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setInput(prompt)}>
                         {prompt}
                       </button>
                     ))}
@@ -175,213 +459,54 @@ export function TeacherChatClient({ presets, providerBlocked }: { presets: Prese
                 )}
               />
             ) : (
-              <AIMessageList messages={messages} />
+              <AIMessageList messages={messages} assistantCardClassName="max-h-[28rem] overflow-y-auto overscroll-contain pr-2" />
             )}
             {busy ? (
-              <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" />
-                AI 正在生成教学支持…
+              <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-card/92 px-4 py-3 text-sm text-muted-foreground shadow-soft backdrop-blur" aria-live="polite">
+                <Loader2 className="size-4 animate-spin text-primary" />
+                {status === 'submitted' ? '已提交，等待模型首个响应…' : 'AI 正在生成教学支持…'}
               </div>
             ) : null}
-            {error ? <ErrorState title="教学 AI 响应失败" description={error.message} /> : null}
+            {error ? <ErrorState title="教师问答响应失败" description={error.message} /> : null}
           </div>
         </div>
-        <div className="border-t bg-card/95 p-4">
-          <div className="mx-auto max-w-3xl">
+
+        <div className="order-3 border-t border-border/60 bg-card/95 p-4 shadow-[0_-18px_40px_-32px_rgb(26_26_46/0.45)] backdrop-blur-xl">
+          <div className="mx-auto max-w-4xl">
             <ChatComposer
               value={input}
               onChange={setInput}
               onSubmit={submit}
-              placeholder="输入教学问题…"
-              disabled={busy || !selectedPreset || Boolean(providerBlocked)}
-              blockedReason={providerBlocked || (!selectedPreset ? '缺少已发布 Prompt 预设。' : undefined)}
+              placeholder="输入教学问题…（Enter 发送，Shift+Enter 换行）"
+              disabled={busy || uploading || Boolean(providerBlocked)}
+              inputDisabled={busy || uploading}
+              blockedReason={providerBlocked}
               onFileUpload={uploadAttachment}
-              uploadDisabled={busy || uploading || !selectedPreset || Boolean(providerBlocked)}
+              uploadDisabled={busy || uploading || Boolean(providerBlocked)}
               uploadStatus={uploadStatus}
               uploadError={uploadError}
             />
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function extractPlaceholders(...templates: string[]) {
-  return [...new Set(templates.flatMap((template) => [...template.matchAll(placeholderPattern)].map((match) => match[1].trim())))];
-}
-
-function renderTemplate(template: string, values: Record<string, string>) {
-  return template.replace(placeholderPattern, (_, key: string) => values[key] || `{{${key}}}`);
-}
-
-function FieldError({ message }: { message?: string }) {
-  return message ? <p className="text-xs text-destructive" role="alert">{message}</p> : null;
-}
-
-export function TeacherInstructionEditor({ presets }: { presets: Preset[] }) {
-  const [state, action, pending] = useActionState(saveTeacherPromptPreset, instructionInitialState);
-  const [title, setTitle] = useState('七年级古诗文追问预设');
-  const [scenario, setScenario] = useState('课堂备课');
-  const [systemInstruction, setSystemInstruction] = useState('你是一名古诗文教师助手。围绕{{当前篇目}}，帮助老师为{{学生姓名}}设计从理解到分析的追问。');
-  const [userTemplate, setUserTemplate] = useState('请基于{{课堂目标}}，生成 3 个分层问题，并指出{{常见误区}}的处理方式。');
-  const detectedVariables = extractPlaceholders(systemInstruction, userTemplate);
-  const unsupportedTemplate = unsupportedTemplatePattern.test(systemInstruction) || unsupportedTemplatePattern.test(userTemplate);
-  const [variableSamples, setVariableSamples] = useState<Record<string, string>>({
-    学生姓名: '沈明',
-    当前篇目: '《登鹳雀楼》',
-    年级: '七年级',
-    课堂目标: '理解景物描写与志向表达',
-    常见误区: '只翻译字面，不解释“更上一层楼”的表达效果',
-    挑战层级: 'L3-L4',
-  });
-  const missingSamples = detectedVariables.filter((name) => !variableSamples[name]?.trim());
-  const previewBlocked = unsupportedTemplate || missingSamples.length > 0;
-  const values = Object.fromEntries(detectedVariables.map((name) => [name, variableSamples[name] ?? '']));
-
-  const insertVariable = (name: string) => {
-    setSystemInstruction((current) => `${current}${current.endsWith(' ') || current.length === 0 ? '' : ' '}{{${name}}}`);
-  };
-
-  return (
-    <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
-      <WorkspaceHero
-        eyebrow="教师预设"
-        title="把好用的教学问法沉淀下来。"
-        description="教师可以自建草稿预设，使用 literal {{variable}} 变量语法；右侧预览只做 mock 渲染，不伪造真实 AI 回复。"
-        primaryAction={{ label: '回到教师问答', href: '/teacher#teacher-chat' }}
-        metrics={[
-          { label: '我的草稿/预设', value: presets.length, hint: 'created_by 当前教师' },
-          { label: '变量语法', value: '{{var}}', hint: 'literal placeholder subset' },
-          { label: '预览方式', value: 'mock', hint: '只验证插值与结构' },
-        ]}
-      />
-
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-heading">预设编辑器</CardTitle>
-            <CardDescription>保存为 draft，不绕过管理员发布流程。</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form action={action} className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="preset-title">预设名称</Label>
-                  <Input id="preset-title" name="title" value={title} onChange={(event) => setTitle(event.target.value)} />
-                  <FieldError message={state.errors?.title} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="preset-scenario">课堂场景</Label>
-                  <Input id="preset-scenario" name="scenario" value={scenario} onChange={(event) => setScenario(event.target.value)} />
-                  <FieldError message={state.errors?.scenario} />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Label htmlFor="system-instruction">教师问答指引</Label>
-                  <div className="flex flex-wrap gap-1">
-                    {presetVariables.map((variable) => (
-                      <Button key={variable} type="button" variant="outline" size="xs" onClick={() => insertVariable(variable)}>
-                        <Braces />{variable}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-                <Textarea id="system-instruction" name="system_instruction" value={systemInstruction} onChange={(event) => setSystemInstruction(event.target.value)} className="min-h-48 font-mono text-sm" />
-                <FieldError message={state.errors?.system_instruction} />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="user-template">User Template</Label>
-                <Textarea id="user-template" name="user_template" value={userTemplate} onChange={(event) => setUserTemplate(event.target.value)} className="min-h-28 font-mono text-sm" />
-              </div>
-
-              <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
-                <div>
-                  <p className="text-sm font-medium">变量定义与样例</p>
-                  <p className="text-xs text-muted-foreground">占位符必须有显式定义和样例，保存与预览都会检查。</p>
-                </div>
-                {detectedVariables.length === 0 ? (
-                  <EmptyState title="尚未检测到变量" description="在 System Instruction 或 User Template 中输入 {{学生姓名}} 这类 literal 占位符。" />
-                ) : detectedVariables.map((name) => (
-                  <div key={name} className="grid gap-2 sm:grid-cols-[10rem_1fr]">
-                    <input type="hidden" name="variable_name" value={name} />
-                    <Label htmlFor={`variable-${name}`} className="pt-2">{name}</Label>
-                    <Input
-                      id={`variable-${name}`}
-                      name="variable_sample"
-                      value={variableSamples[name] ?? ''}
-                      onChange={(event) => setVariableSamples((current) => ({ ...current, [name]: event.target.value }))}
-                      placeholder={`${name}样例`}
-                    />
-                  </div>
-                ))}
-                <FieldError message={state.errors?.variables} />
-                <FieldError message={state.errors?.variable_sample} />
-              </div>
-
-              {state.message ? (
-                <p className={state.ok ? 'rounded-lg border border-primary/30 bg-primary/10 p-2 text-sm text-primary' : 'rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive'} role={state.ok ? 'status' : 'alert'}>
-                  {state.message}
-                </p>
-              ) : null}
-              <Button disabled={pending || previewBlocked}>保存为草稿</Button>
-            </form>
-          </CardContent>
-        </Card>
-
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-heading">问法预览</CardTitle>
-              <CardDescription>预览变量替换后的教师问答指引与提问模板。</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {previewBlocked ? (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive" role="alert">
-                  {unsupportedTemplate ? '模板包含不支持的 Handlebars helper/block/triple-stash 语法。' : `请先填写变量样例：${missingSamples.join('、')}。`}
-                </div>
-              ) : (
-                <>
-                  <div className="rounded-lg border bg-muted/30 p-3">
-                    <Badge variant="outline" className="mb-2">system</Badge>
-                    <p className="whitespace-pre-wrap leading-7">{renderTemplate(systemInstruction, values)}</p>
-                  </div>
-                  <div className="rounded-lg border bg-primary/5 p-3">
-                    <Badge variant="outline" className="mb-2">teacher</Badge>
-                    <p className="whitespace-pre-wrap leading-7">{renderTemplate(userTemplate, values)}</p>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-heading">我的预设</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              {presets.length === 0 ? (
-                <EmptyState title="暂无教师自建预设" description="保存草稿后会出现在这里；发布仍由管理员治理。" />
-              ) : presets.map((preset) => (
-                <div key={preset.id} className="rounded-lg border p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-medium">{preset.title}</p>
-                    <Badge variant="outline">{preset.status}</Badge>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{preset.scenario} · v{preset.version}</p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
       </section>
 
-      <section className="space-y-4">
-        <SectionHeader title="变量规则" description="这里只支持 literal {{variable}} 占位符，不执行模板 helper 或表达式，避免把教师问答预设变成第二套业务逻辑。" />
-      </section>
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除教师会话</DialogTitle>
+            <DialogDescription>删除后，这条教师问答会话会从侧栏移除，相关附件也不再从该会话继续检索。</DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border bg-muted/40 p-3 text-sm">{deleteTarget?.title}</div>
+          {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={deleting} onClick={() => setDeleteTarget(null)}>取消</Button>
+            <Button type="button" variant="destructive" disabled={deleting} onClick={confirmDeleteSession}>
+              {deleting ? <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" /> : null}
+              确认删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

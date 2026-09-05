@@ -13,8 +13,16 @@ export type ProviderCapability =
   | 'embedding';
 export type PromptPresetStatus = 'draft' | 'published' | 'disabled';
 export type InteractionSource = 'student_chat' | 'teacher_chat' | 'practice';
-export type AuditKind = 'sft' | 'dpo';
-export type AuditStatus = 'pending' | 'approved' | 'rejected' | 'exported';
+export type AuditKind = 'sft' | 'dpo' | 'metadata';
+/**
+ * audit_records.status 是否已发往导出批次的二元标志。
+ * - approved：教师已审批的样本，等待管理员导出。
+ * - exported：管理员已导出，保留以便重复导出和审计。
+ *
+ * 没有 pending/rejected 中间态：会话级最终提交本身就是审批动作（CONTEXT.md
+ * "确认提交整个会话"），样本要么不存在，要么 approved/exported。
+ */
+export type AuditStatus = 'approved' | 'exported';
 export type ExportStatus = 'queued' | 'ready' | 'failed';
 export type Vector = number[];
 
@@ -50,6 +58,11 @@ export interface Database {
         Row: { id: string; tier: ModelTier; provider_id: string; model_id: string; is_enabled: boolean; metadata: Json; created_at: string; updated_at: string };
         Insert: { id?: string; tier: ModelTier; provider_id: string; model_id: string; is_enabled?: boolean; metadata?: Json };
         Update: Partial<Database['public']['Tables']['model_tier_bindings']['Insert']>;
+      };
+      scenario_tier_bindings: {
+        Row: { id: string; scenario: ProviderCapability; tier: ModelTier; is_enabled: boolean; metadata: Json; created_at: string; updated_at: string };
+        Insert: { id?: string; scenario: ProviderCapability; tier: ModelTier; is_enabled?: boolean; metadata?: Json };
+        Update: Partial<Database['public']['Tables']['scenario_tier_bindings']['Insert']>;
       };
       mcp_servers: {
         Row: { id: string; name: string; description: string | null; connection_ref: string | null; secret_ref: string | null; secret_last_four: string | null; health_status: string; enabled_tools: Json; allowed_roles: AppRole[]; metadata: Json; is_enabled: boolean; created_by: string | null; created_at: string; updated_at: string };
@@ -122,6 +135,17 @@ export interface Database {
         Args: { query_embedding: Vector; conversation_id: string; match_count?: number; match_threshold?: number };
         Returns: { id: string; document_id: string; owner_id: string; class_id: string | null; project_id: string | null; conversation_id: string | null; chunk_index: number; content: string; metadata: Json; document_title: string; source_uri: string | null; similarity: number }[];
       };
+      get_model_tier_provider: {
+        Args: { p_tier: string };
+        Returns: { tier: string; model_id: string; binding_enabled: boolean; provider_id: string; provider_name: string; provider_type: string; base_url: string | null; secret_ref: string | null; health_status: string; provider_enabled: boolean }[];
+      };
+      get_provider_capability_provider: {
+        Args: { p_capability: ProviderCapability };
+        Returns: { capability: ProviderCapability; model_id: string; provider_name: string; provider_type: string; base_url: string | null; secret_ref: string | null; health_status: string }[];
+      };
+      is_student_conversation_finalized: { Args: { p_conversation_id: string }; Returns: boolean };
+      save_model_tier_binding_and_sync: { Args: { p_tier: string; p_provider_id: string; p_model_id: string }; Returns: undefined };
+      save_scenario_tier_bindings_and_sync: { Args: { p_bindings: Json }; Returns: undefined };
       refresh_project_highest_bloom_level: { Args: { p_project_id: string }; Returns: undefined };
     };
     Enums: { app_role: AppRole; model_tier: ModelTier; provider_capability: ProviderCapability; prompt_preset_status: PromptPresetStatus; interaction_source: InteractionSource; audit_kind: AuditKind; audit_status: AuditStatus; export_status: ExportStatus };

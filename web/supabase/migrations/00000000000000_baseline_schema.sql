@@ -1,0 +1,70 @@
+-- =============================================================================
+-- BASELINE SCHEMA — Classical Chinese Workbench (文韵智途)
+-- Generated: 2026-05-11 from cloud Supabase source-of-truth
+--
+-- This file represents the complete schema state BEFORE the two optimization
+-- migrations (20260511000001 + 20260511000002). It is intended as a
+-- schema-as-code reference and can be used to bootstrap a fresh Supabase
+-- instance for development.
+--
+-- NOTE: This is a REFERENCE file. The cloud instance already has this schema
+-- applied via its own migration history. Do NOT re-apply this to the cloud.
+-- =============================================================================
+
+-- This file is intentionally a REFERENCE ONLY marker.
+-- The actual cloud migration history (21 entries) is the authoritative record.
+-- See: supabase_migrations.schema_migrations on the cloud instance.
+--
+-- Cloud migration history (for reference):
+--   20260502084503 — 000001_init_mvp_schema
+--   20260502084635 — 000002_rls_indexes_rpc
+--   20260502093320 — 000003_add_login_credentials
+--   20260504044718 — relax_provider_type_constraint_and_add_api_models
+--   20260504113752 — provider_configs_app_enabled_read
+--   20260504152607 — set_document_embeddings_to_768
+--   20260505084244 — single_student_class_membership
+--   20260505141701 — conversation_scoped_rag
+--   20260505173034 — schema_cleanup_close_drift
+--   20260506035327 — close_audit_kind_review_metadata_drift
+--   20260506082911 — context_data_contract_minimal_seed
+--   20260506133325 — custom_scenario_tier_bindings
+--   20260506151239 — prompt_preset_context_refresh
+--   20260509102700 — restore_review_metadata_export_kind
+--   20260509120000 — student_finalized_conversation_visibility
+--   20260510044900 — teacher_revision_rls_and_realtime
+--   20260510044948 — backfill_teacher_revision_drift
+--   20260510062301 — tighten_messages_update_policy
+--   20260511055016 — db_optimization_phase1
+--   20260511055833 — security_definer_lockdown
+--   20260511060115 — security_definer_lockdown (duplicate entry, harmless)
+--
+-- Tables (18): profiles, classes, class_memberships, text_projects,
+--   conversations, conversation_messages, practice_records, documents,
+--   document_chunks, audit_records, export_batches, provider_configs,
+--   provider_capabilities, model_tier_bindings, scenario_tier_bindings,
+--   mcp_servers, prompt_presets, data_quality_events
+--
+-- Enums (7): app_role, audit_kind, audit_status, export_status,
+--   interaction_source, prompt_preset_status, provider_capability
+--
+-- RPC Functions (15): authenticate_school_account, authenticate_user,
+--   current_app_user_id, current_profile_role, get_model_tier_provider,
+--   get_profile, get_provider_capability_provider,
+--   has_valid_app_session_signature, is_admin,
+--   is_student_conversation_finalized, match_conversation_document_chunks,
+--   match_document_chunks, refresh_project_highest_bloom_level,
+--   save_model_tier_binding_and_sync, save_scenario_tier_bindings_and_sync,
+--   rebuild_scenario_provider_capabilities, teacher_can_access_class,
+--   verify_password
+--
+-- Trigger Functions (10): touch_updated_at, prevent_text_project_delete,
+--   sync_text_project_contract, sync_project_highest_bloom_from_practice,
+--   validate_audit_record_contract, validate_class_membership_contract,
+--   validate_conversation_contract, validate_conversation_message_contract,
+--   validate_document_chunk_scope_contract, validate_document_scope_contract,
+--   validate_practice_record_contract, rls_auto_enable
+--
+-- For the full DDL of each object, query the cloud instance directly:
+--   SELECT pg_get_functiondef(oid) FROM pg_proc WHERE proname='<name>';
+--   SELECT indexdef FROM pg_indexes WHERE schemaname='public';
+--   SELECT * FROM pg_policies WHERE schemaname='public';

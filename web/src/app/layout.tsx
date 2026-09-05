@@ -1,11 +1,18 @@
 import type { Metadata } from "next";
-import { Geist_Mono } from "next/font/google";
+import { Geist_Mono, Noto_Serif_SC } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+const notoSerifSC = Noto_Serif_SC({
+  variable: "--font-noto-serif-sc",
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+  fallback: ["STSong", "Songti SC", "SimSun", "serif"],
 });
 
 export const metadata: Metadata = {
@@ -21,7 +28,7 @@ export default function RootLayout({
   return (
     <html
       lang="zh-CN"
-      className={`${geistMono.variable} h-full antialiased`}
+      className={`${geistMono.variable} ${notoSerifSC.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col font-sans">

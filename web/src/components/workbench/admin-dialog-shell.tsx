@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
 
 type AdminDialogShellProps = {
   open?: boolean;
@@ -39,16 +40,18 @@ export function AdminDialogShell({
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal="trap-focus">
       {trigger ? <DialogTrigger render={trigger} /> : null}
-      <DialogContent className={className}>
-        <DialogHeader>
+      <DialogContent className={cn('flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden', className)}>
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             {icon}
             {title}
           </DialogTitle>
           {description ? <DialogDescription>{description}</DialogDescription> : null}
         </DialogHeader>
-        {children}
-        {footer ? <DialogFooter>{footer}</DialogFooter> : null}
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          {children}
+        </div>
+        {footer ? <DialogFooter className="shrink-0">{footer}</DialogFooter> : null}
       </DialogContent>
     </Dialog>
   );

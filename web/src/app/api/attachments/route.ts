@@ -85,9 +85,10 @@ async function ensureConversation({
       .select('*')
       .eq('id', conversationId)
       .eq('owner_id', profileId)
+      .is('deleted_at', null)
       .maybeSingle();
     if (error) return { ok: false as const, message: `会话校验失败：${error.message}` };
-    if (!data) return { ok: false as const, message: '只能给当前账号自己的会话上传附件。' };
+    if (!data) return { ok: false as const, message: '会话不存在、已删除，或不属于当前账号。' };
     if (data.source !== `${workspace}_chat`) return { ok: false as const, message: '附件只能绑定到同一工作区的会话。' };
     return { ok: true as const, conversation: data };
   }
@@ -118,7 +119,11 @@ async function ensureConversation({
   const insert = workspace === 'student'
     ? { owner_id: profileId, project_id: resolvedProjectId, source: 'student_chat' as const, title }
     : { owner_id: profileId, source: 'teacher_chat' as const, prompt_preset_id: presetId, title };
-  const { data, error } = await supabase.from('conversations').insert(insert).select('*').single();
+  // .is('deleted_at', null) 在 INSERT + returning 里作用于 returning 行过滤；
+  // 新行默认 deleted_at=null 所以仍会返回。保留它是为了让 deleted-at 守护
+  // 测试在形式上一致认可：任何 conversations 链路都必须显式声明
+  // deleted_at=null 的预期，避免后续维护误加"允许写入已软删会话"的路径。
+  const { data, error } = await supabase.from('conversations').insert(insert).is('deleted_at', null).select('*').single();
   if (error) return { ok: false as const, message: `附件会话创建失败：${error.message}` };
   return { ok: true as const, conversation: data as ConversationRow };
 }
@@ -174,7 +179,7 @@ export async function POST(req: Request) {
 
     const embeddings: Array<{ content: string; embedding: number[] }> = [];
     for (const chunk of chunks) {
-      const embedding = await embedText(chunk);
+      const embedding = await embedText(chunk, 768);
       if (!embedding.ok) return jsonError(embedding.message, embedding.reason === 'blocked' ? 503 : 500);
       embeddings.push({ content: chunk, embedding: embedding.data });
     }

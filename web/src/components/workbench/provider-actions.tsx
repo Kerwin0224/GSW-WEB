@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Loader2, Activity, Download, SlidersHorizontal, Pencil, Trash2, CheckCircle2, XCircle, Plus } from 'lucide-react';
+import { Loader2, Activity, Download, SlidersHorizontal, Pencil, Trash2, CheckCircle2, XCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,18 +18,7 @@ import {
   type ProviderActionResult,
 } from '@/lib/data/admin';
 
-const CAPABILITY_LABELS: Record<string, string> = {
-  student_chat: '学生会话回答',
-  teacher_chat: '教师问答',
-  bloom_classification: '布鲁姆分类',
-  project_classification: '篇目识别',
-  practice_generation: '挑战出题',
-  practice_evaluation: '挑战确认评估',
-  audit_assist: '核实辅助',
-  embedding: '向量嵌入',
-};
-
-const ALL_CAPABILITIES = Object.keys(CAPABILITY_LABELS);
+const EMBEDDING_CAPABILITY = 'embedding';
 
 export type ProviderListItem = {
   id: string;
@@ -75,7 +64,7 @@ export function HealthCheckButton({ provider }: { provider: ProviderListItem }) 
   }
 
   return (
-    <Button variant="ghost" size="icon-sm" onClick={ping} disabled={pending} title="测速 / 健康检查">
+    <Button variant="ghost" size="icon-sm" onClick={ping} disabled={pending} title="Provider 健康检查">
       {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Activity className="size-3.5" />}
     </Button>
   );
@@ -120,42 +109,23 @@ export function FetchModelsButton({ provider }: { provider: ProviderListItem }) 
  */
 export function CapabilityAssignmentDialog({ provider }: { provider: ProviderListItem }) {
   const [open, setOpen] = useState(false);
-  const [rows, setRows] = useState(
-    provider.capabilities.length > 0
-      ? provider.capabilities
-      : [{ capability: 'student_chat', modelId: '' }]
-  );
+  const [modelId, setModelId] = useState(provider.capabilities.find((capability) => capability.capability === EMBEDDING_CAPABILITY)?.modelId ?? '');
   const [submitting, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  function addRow() {
-    const used = new Set(rows.map((r) => r.capability));
-    const next = ALL_CAPABILITIES.find((c) => !used.has(c));
-    if (next) setRows([...rows, { capability: next, modelId: '' }]);
-  }
-
-  function removeRow(idx: number) {
-    setRows(rows.filter((_, i) => i !== idx));
-  }
-
-  function updateRow(idx: number, key: 'capability' | 'modelId', value: string) {
-    setRows(rows.map((row, i) => (i === idx ? { ...row, [key]: value } : row)));
-  }
-
   function submit() {
     setError(null);
-    const valid = rows.filter((r) => r.capability && r.modelId.trim());
-    if (valid.length === 0) {
-      setError('请至少为一个能力分配模型');
+    if (!modelId.trim()) {
+      setError('请填写 Embedding 模型 ID。');
       return;
     }
     startTransition(async () => {
-      const result: ProviderActionResult = await updateProviderCapabilities(provider.id, valid);
+      const result: ProviderActionResult = await updateProviderCapabilities(provider.id, [{ capability: EMBEDDING_CAPABILITY, modelId: modelId.trim() }]);
       if (!result.ok) {
         setError(result.message);
         return;
       }
-      toast.success('能力配置已保存');
+      toast.success(result.message ?? 'Embedding 能力已保存');
       setOpen(false);
     });
   }
@@ -165,66 +135,52 @@ export function CapabilityAssignmentDialog({ provider }: { provider: ProviderLis
       open={open}
       onOpenChange={setOpen}
       trigger={
-        <Button variant="ghost" size="icon-sm" title="配置能力 → 模型映射">
+        <Button variant="ghost" size="icon-sm" title="配置 Embedding 能力">
           <SlidersHorizontal className="size-3.5" />
         </Button>
       }
-      title={`配置能力 — ${provider.name}`}
-      description={`为每个系统能力分配模型 ID。可从已拉取的 ${provider.apiModels.length} 个模型中选择，也可手动输入。`}
+      title={`配置 Embedding — ${provider.name}`}
+      description="学生会话、教师问答、挑战和核实辅助由场景路由映射统一管理；这里仅配置向量嵌入模型，不提供学生会话内容浏览。"
       icon={<SlidersHorizontal className="size-5" />}
       footer={(
-        <Button onClick={submit} disabled={submitting} type="button">
-          {submitting ? <><Loader2 className="mr-2 size-4 animate-spin" />保存中…</> : '保存能力配置'}
+        <Button onClick={submit} disabled={submitting || !modelId.trim()} type="button">
+          {submitting ? <><Loader2 className="mr-2 size-4 animate-spin" />保存中…</> : '保存 Embedding 能力'}
         </Button>
       )}
     >
-        <div className="space-y-2">
-          {rows.map((row, idx) => (
-            <div key={idx} className="flex gap-2 items-start">
-              <Select value={row.capability} onValueChange={(v) => updateRow(idx, 'capability', v ?? '')}>
-                <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {ALL_CAPABILITIES.map((c) => (
-                    <SelectItem key={c} value={c}>{CAPABILITY_LABELS[c]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="flex-1">
-                <Input
-                  value={row.modelId}
-                  onChange={(e) => updateRow(idx, 'modelId', e.target.value)}
-                  placeholder="输入或选择模型 ID（如 gpt-4o-mini）"
-                  list={`models-list-${provider.id}-${idx}`}
-                />
-                <datalist id={`models-list-${provider.id}-${idx}`}>
-                  {provider.apiModels.map((m) => <option key={m.id} value={m.id} />)}
-                </datalist>
-              </div>
-              <Button variant="ghost" size="icon" type="button" onClick={() => removeRow(idx)} disabled={rows.length === 1}>
-                <Trash2 className="size-4" />
-              </Button>
-            </div>
-          ))}
-          <Button variant="outline" size="sm" type="button" onClick={addRow} disabled={rows.length >= ALL_CAPABILITIES.length}>
-            <Plus className="mr-1 size-4" />添加能力
-          </Button>
+        <div className="space-y-4">
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs leading-6 text-primary">
+            Flash / Advanced 场景能力请在“AI 场景路由映射”中配置；Embedding 保持独立能力路径。
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`embedding-model-${provider.id}`}>Embedding 模型 ID</Label>
+            <Input
+              id={`embedding-model-${provider.id}`}
+              value={modelId}
+              onChange={(event) => setModelId(event.target.value)}
+              placeholder="输入或选择 Embedding 模型 ID"
+              list={`embedding-models-list-${provider.id}`}
+            />
+            <datalist id={`embedding-models-list-${provider.id}`}>
+              {provider.apiModels.map((model) => <option key={model.id} value={model.id} />)}
+            </datalist>
+          </div>
+
+          {provider.apiModels.length === 0 ? (
+            <Alert>
+              <AlertDescription className="text-xs">
+                当前还没有拉取到模型列表。可以点击列表行的“拉取模型”按钮自动获取，或直接手动输入模型 ID。
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
+          {error ? (
+            <Alert variant="destructive">
+              <XCircle className="size-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
         </div>
-
-        {provider.apiModels.length === 0 ? (
-          <Alert>
-            <AlertDescription className="text-xs">
-              提示：当前还没有拉取到模型列表。可以点击列表行的「拉取模型」按钮自动获取，或直接在上方手动输入模型 ID。
-            </AlertDescription>
-          </Alert>
-        ) : null}
-
-        {error ? (
-          <Alert variant="destructive">
-            <XCircle className="size-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        ) : null}
-
     </AdminDialogShell>
   );
 }
@@ -270,7 +226,7 @@ export function EditProviderDialog({ provider }: { provider: ProviderListItem })
         </Button>
       }
       title={`编辑 — ${provider.name}`}
-      description="更新 Provider 基础信息。API Key 留空会保留现有密钥。"
+      description="更新 AI 运维 Provider 基础信息。API Key 留空会保留现有密钥。"
       icon={<Pencil className="size-5" />}
       className="max-w-lg"
       footer={(
@@ -286,7 +242,21 @@ export function EditProviderDialog({ provider }: { provider: ProviderListItem })
           </div>
           <div className="space-y-2">
             <Label htmlFor={`edit-type-${provider.id}`}>类型</Label>
-            <Select value={providerType} onValueChange={(v) => setProviderType(v ?? 'openai-compatible')}>
+            <Select
+              value={providerType}
+              items={[
+                { value: 'cloud', label: 'Cloud' },
+                { value: 'local', label: 'Local' },
+                { value: 'proxy', label: 'Proxy' },
+                { value: 'openai-compatible', label: 'OpenAI Compatible' },
+                { value: 'openai', label: 'OpenAI 官方' },
+                { value: 'anthropic', label: 'Anthropic' },
+                { value: 'ollama', label: 'Ollama' },
+                { value: 'azure', label: 'Azure' },
+                { value: 'gateway', label: 'Gateway' },
+              ]}
+              onValueChange={(v) => setProviderType(v ?? 'openai-compatible')}
+            >
               <SelectTrigger id={`edit-type-${provider.id}`}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="cloud">Cloud</SelectItem>
@@ -361,7 +331,7 @@ export function DeleteProviderButton({ provider }: { provider: ProviderListItem 
         </Button>
       }
       title={`删除 Provider「${provider.name}」`}
-      description="此操作会移除 Provider 及关联能力配置，保存后无法在界面内恢复。"
+      description="此操作会移除 Provider 及关联能力配置，保存后无法在界面内恢复；不会删除教学导出批次或教师审阅元数据。"
       icon={<Trash2 className="size-5" />}
       className="max-w-md"
       footer={(
@@ -376,7 +346,7 @@ export function DeleteProviderButton({ provider }: { provider: ProviderListItem 
       <Alert variant="destructive">
         <XCircle className="size-4" />
         <AlertDescription>
-          下游能力链路会在删除后重新计算；如果这是唯一绑定，学生或教师功能会显示断链。
+          下游 AI 能力链路会在删除后重新计算；如果这是唯一绑定，学生会话回答、教师问答或挑战确认会显示断链。
         </AlertDescription>
       </Alert>
     </AdminDialogShell>

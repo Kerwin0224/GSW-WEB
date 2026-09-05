@@ -1,4 +1,4 @@
-import { BookOpen, MessageSquare, Route, Swords, Target } from 'lucide-react';
+import { BookOpen, MessageSquare, Route, Swords } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,20 +9,21 @@ import { cn } from '@/lib/utils';
 export type ProjectCardData = ProjectSummary;
 
 function BloomMiniBar({ project }: { project: ProjectCardData }) {
+  const confirmedLevel = project.challengeProgress.confirmedLevel;
   return (
-    <div className="grid grid-cols-6 gap-1.5" aria-label={`《${project.title}》会话问题触达层级缩略图`}>
+    <div className="grid grid-cols-6 gap-1.5" aria-label={`《${project.title}》挑战确认层级缩略图，学生问题路径只作挑战参考`}>
       {([1, 2, 3, 4, 5, 6] as BloomLevel[]).map((level) => {
         const info = bloomLevelInfo[level];
         const summary = project.levelSummary.find((item) => item.level === level);
-        const active = Boolean(project.highestLevel && level <= project.highestLevel);
+        const active = Boolean(confirmedLevel && level <= confirmedLevel);
         return (
           <div
             key={level}
             className={cn(
-              'rounded-md border px-1.5 py-2 text-center text-[10px] transition-[border-color,background-color,box-shadow] duration-200',
-              active ? 'border-primary/35 bg-primary/12 text-primary shadow-sm group-hover/card:shadow-soft' : 'border-border/70 bg-muted/35 text-muted-foreground'
+              'rounded-md border px-1.5 py-2 text-center text-[10px] transition-[border-color,background-color] duration-200',
+              active ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border/60 bg-muted/30 text-muted-foreground'
             )}
-            title={`L${level} ${info.label}：${summary?.questionCount ?? 0} 个问题，${summary?.achievedChallengeCount ?? 0} 次挑战达成`}
+            title={`L${level} ${info.label}：学生问题路径参考 ${summary?.pathQuestionCount ?? 0} 个，挑战通过确认 ${summary?.confirmedChallengeCount ?? 0} 次`}
           >
             <span className="block font-semibold">L{level}</span>
             <span className="sr-only">{info.label}</span>
@@ -35,34 +36,68 @@ function BloomMiniBar({ project }: { project: ProjectCardData }) {
 
 export function ProjectCard({ project }: { project: ProjectCardData }) {
   const confirmedLevel = project.challengeProgress.confirmedLevel;
+  const nextLabel = project.challengeProgress.isComplete ? '已完成六层认知挑战确认' : `继续 L${project.challengeProgress.nextLevel} 挑战`;
 
   return (
-    <Card className="group relative overflow-hidden border-border/70 bg-card/90 shadow-soft backdrop-blur transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/35 hover:bg-card hover:shadow-ink">
-      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-accent to-destructive/70" />
-      <CardHeader className="relative pb-3">
+    <Card className="group/card relative flex h-full flex-col overflow-hidden border-border/60 bg-card/95 shadow-soft transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-ink">
+      {/* 顶部双色条：黛蓝→紫金，古典而克制；朱砂留给警示。 */}
+      <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-primary via-primary/70 to-accent" aria-hidden="true" />
+      <CardHeader className="pb-3 pt-5">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-1">
-            <CardTitle className="truncate font-heading text-2xl leading-9 tracking-tight">《{project.title}》{project.author ? ` · ${project.author}` : ''}</CardTitle>
-            <p className="text-xs text-muted-foreground">{project.updatedLabel ?? '最近学习时间待同步'}</p>
+          <div className="min-w-0 space-y-1.5">
+            <CardTitle className="truncate font-heading text-2xl leading-8 tracking-tight">《{project.title}》</CardTitle>
+            <p className="truncate text-xs text-muted-foreground">
+              {project.author ? <span>{project.author} · </span> : null}
+              {project.updatedLabel ?? '最近学习时间待同步'}
+            </p>
           </div>
-          {confirmedLevel ? <BloomBadge level={confirmedLevel} /> : <span className="shrink-0 rounded-md border border-accent/30 bg-accent/10 px-2.5 py-1 text-xs text-muted-foreground">等待挑战确认</span>}
+          {confirmedLevel ? (
+            <BloomBadge level={confirmedLevel} />
+          ) : (
+            <span className="shrink-0 rounded-md border border-accent/40 bg-accent/8 px-2.5 py-1 text-xs text-accent-foreground/80">等待挑战确认</span>
+          )}
         </div>
       </CardHeader>
-      <CardContent className="relative space-y-4">
+
+      <CardContent className="flex flex-1 flex-col gap-4 pb-4">
         <BloomMiniBar project={project} />
-        <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
-          <span className="flex items-center gap-2 rounded-lg border border-border/55 bg-background/72 px-3 py-2.5"><MessageSquare className="size-4 text-primary" aria-hidden="true" />问题 {project.questionCount}</span>
-          <span className="flex items-center gap-2 rounded-lg border border-border/55 bg-background/72 px-3 py-2.5"><Target className="size-4 text-primary" aria-hidden="true" />挑战 {project.practiceCount}</span>
-          <span className="flex items-center gap-2 rounded-lg border border-border/55 bg-background/72 px-3 py-2.5"><Route className="size-4 text-primary" aria-hidden="true" />会话 {project.sessions.length}</span>
-          <span className="flex items-center gap-2 rounded-lg border border-border/55 bg-background/72 px-3 py-2.5"><Swords className="size-4 text-primary" aria-hidden="true" />已确认 {confirmedLevel ? `L${confirmedLevel}` : '等待'}</span>
-        </div>
-        <p className="rounded-lg border border-accent/25 bg-accent/12 px-4 py-3 text-xs leading-6 text-muted-foreground shadow-sm">
-          会话问题触达层级仅作认知路径参考；项目当前状态以挑战确认结果为准。{project.challengeProgress.statusLabel}；下一步 {project.challengeProgress.isComplete ? '完成全部挑战' : `继续 L${project.challengeProgress.nextLevel} 挑战`}。
+
+        {/* 三项关键度量：问题、当前、下一挑战；分割线替代 4 个边框框。 */}
+        <dl className="grid grid-cols-3 divide-x divide-border/60 rounded-lg border border-border/55 bg-background/70">
+          <div className="flex flex-col items-center gap-1 px-2 py-3 text-center">
+            <dt className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              <MessageSquare className="size-3" aria-hidden="true" />问题
+            </dt>
+            <dd className="font-heading text-xl tabular-nums">{project.questionCount}</dd>
+          </div>
+          <div className="flex flex-col items-center gap-1 px-2 py-3 text-center">
+            <dt className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              <Swords className="size-3" aria-hidden="true" />当前
+            </dt>
+            <dd className="font-heading text-xl tabular-nums">{confirmedLevel ? `L${confirmedLevel}` : '—'}</dd>
+          </div>
+          <div className="flex flex-col items-center gap-1 px-2 py-3 text-center">
+            <dt className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              <Route className="size-3" aria-hidden="true" />下一
+            </dt>
+            <dd className="font-heading text-xl tabular-nums">{project.challengeProgress.isComplete ? '✓' : `L${project.challengeProgress.nextLevel}`}</dd>
+          </div>
+        </dl>
+
+        {/* 单行状态摘要，替代之前 6 行冗长描述。 */}
+        <p className="mt-auto text-xs leading-5 text-muted-foreground">
+          <span className="font-medium text-foreground">{project.challengeProgress.statusLabel}</span>
+          <span className="mx-1.5 text-border">·</span>
+          {nextLabel}
         </p>
       </CardContent>
-      <CardFooter className="relative grid gap-2 pt-0 sm:grid-cols-2">
-        <Button nativeButton={false} render={<a href={`/student?projectId=${project.id}`}><BookOpen className="mr-2 size-4" />回到项目提问</a>} className="min-h-11 w-full cursor-pointer rounded-lg" variant="outline" />
-        <Button nativeButton={false} render={<a href={`/student/challenge/${project.id}`}><Swords className="mr-2 size-4" />继续挑战</a>} className="min-h-11 w-full cursor-pointer rounded-lg shadow-sm" />
+
+      <CardFooter className="pt-0">
+        <Button
+          nativeButton={false}
+          render={<a href={`/student?projectId=${project.id}`}><BookOpen className="mr-2 size-4" aria-hidden="true" />进入项目新会话</a>}
+          className="min-h-11 w-full cursor-pointer rounded-lg"
+        />
       </CardFooter>
     </Card>
   );

@@ -27,6 +27,7 @@ export function AdminLogViewer({
   filters: AppEventFilters;
 }) {
   const router = useRouter();
+  const level = filters.level ?? 'all';
 
   function applyFilters(formData: FormData) {
     const params = new URLSearchParams();
@@ -47,7 +48,7 @@ export function AdminLogViewer({
           <form action={applyFilters} className="grid gap-3 md:grid-cols-[160px_1fr_1fr_1.4fr_auto]">
             <div className="space-y-2">
               <Label>level</Label>
-              <Select name="level" defaultValue={filters.level ?? 'all'}>
+              <Select key={level} name="level" defaultValue={level}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部</SelectItem>

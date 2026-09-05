@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Brain, Layers3, Loader2, Sparkles, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -15,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { AdminDialogShell } from '@/components/workbench/admin-dialog-shell';
 import { EmptyState } from '@/components/workbench/state-surfaces';
 import {
+  CapabilityAssignmentDialog,
   HealthCheckButton,
   FetchModelsButton,
   EditProviderDialog,
@@ -22,7 +24,7 @@ import {
   HealthBadge,
   type ProviderListItem,
 } from '@/components/workbench/provider-actions';
-import { saveModelTierBinding, type AdminModelTierStatus } from '@/lib/data/admin';
+import { saveModelTierBinding, saveScenarioTierBindings, type AdminModelTierStatus, type AdminScenarioTierBinding } from '@/lib/data/admin';
 import type { ModelTier } from '@/lib/supabase/database.types';
 
 export const capabilities = [
@@ -39,7 +41,7 @@ export const capabilities = [
 const CAPABILITY_LABELS: Record<string, string> = {
   student_chat: '学生会话回答',
   teacher_chat: '教师问答',
-  bloom_classification: '布鲁姆分类',
+  bloom_classification: '学生问题布鲁姆路径判断',
   project_classification: '篇目识别',
   practice_generation: '挑战出题',
   practice_evaluation: '挑战确认评估',
@@ -48,15 +50,17 @@ const CAPABILITY_LABELS: Record<string, string> = {
 };
 
 const SCENARIO_ROWS = [
-  { role: 'Student /student', scenario: 'student_chat', tier: 'flash', impact: '学生会话即时回答' },
-  { role: 'Student /student', scenario: 'bloom_classification', tier: 'flash', impact: '高吞吐 Bloom 标注' },
-  { role: 'Student /student/projects', scenario: 'project_classification', tier: 'flash', impact: '篇目与项目识别' },
-  { role: 'Student /student/challenge', scenario: 'practice_generation', tier: 'flash', impact: '低成本挑战生成' },
-  { role: 'Teacher /teacher', scenario: 'teacher_chat', tier: 'advanced', impact: '教师高质量问答' },
-  { role: 'Challenge confirmation', scenario: 'practice_evaluation', tier: 'advanced', impact: '挑战确认强判断评估' },
-  { role: 'Teacher /teacher/audit', scenario: 'audit_assist', tier: 'advanced', impact: '教学正确性核实辅助' },
-  { role: 'RAG /student/projects', scenario: 'embedding', tier: 'embedding', impact: '独立向量嵌入配置' },
-] as const;
+  { role: '学生 /student', scenario: 'student_chat', defaultTier: 'flash', impact: '学习提问的即时会话回答' },
+  { role: '学生 /student', scenario: 'bloom_classification', defaultTier: 'flash', impact: '学生问题的布鲁姆认知路径最高层判断' },
+  { role: '学生 /student', scenario: 'project_classification', defaultTier: 'flash', impact: '首问篇目识别与项目归属' },
+  { role: '学生 /student/challenge', scenario: 'practice_generation', defaultTier: 'flash', impact: '低成本挑战生成' },
+  { role: '教师 /teacher', scenario: 'teacher_chat', defaultTier: 'advanced', impact: '教师问答高质量回答' },
+  { role: '挑战确认', scenario: 'practice_evaluation', defaultTier: 'advanced', impact: '挑战确认强判断评估' },
+  { role: '教师 /teacher/audit', scenario: 'audit_assist', defaultTier: 'advanced', impact: '教学正确性核实辅助' },
+] as const satisfies ReadonlyArray<{ role: string; scenario: AdminScenarioTierBinding['scenario']; defaultTier: ModelTier; impact: string }>;
+
+const EMBEDDING_ROW = { role: 'RAG /student', scenario: 'embedding', impact: '项目检索的独立向量嵌入配置' } as const;
+
 
 const TIER_COPY: Record<ModelTier, {
   title: string;
@@ -68,7 +72,7 @@ const TIER_COPY: Record<ModelTier, {
   flash: {
     title: 'Flash Model',
     subtitle: '快速、低成本、高吞吐',
-    intent: '面向学生会话回答、布鲁姆分类与挑战生成，优先响应速度和单位成本。',
+    intent: '面向学习提问、学生问题布鲁姆认知路径判断、篇目归属与挑战生成，优先响应速度和单位成本。',
     tone: 'from-primary/15 via-background to-background',
     icon: <Zap className="size-5" />,
   },
@@ -92,10 +96,10 @@ type TierView = {
   scenarios: readonly string[];
 };
 
-function getTierView(tier: ModelTier, providers: ProviderListItem[], modelTiers: Record<ModelTier, AdminModelTierStatus>): TierView {
+function getTierView(tier: ModelTier, providers: ProviderListItem[], modelTiers: Record<ModelTier, AdminModelTierStatus>, scenarioTierBindings: AdminScenarioTierBinding[]): TierView {
   const status = modelTiers[tier];
   const provider = status.providerId ? providers.find((item) => item.id === status.providerId) : undefined;
-  const scenarios = SCENARIO_ROWS.filter((row) => row.tier === tier).map((row) => row.scenario);
+  const scenarios = scenarioTierBindings.filter((binding) => binding.tier === tier).map((binding) => binding.scenario);
 
   if (status.ready) return { tier, status, provider, viewStatus: 'ready', statusText: '可用', scenarios };
   if (status.providerId || status.modelId || status.blockedReason) return { tier, status, provider, viewStatus: 'blocked', statusText: '已阻塞', scenarios };
@@ -170,6 +174,10 @@ function TierAssignmentDialog({ tierView, providers }: { tierView: TierView; pro
           <Label htmlFor={`tier-provider-${tierView.tier}`}>Provider</Label>
           <Select
             value={providerId}
+            items={providers.map((provider) => ({
+              value: provider.id,
+              label: `${provider.name} · ${provider.healthStatus === 'healthy' ? '健康' : provider.healthStatus === 'unchecked' ? '未测速' : provider.healthStatus}`,
+            }))}
             onValueChange={(value) => {
               setProviderId(value ?? '');
               const nextProvider = providers.find((provider) => provider.id === value);
@@ -270,54 +278,113 @@ function ModelTierCard({ tierView, providers }: { tierView: TierView; providers:
         </div>
       </CardContent>
       <CardFooter className="flex items-center justify-between border-t bg-background/50 px-6 py-4">
-        <span className="text-xs text-muted-foreground">系统默认映射；场景不再单独绑定模型。</span>
+        <span className="text-xs text-muted-foreground">场景映射可单独调整；保存模型层后会按当前映射同步。</span>
         <TierAssignmentDialog tierView={tierView} providers={providers} />
       </CardFooter>
     </Card>
   );
 }
 
-function ScenarioMappingTable({ tierViews, embeddingReady }: { tierViews: Record<ModelTier, TierView>; embeddingReady: boolean }) {
+function ScenarioMappingTable({ tierViews, embeddingReady, scenarioTierBindings }: { tierViews: Record<ModelTier, TierView>; embeddingReady: boolean; scenarioTierBindings: AdminScenarioTierBinding[] }) {
+  const router = useRouter();
+  const [draftBindings, setDraftBindings] = useState(scenarioTierBindings);
+  const [savedBindings, setSavedBindings] = useState(scenarioTierBindings);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, startTransition] = useTransition();
+  const hasChanges = draftBindings.some((binding) => savedBindings.find((current) => current.scenario === binding.scenario)?.tier !== binding.tier);
+
+  function updateScenarioTier(scenario: AdminScenarioTierBinding['scenario'], tier: ModelTier) {
+    setDraftBindings((current) => current.map((binding) => binding.scenario === scenario ? { ...binding, tier } : binding));
+  }
+
+  function save() {
+    setError(null);
+    startTransition(async () => {
+      const result = await saveScenarioTierBindings(draftBindings);
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      setSavedBindings(draftBindings);
+      router.refresh();
+      toast.success(result.message ?? '场景路由映射已保存');
+    });
+  }
+
   return (
-    <div className="overflow-x-auto rounded-lg border bg-card">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>角色 / 页面</TableHead>
-            <TableHead>场景</TableHead>
-            <TableHead>路由层</TableHead>
-            <TableHead>状态</TableHead>
-            <TableHead>影响</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {SCENARIO_ROWS.map((row) => {
-            const isEmbedding = row.tier === 'embedding';
-            const view = isEmbedding ? undefined : tierViews[row.tier];
-            const status = isEmbedding ? (embeddingReady ? '可用' : '需单独配置') : view?.statusText;
-            return (
-              <TableRow key={row.scenario}>
-                <TableCell className="text-sm text-muted-foreground">{row.role}</TableCell>
-                <TableCell>
-                  <div className="font-medium">{CAPABILITY_LABELS[row.scenario]}</div>
-                  <div className="font-mono text-xs text-muted-foreground">{row.scenario}</div>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={row.tier === 'flash' ? 'default' : row.tier === 'advanced' ? 'secondary' : 'outline'}>
-                    {row.tier === 'flash' ? 'Flash Model' : row.tier === 'advanced' ? 'Advanced Model' : 'Embedding'}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={isEmbedding ? (embeddingReady ? 'default' : 'outline') : statusBadgeVariant(view?.viewStatus ?? 'missing')}>
-                    {status}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">{row.impact}</TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-lg border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>角色 / 页面</TableHead>
+              <TableHead>场景</TableHead>
+              <TableHead>路由层</TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead>影响</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {SCENARIO_ROWS.map((row) => {
+              const currentTier = draftBindings.find((binding) => binding.scenario === row.scenario)?.tier ?? row.defaultTier;
+              const view = tierViews[currentTier];
+              const changed = savedBindings.find((binding) => binding.scenario === row.scenario)?.tier !== currentTier;
+              return (
+                <TableRow key={row.scenario}>
+                  <TableCell className="text-sm text-muted-foreground">{row.role}</TableCell>
+                  <TableCell>
+                    <div className="font-medium">{CAPABILITY_LABELS[row.scenario]}</div>
+                    <div className="font-mono text-xs text-muted-foreground">{row.scenario}</div>
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={currentTier}
+                      items={[
+                        { value: 'flash', label: 'Flash Model' },
+                        { value: 'advanced', label: 'Advanced Model' },
+                      ]}
+                      onValueChange={(value) => updateScenarioTier(row.scenario, value as ModelTier)}
+                    >
+                      <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="flash">Flash Model</SelectItem>
+                        <SelectItem value="advanced">Advanced Model</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {changed ? <div className="mt-1 text-[10px] text-primary">待保存</div> : null}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={statusBadgeVariant(view.viewStatus)}>{view.statusText}</Badge>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{row.impact}</TableCell>
+                </TableRow>
+              );
+            })}
+            <TableRow>
+              <TableCell className="text-sm text-muted-foreground">{EMBEDDING_ROW.role}</TableCell>
+              <TableCell>
+                <div className="font-medium">{CAPABILITY_LABELS[EMBEDDING_ROW.scenario]}</div>
+                <div className="font-mono text-xs text-muted-foreground">{EMBEDDING_ROW.scenario}</div>
+              </TableCell>
+              <TableCell><Badge variant="outline">Embedding</Badge></TableCell>
+              <TableCell>
+                <Badge variant={embeddingReady ? 'default' : 'outline'}>{embeddingReady ? '可用' : '需单独配置'}</Badge>
+              </TableCell>
+              <TableCell className="text-sm text-muted-foreground">{EMBEDDING_ROW.impact}</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>
+      {error ? (
+        <Alert variant="destructive" role="alert">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+      <div className="flex justify-end">
+        <Button type="button" onClick={save} disabled={submitting || !hasChanges}>
+          {submitting ? <><Loader2 className="mr-2 size-4 animate-spin" />保存中…</> : '保存场景映射'}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -327,7 +394,7 @@ function ProviderOperationsTable({ providers, modelTiers }: { providers: Provide
     return (
       <EmptyState
         title="尚未配置模型 Provider"
-        description="先添加 Provider；然后测速、拉取模型，并在 Flash / Advanced 卡片中选择模型。"
+        description="先添加 AI 运维 Provider；然后健康检查、拉取模型，并在 Flash / Advanced 卡片中选择模型。"
       />
     );
   }
@@ -385,6 +452,7 @@ function ProviderOperationsTable({ providers, modelTiers }: { providers: Provide
                   <div className="flex items-center justify-end gap-0.5">
                     <HealthCheckButton provider={provider} />
                     <FetchModelsButton provider={provider} />
+                    <CapabilityAssignmentDialog provider={provider} />
                     <EditProviderDialog provider={provider} />
                     <DeleteProviderButton provider={provider} />
                   </div>
@@ -398,11 +466,11 @@ function ProviderOperationsTable({ providers, modelTiers }: { providers: Provide
   );
 }
 
-export function ProviderCapabilityMatrix({ providers, modelTiers }: { providers: ProviderListItem[]; modelTiers: Record<ModelTier, AdminModelTierStatus> }) {
+export function ProviderCapabilityMatrix({ providers, modelTiers, scenarioTierBindings }: { providers: ProviderListItem[]; modelTiers: Record<ModelTier, AdminModelTierStatus>; scenarioTierBindings: AdminScenarioTierBinding[] }) {
   const tierViews = useMemo(() => ({
-    flash: getTierView('flash', providers, modelTiers),
-    advanced: getTierView('advanced', providers, modelTiers),
-  }), [providers, modelTiers]);
+    flash: getTierView('flash', providers, modelTiers, scenarioTierBindings),
+    advanced: getTierView('advanced', providers, modelTiers, scenarioTierBindings),
+  }), [providers, modelTiers, scenarioTierBindings]);
   const embeddingReady = providers.some((provider) =>
     provider.isEnabled &&
     provider.capabilities.some((capability) => capability.capability === 'embedding' && capability.modelId.trim()) &&
@@ -419,20 +487,20 @@ export function ProviderCapabilityMatrix({ providers, modelTiers }: { providers:
       <section className="space-y-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="flex items-center gap-2 text-lg font-semibold"><Layers3 className="size-5" />场景路由映射</h2>
-            <p className="text-sm text-muted-foreground">场景映射由系统定义；管理员只需维护两个模型层。Embedding 保持独立能力路径。</p>
+            <h2 className="flex items-center gap-2 text-lg font-semibold"><Layers3 className="size-5" />AI 场景路由映射</h2>
+            <p className="text-sm text-muted-foreground">按 AI 场景选择 Flash / Advanced 路由层；保存后会同步到运行时能力配置。Embedding 保持独立能力路径。</p>
           </div>
           <Badge variant={tierViews.flash.viewStatus === 'ready' && tierViews.advanced.viewStatus === 'ready' ? 'default' : 'destructive'}>
             <Sparkles className="mr-1 size-3" />模型路由状态
           </Badge>
         </div>
-        <ScenarioMappingTable tierViews={tierViews} embeddingReady={embeddingReady} />
+        <ScenarioMappingTable tierViews={tierViews} embeddingReady={embeddingReady} scenarioTierBindings={scenarioTierBindings} />
       </section>
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-lg font-semibold">Provider 运维视图</h2>
-          <p className="text-sm text-muted-foreground">保留健康检查、拉取模型、编辑、删除；用途列展示哪些模型层正在使用该 Provider。</p>
+          <h2 className="text-lg font-semibold">Provider / MCP 运维诊断</h2>
+          <p className="text-sm text-muted-foreground">保留健康检查、拉取模型、密钥状态、编辑与删除；用途列展示哪些模型层或 Embedding 能力正在使用该 Provider。</p>
         </div>
         <ProviderOperationsTable providers={providers} modelTiers={modelTiers} />
       </section>

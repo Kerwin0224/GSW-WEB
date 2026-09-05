@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createGateway, embed, type EmbeddingModel } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
+import { createOpenAI, type OpenAIEmbeddingModelOptions } from '@ai-sdk/openai';
 import { createClient } from '@/lib/supabase/server';
 import type { Database, Vector } from '@/lib/supabase/database.types';
 import { getAppSession } from '@/lib/session';
@@ -19,16 +19,40 @@ export type MatchDocumentChunksInput = {
 
 const DEFAULT_MATCH_COUNT = 8;
 const DEFAULT_MATCH_THRESHOLD = 0.25;
+const CONVERSATION_RAG_EMBEDDING_DIMENSIONS = 768;
 
-function resolveEmbeddingModel(capability: CapabilityStatus): EmbeddingModel | null {
+type ResolvedEmbeddingModel = {
+  model: EmbeddingModel;
+  modelId?: string;
+};
+
+function resolveEmbeddingModel(capability: CapabilityStatus): ResolvedEmbeddingModel | null {
   if (!capability.modelId) return null;
   const apiKey = resolveEnvSecret(capability.secretRef);
   if (!apiKey) return null;
-  if (capability.providerType === 'gateway') return createGateway({ apiKey, baseURL: capability.baseUrl ?? process.env.AI_GATEWAY_BASE_URL }).embedding(capability.modelId);
-  return createOpenAI({ apiKey, baseURL: capability.baseUrl ?? process.env.OPENAI_BASE_URL ?? undefined }).embedding(capability.modelId);
+  if (capability.providerType === 'gateway') {
+    return {
+      model: createGateway({ apiKey, baseURL: capability.baseUrl ?? process.env.AI_GATEWAY_BASE_URL }).embedding(capability.modelId),
+      modelId: capability.modelId,
+    };
+  }
+  return {
+    model: createOpenAI({ apiKey, baseURL: capability.baseUrl ?? process.env.OPENAI_BASE_URL ?? undefined }).embedding(capability.modelId),
+    modelId: capability.modelId,
+  };
 }
 
-async function generateEmbedding(value: string): Promise<DataResult<Vector>> {
+function embeddingProviderOptions(modelId?: string, dimensions?: number) {
+  if (!dimensions) return undefined;
+  if (!modelId?.startsWith('text-embedding-3-')) return undefined;
+  return {
+    openai: {
+      dimensions,
+    } satisfies OpenAIEmbeddingModelOptions,
+  };
+}
+
+async function generateEmbedding(value: string, dimensions?: number): Promise<DataResult<Vector>> {
   const trimmed = value.trim();
   if (!trimmed) return fail('blocked', '检索 query 不能为空。');
 
@@ -37,15 +61,19 @@ async function generateEmbedding(value: string): Promise<DataResult<Vector>> {
   if (!capability.data.ready || !capability.data.modelId) {
     return fail('blocked', capability.data.blockedReason ?? '缺少 embedding 真实模型能力配置。');
   }
-  const embeddingModel = resolveEmbeddingModel(capability.data);
-  if (!embeddingModel) return fail('blocked', `${capability.data.providerName ?? 'Provider'} 的 secret_ref 未在服务端环境中解析成功；RAG 不会在缺少 embedding 密钥时降级。`);
+  const resolvedModel = resolveEmbeddingModel(capability.data);
+  if (!resolvedModel) return fail('blocked', `${capability.data.providerName ?? 'Provider'} 的 secret_ref 未在服务端环境中解析成功；RAG 不会在缺少 embedding 密钥时降级。`);
 
-  const { embedding } = await embed({ model: embeddingModel, value: trimmed });
+  const { embedding } = await embed({
+    model: resolvedModel.model,
+    value: trimmed,
+    providerOptions: embeddingProviderOptions(resolvedModel.modelId, dimensions),
+  });
   return ok(embedding);
 }
 
-export async function embedText(value: string): Promise<DataResult<Vector>> {
-  return generateEmbedding(value);
+export async function embedText(value: string, dimensions?: number): Promise<DataResult<Vector>> {
+  return generateEmbedding(value, dimensions);
 }
 
 export async function matchDocumentChunks({
@@ -131,7 +159,7 @@ export async function retrieveConversationDocumentChunks({
   matchCount?: number;
   matchThreshold?: number;
 }): Promise<DataResult<ConversationDocumentChunkMatch[]>> {
-  const embedding = await generateEmbedding(query);
+  const embedding = await generateEmbedding(query, CONVERSATION_RAG_EMBEDDING_DIMENSIONS);
   if (!embedding.ok) return embedding;
   return matchConversationDocumentChunks({ queryEmbedding: embedding.data, conversationId, matchCount, matchThreshold });
 }

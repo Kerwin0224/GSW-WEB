@@ -28,7 +28,7 @@ export default async function AdminDashboard() {
   const { users, classes, readyCaps, mcp, exports } = result.data;
   const capabilityLabels = {
     student_chat: '学生会话回答',
-    bloom_classification: '布鲁姆分类',
+    bloom_classification: '学生问题布鲁姆路径判断',
     project_classification: '篇目项目归属',
     teacher_chat: '教师问答',
     practice_generation: '挑战生成',
@@ -46,10 +46,10 @@ export default async function AdminDashboard() {
     { label: '活跃情况', value: '真实采集中', hint: '不使用创建时间伪造登录' },
   ];
   const aiOpsItems = [
-    { label: 'Provider', value: readyCaps.size, hint: 'enabled capability bindings' },
+    { label: 'Provider', value: readyCaps.size, hint: 'ready capability bindings' },
     { label: 'MCP', value: mcp.length, hint: 'enabled servers' },
-    { label: '错误日志', value: logEvents.filter((event) => event.level === 'error').length, hint: 'recent error events' },
-    { label: '教学导出记录', value: exports.reduce((sum, batch) => sum + batch.record_count, 0), hint: 'export_batches history' },
+    { label: '技术错误', value: logEvents.filter((event) => event.level === 'error').length, hint: 'recent technical events' },
+    { label: '教师确认/修订样本', value: exports.reduce((sum, batch) => sum + batch.record_count, 0), hint: 'exportable reviewed samples' },
   ];
 
   return (
@@ -81,8 +81,8 @@ export default async function AdminDashboard() {
           <CardContent className="space-y-3 text-sm">
             <p className="leading-6 text-muted-foreground">
               {studentMissing.length
-                ? `学习提问、布鲁姆路径或篇目归属会被阻塞：缺少 ${studentMissing.map((capability) => capabilityLabels[capability]).join('、')}。`
-                : '学习提问、布鲁姆分类和篇目项目归属均有可用能力绑定。'}
+                ? `学习提问、学生问题布鲁姆路径判断或篇目归属会被阻塞：缺少 ${studentMissing.map((capability) => capabilityLabels[capability]).join('、')}。`
+                : '学习提问、学生问题布鲁姆路径判断和篇目项目归属均有可用能力绑定。'}
             </p>
             <Button nativeButton={false} render={<a href="/admin/providers">检查 Provider 能力</a>} variant="outline" className="rounded-lg" />
           </CardContent>
@@ -121,8 +121,8 @@ export default async function AdminDashboard() {
           <CardContent className="space-y-3 text-sm">
             <p className="leading-6 text-muted-foreground">
               {incidentReady
-                ? `已有 ${logEvents.length} 条近期事件、${exports.length} 个导出批次可用于定位运行状态。`
-                : '暂无结构化日志或导出批次；这里保持空状态，不用假数据伪装可观测。'}
+                ? `已有 ${logEvents.length} 条近期技术事件、${exports.length} 个教师确认/修订导出批次可用于定位运行状态。`
+                : '暂无结构化技术日志或导出批次；这里保持空状态，不用假数据伪装可观测。'}
             </p>
             <Button nativeButton={false} render={<a href="/admin/logs">查看运行日志</a>} variant="outline" className="rounded-lg" />
           </CardContent>
@@ -169,16 +169,16 @@ export default async function AdminDashboard() {
 
       <section className="grid gap-4 md:grid-cols-3">
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Download className="size-5 text-primary" />SFT JSONL</CardTitle></CardHeader>
-          <CardContent className="text-sm leading-7 text-muted-foreground">教师确认无误或修订后的 supervised 样本，从真实 audit_records 生成。</CardContent>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Download className="size-5 text-primary" />教师确认样本</CardTitle></CardHeader>
+          <CardContent className="text-sm leading-7 text-muted-foreground">只导出教师确认无误或修订回答形成的 supervised 样本，不提供普通学生会话明细入口。</CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Download className="size-5 text-primary" />DPO JSONL</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Download className="size-5 text-primary" />教师修订偏好样本</CardTitle></CardHeader>
           <CardContent className="text-sm leading-7 text-muted-foreground">教师修订场景自然形成 chosen/rejected 偏好对。</CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle className="flex items-center gap-2"><Database className="size-5 text-primary" />教学数据治理</CardTitle></CardHeader>
-          <CardContent className="text-sm leading-7 text-muted-foreground">导出审阅过的学习记录与导出历史，便于数据质量治理。</CardContent>
+          <CardContent className="text-sm leading-7 text-muted-foreground">围绕可导出样本与审阅元数据治理质量；只展示教师确认/修订样本与技术汇总。</CardContent>
         </Card>
       </section>
 
@@ -229,11 +229,11 @@ export default async function AdminDashboard() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Activity className="size-5 text-primary" />
-                最近日志
+                最近技术日志
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {logEvents.length === 0 ? <p className="text-sm text-muted-foreground">暂无结构化日志。触发登录或错误后会写入。</p> : null}
+              {logEvents.length === 0 ? <p className="text-sm text-muted-foreground">暂无结构化技术日志。触发登录、Provider、MCP 或导出事件后会写入。</p> : null}
               {logEvents.slice(0, 4).map((event, index) => (
                 <a key={`${event.timestamp}-${index}`} href="/admin/logs" className="group block rounded-lg border border-border/65 bg-background/78 p-4 shadow-soft backdrop-blur transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/35 hover:bg-primary/6 hover:shadow-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <div className="flex items-center justify-between gap-2">
@@ -250,7 +250,7 @@ export default async function AdminDashboard() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Database className="size-5 text-primary" />
-                数据治理入口
+                学校管理 / AI 运维入口
               </CardTitle>
             </CardHeader>
             <CardContent className="grid gap-2 text-sm">

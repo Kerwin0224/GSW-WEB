@@ -56,7 +56,7 @@ export function ProviderConfigDialog() {
         </Button>
       )}
       title="添加 Provider"
-      description="只填基础信息。保存后可在列表中独立执行：测速、拉取模型、配置能力。"
+      description="注册一个 AI 运维 Provider。保存后在列表中独立执行健康检查、模型拉取与场景路由绑定。"
       icon={<ServerCog className="size-5" />}
       className="max-w-lg"
       footer={(
@@ -73,15 +73,30 @@ export function ProviderConfigDialog() {
 
           <div className="space-y-2">
             <Label htmlFor="provider-type">类型</Label>
-            <Select value={providerType} onValueChange={(v) => {
-              const nextType = v ?? 'openai-compatible';
-              setProviderType(nextType);
-              if (nextType === 'local-lmstudio') {
-                setName((current) => current || 'LM Studio 本机');
-                setBaseUrl('http://localhost:1234/v1');
-                setApiKey((current) => current || 'lm-studio');
-              }
-            }}>
+            <Select
+              value={providerType}
+              items={[
+                { value: 'local-lmstudio', label: 'LM Studio 本机（OpenAI Compatible）' },
+                { value: 'cloud', label: 'Cloud（云端 OpenAI 兼容）' },
+                { value: 'local', label: 'Local（本地部署）' },
+                { value: 'proxy', label: 'Proxy（API 中转）' },
+                { value: 'openai-compatible', label: 'OpenAI Compatible' },
+                { value: 'openai', label: 'OpenAI 官方' },
+                { value: 'anthropic', label: 'Anthropic' },
+                { value: 'ollama', label: 'Ollama' },
+                { value: 'azure', label: 'Azure OpenAI' },
+                { value: 'gateway', label: 'Gateway' },
+              ]}
+              onValueChange={(v) => {
+                const nextType = v ?? 'openai-compatible';
+                setProviderType(nextType);
+                if (nextType === 'local-lmstudio') {
+                  setName((current) => current || 'LM Studio 本机');
+                  setBaseUrl('http://localhost:1234/v1');
+                  setApiKey((current) => current || 'lm-studio');
+                }
+              }}
+            >
               <SelectTrigger id="provider-type"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="local-lmstudio">LM Studio 本机（OpenAI Compatible）</SelectItem>
@@ -99,7 +114,7 @@ export function ProviderConfigDialog() {
           </div>
 
             <p className="text-xs text-muted-foreground">
-              本机 LM Studio 已核实可用地址：http://localhost:1234/v1；embedding 模型候选：text-embedding-embeddinggemma-300m、text-embedding-nomic-embed-text-v1.5。
+              本机 LM Studio 默认地址：http://localhost:1234/v1。Embedding 能力可作为独立模型配置，不进入 Flash / Advanced 路由层。
             </p>
 
           <div className="space-y-2">

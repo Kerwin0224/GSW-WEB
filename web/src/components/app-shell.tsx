@@ -7,7 +7,6 @@ import { usePathname } from 'next/navigation';
 import { AppSidebar } from '@/components/app-sidebar';
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbSeparator, BreadcrumbPage } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { RoleBadge } from '@/components/workbench/role-badge';
 
@@ -17,12 +16,11 @@ interface AppShellProps { role: Role; displayName: string; breadcrumbs: Breadcru
 
 const breadcrumbMap: Record<string, string> = {
   '/student': '学习提问',
-  '/student/projects': '篇目项目',
   '/student/challenge': '挑战确认',
   '/student/me': '学生看板',
   '/teacher': '教师看板',
+  '/teacher/chat': '教师问答',
   '/teacher/audit': '学习记录核实',
-  '/teacher/analytics': '学情线索',
   '/admin': '管理看板',
   '/admin/classes': '班级成员管理',
   '/admin/providers': '模型 Provider',
@@ -37,9 +35,6 @@ function derivedBreadcrumbs(pathname: string, fallback: BreadcrumbSegment[]) {
   const exact = breadcrumbMap[pathname];
   if (exact && exact !== root.label) return [root, { label: exact }];
 
-  if (pathname.startsWith('/student/projects/')) {
-    return [root, { label: '篇目项目', href: '/student/projects' }, { label: '篇目详情' }];
-  }
   if (pathname.startsWith('/teacher/audit/')) {
     return [root, { label: '学习记录核实', href: '/teacher/audit' }, { label: '核实详情' }];
   }
@@ -82,9 +77,8 @@ export function AppShell({ role, displayName, breadcrumbs, children }: AppShellP
         >
           跳到主要内容
         </a>
-        <header className="sticky top-0 z-30 mx-2 mt-2 flex h-14 shrink-0 items-center gap-3 rounded-lg border border-border/70 bg-background/88 px-3 shadow-soft backdrop-blur-xl sm:mx-4 sm:px-5">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border/60 bg-background/82 px-4 backdrop-blur-xl sm:px-6">
           <SidebarTrigger className="-ml-1 min-h-10 min-w-10 cursor-pointer rounded-lg" aria-label="展开或收起侧边栏" />
-          <Separator orientation="vertical" className="hidden h-5 sm:block" />
           <Breadcrumb className="min-w-0 flex-1 overflow-hidden">
             <BreadcrumbList className="flex-nowrap text-xs sm:text-sm">
               {visibleBreadcrumbs.map((seg, i) => (

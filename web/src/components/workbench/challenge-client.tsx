@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { MarkdownContent } from '@/components/workbench/markdown-content';
 import { BloomBadge, bloomLevelInfo, type BloomLevel } from '@/components/workbench/bloom-badge';
 import { BlockedState, ErrorState } from '@/components/workbench/state-surfaces';
 import type { Database } from '@/lib/supabase/database.types';
@@ -18,7 +19,16 @@ import { cn } from '@/lib/utils';
 type PracticeRecord = Database['public']['Tables']['practice_records']['Row'];
 type ChallengeState = 'idle' | 'generating' | 'pending' | 'evaluating' | 'evaluated' | 'blocked' | 'failed' | 'error';
 type ApiIssue = { message?: string };
-type ApiError = { state?: ChallengeState | string; error?: string; resolution?: string; issues?: ApiIssue[] };
+type ApiIssueBag = ApiIssue[] | { formErrors?: string[]; fieldErrors?: Record<string, string[] | undefined> };
+type ApiError = { state?: ChallengeState | string; error?: string; resolution?: string; issues?: ApiIssueBag };
+
+function getIssueMessages(issues: ApiIssueBag | undefined) {
+  if (Array.isArray(issues)) return issues.map((issue) => issue.message).filter(Boolean);
+  if (!issues || typeof issues !== 'object') return [];
+  const formErrors = Array.isArray(issues.formErrors) ? issues.formErrors.filter(Boolean) : [];
+  const fieldErrors = Object.values(issues.fieldErrors ?? {}).flatMap((messages) => Array.isArray(messages) ? messages.filter(Boolean) : []);
+  return [...formErrors, ...fieldErrors];
+}
 
 function isPracticeRecord(value: unknown): value is PracticeRecord {
   return Boolean(value && typeof value === 'object' && 'id' in value && 'target_bloom_level' in value);
@@ -26,7 +36,7 @@ function isPracticeRecord(value: unknown): value is PracticeRecord {
 
 function parseApiError(value: unknown, fallback: string) {
   const error = value as ApiError;
-  const issueMessage = error.issues?.map((issue) => issue.message).filter(Boolean).join('；');
+  const issueMessage = getIssueMessages(error.issues).join('；');
   return {
     state: error.state,
     message: [error.error, error.resolution, issueMessage].filter(Boolean).join('：') || fallback,
@@ -64,39 +74,52 @@ export function ChallengeClient({
   projectId,
   projectTitle,
   projectAuthor,
-  highestBloomLevel,
+  confirmedLevel,
   initialPractice,
   challengeBlocked,
+  challengeStatusLabel,
+  isComplete = false,
 }: {
   projectId: string;
   projectTitle: string;
   projectAuthor?: string | null;
-  highestBloomLevel?: number | null;
+  confirmedLevel?: BloomLevel | null;
   initialPractice?: PracticeRecord;
   challengeBlocked?: string;
+  challengeStatusLabel?: string;
+  isComplete?: boolean;
 }) {
   const router = useRouter();
   const [challenge, setChallenge] = useState<PracticeRecord | undefined>(initialPractice);
   const [answer, setAnswer] = useState(initialPractice?.answer ?? '');
   const [state, setState] = useState<ChallengeState>(initialChallengeState(initialPractice));
   const [message, setMessage] = useState('');
-  const [targetLevel, setTargetLevel] = useState<BloomLevel>((initialPractice?.target_bloom_level ?? Math.min((highestBloomLevel ?? 0) + 1 || 1, 6)) as BloomLevel);
+  const [targetLevel, setTargetLevel] = useState<BloomLevel>((initialPractice?.target_bloom_level ?? Math.min((confirmedLevel ?? 0) + 1 || 1, 6)) as BloomLevel);
+  const localConfirmedLevel = challenge?.evaluation_state === 'evaluated' && challenge.achieved
+    ? Math.max(confirmedLevel ?? 0, challenge.target_bloom_level) as BloomLevel
+    : confirmedLevel;
+  const localIsComplete = isComplete || Boolean(localConfirmedLevel && localConfirmedLevel >= 6);
 
-  const canGenerate = !challengeBlocked && state !== 'generating' && state !== 'evaluating';
-  const canEvaluate = Boolean(challenge?.id && answer.trim() && !challengeBlocked && state !== 'evaluating' && state !== 'generating' && challenge.evaluation_state !== 'evaluated');
+  const canGenerate = !localIsComplete && !challengeBlocked && state !== 'generating' && state !== 'evaluating';
+  const canEvaluate = Boolean(challenge?.id && answer.trim() && !localIsComplete && !challengeBlocked && state !== 'evaluating' && state !== 'generating' && challenge.evaluation_state !== 'evaluated');
   const resultTone = useMemo(() => {
     if (!challenge || challenge.evaluation_state !== 'evaluated') return null;
-    return challenge.achieved ? '已确认' : '待巩固';
-  }, [challenge]);
+    if (challenge.achieved) return '已确认';
+    return challengeStatusLabel === '需要巩固' ? '需要巩固' : '待巩固';
+  }, [challenge, challengeStatusLabel]);
 
   const generateChallenge = async () => {
+    if (localIsComplete) {
+      setMessage('L1 到 L6 已全部确认，本页保留路线图复盘，不再生成更高层级挑战。');
+      return;
+    }
     setState('generating');
     setMessage('');
     try {
       const response = await fetch('/api/challenge/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, targetBloomLevel: targetLevel }),
+        body: JSON.stringify({ projectId }),
       });
       const payload: unknown = await response.json();
       if (!response.ok) {
@@ -147,8 +170,11 @@ export function ChallengeClient({
         return;
       }
       setChallenge(result);
+      setAnswer(result.answer ?? answer);
+      const nextLevel = Math.min((result.achieved ? result.target_bloom_level : confirmedLevel ?? 0) + 1 || 1, 6) as BloomLevel;
+      setTargetLevel(nextLevel);
       setState('evaluated');
-      setMessage(result.achieved ? '挑战通过，项目当前确认层级已更新。' : '本次尚未通过，建议回到项目继续学习后再挑战。');
+      setMessage(result.achieved ? '挑战通过，项目当前确认层级已更新。' : '本次尚未通过，请先回到项目会话继续学习，再决定是否再次挑战。');
       router.refresh();
     } catch (error) {
       setState('error');
@@ -163,13 +189,13 @@ export function ChallengeClient({
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <CardTitle className="font-heading">《{projectTitle}》{projectAuthor ? ` · ${projectAuthor}` : ''}认知攀登路线</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">当前已确认层级：{highestBloomLevel ? `L${highestBloomLevel}` : '等待挑战确认'}；本页只调用真实 Provider 生成挑战并确认结果。</p>
+              <p className="mt-1 text-sm text-muted-foreground">当前已确认层级：{localConfirmedLevel ? `L${localConfirmedLevel}` : '等待挑战确认'}；本页只调用真实 Provider 生成挑战并确认结果。</p>
             </div>
             <Badge variant="outline">目标 L{targetLevel}</Badge>
           </div>
         </CardHeader>
         <CardContent>
-          <LevelRoute currentLevel={highestBloomLevel} targetLevel={targetLevel} />
+          <LevelRoute currentLevel={localConfirmedLevel} targetLevel={targetLevel} />
         </CardContent>
       </Card>
 
@@ -189,11 +215,11 @@ export function ChallengeClient({
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <CardTitle className="flex items-center gap-2 font-heading"><Swords className="size-5 text-primary" />当前挑战</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">生成后会先保存一条挑战记录；评估后会写入通过与否、反馈和层级确认结果。</p>
+              <p className="mt-1 text-sm text-muted-foreground">先认真读题，再结合原文和自己的理解完成作答。</p>
             </div>
             <Button type="button" variant="outline" disabled={!canGenerate} onClick={generateChallenge}>
               {state === 'generating' ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RotateCcw className="mr-2 size-4" />}
-              {challenge ? '换一题' : '生成挑战'}
+              {localIsComplete ? '六层已完成' : challenge?.evaluation_state === 'evaluated' && challenge.achieved ? '生成下一挑战' : challenge ? '换一题' : '生成挑战'}
             </Button>
           </div>
         </CardHeader>
@@ -206,8 +232,13 @@ export function ChallengeClient({
                   <Badge variant={challenge.evaluation_state === 'evaluated' ? 'default' : 'outline'}>{challenge.evaluation_state}</Badge>
                   {resultTone ? <Badge variant={challenge.achieved ? 'default' : 'secondary'}>{resultTone}</Badge> : null}
                 </div>
-                <p className="whitespace-pre-wrap text-sm leading-7">{challenge.prompt}</p>
-                {challenge.feedback && challenge.evaluation_state === 'pending' ? <p className="mt-3 rounded-lg bg-muted/60 p-3 text-sm text-muted-foreground">作答提示：{challenge.feedback}</p> : null}
+                <MarkdownContent content={challenge.prompt ?? ''} />
+                {challenge.feedback && challenge.evaluation_state === 'pending' ? (
+                  <div className="mt-3 rounded-lg bg-muted/60 p-3 text-muted-foreground">
+                    <p className="mb-2 text-sm font-medium text-foreground">作答提示</p>
+                    <MarkdownContent content={challenge.feedback} className="text-muted-foreground" />
+                  </div>
+                ) : null}
               </div>
 
               <div className="space-y-2">
@@ -216,7 +247,7 @@ export function ChallengeClient({
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-muted-foreground">结果只展示是否通过、对应层级和下一步建议，不展示后台判定过程。</p>
+                <p className="text-sm text-muted-foreground">提交后你会看到本次是否通过，以及下一步可以怎么学。</p>
                 <Button type="button" disabled={!canEvaluate} onClick={evaluateChallenge}>
                   {state === 'evaluating' ? <Loader2 className="mr-2 size-4 animate-spin" /> : <CheckCircle2 className="mr-2 size-4" />}
                   提交评估
@@ -226,15 +257,17 @@ export function ChallengeClient({
               {challenge.evaluation_state === 'evaluated' ? (
                 <Alert className={challenge.achieved ? 'border-primary/30 bg-primary/5' : undefined}>
                   <CheckCircle2 className="size-4" />
-                  <AlertTitle className="font-heading">挑战结果：{challenge.achieved ? '已通过' : '待巩固'}</AlertTitle>
-                  <AlertDescription>{challenge.feedback ?? '评估反馈已保存。'}</AlertDescription>
+                  <AlertTitle className="font-heading">挑战结果：{challenge.achieved ? '已通过' : resultTone ?? '待巩固'}</AlertTitle>
+                  <AlertDescription>
+                    <MarkdownContent content={challenge.feedback ?? '评估反馈已保存。'} className="text-muted-foreground" />
+                  </AlertDescription>
                 </Alert>
               ) : null}
             </>
           ) : (
             <div className="rounded-lg border border-dashed bg-muted/30 p-8 text-center">
               <p className="font-heading text-lg">还没有当前挑战</p>
-              <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">点击“生成挑战”后，系统会调用真实 challenge 相关能力生成题目并保存挑战记录；不会展示静态样题。</p>
+              <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">点击“生成挑战”后，这里会出现一道新的挑战题。</p>
             </div>
           )}
         </CardContent>

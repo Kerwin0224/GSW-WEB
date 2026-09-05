@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { createGateway, type LanguageModel } from 'ai';
+import { createOpenAI } from '@ai-sdk/openai';
 import { createClient } from '@/lib/supabase/server';
 import type { AppRole, Database, ModelTier, ProviderCapability } from '@/lib/supabase/database.types';
 import { getProfile, type Profile } from '@/lib/auth';
@@ -29,6 +31,21 @@ export const tierScenarios = {
 export function ok<T>(data: T): DataResult<T> { return { ok: true, data }; }
 export function fail<T = never>(reason: DataResult<T> extends infer R ? R extends { ok: false; reason: infer S } ? S : never : never, message: string): DataResult<T> { return { ok: false, reason, message } as DataResult<T>; }
 
+/**
+ * 根据 CapabilityStatus 解析出可用的 LanguageModel 实例。
+ * 所有 AI 功能的 Provider 路由逻辑集中在此处；新增 Provider 类型只需修改这一处。
+ * 返回 null 表示 secret 未就绪，调用方应向客户端返回 503。
+ */
+export function resolveLanguageModel(capability: CapabilityStatus): LanguageModel | null {
+  if (!capability.modelId) return null;
+  const apiKey = resolveEnvSecret(capability.secretRef);
+  if (!apiKey) return null;
+  if (capability.providerType === 'gateway') {
+    return createGateway({ apiKey, baseURL: capability.baseUrl ?? process.env.AI_GATEWAY_BASE_URL })(capability.modelId);
+  }
+  return createOpenAI({ apiKey, baseURL: capability.baseUrl ?? process.env.OPENAI_BASE_URL ?? undefined }).chat(capability.modelId);
+}
+
 export async function requireRole(role: AppRole): Promise<DataResult<Profile>> {
   try {
     const profile = await getProfile();
@@ -41,13 +58,9 @@ export async function requireRole(role: AppRole): Promise<DataResult<Profile>> {
   }
 }
 
-function normalizeProvider<T>(provider: T | T[] | null | undefined): T | null {
-  return Array.isArray(provider) ? provider[0] ?? null : provider ?? null;
-}
-
 function tierBlockedMessage(tier: ModelTier) {
   return tier === 'flash'
-    ? '缺少 Flash Model 真实模型层配置；学生会话回答、布鲁姆分类与挑战生成不会降级到默认模型。'
+    ? '缺少 Flash Model 真实模型层配置；学生会话回答、学生问题布鲁姆路径判断与挑战生成不会降级到默认模型。'
     : '缺少 Advanced Model 真实模型层配置；教师问答、挑战确认评估与教学正确性核实辅助不会降级到默认模型。';
 }
 
@@ -59,36 +72,25 @@ function providerHealthBlockedReason(providerName: string, healthStatus: string)
 export async function getModelTier(tier: ModelTier): Promise<DataResult<ModelTierStatus>> {
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase
-      .from('model_tier_bindings')
-      .select('tier,model_id,is_enabled,provider_id,provider_configs(id,name,is_enabled,health_status,provider_type,base_url,secret_ref)')
-      .eq('tier', tier)
-      .maybeSingle();
+    const { data, error } = await supabase.rpc('get_model_tier_provider', { p_tier: tier });
     if (error) return fail('error', `读取模型层配置失败：${error.message}`);
-    const provider = normalizeProvider(data?.provider_configs as {
-      id: string;
-      name: string;
-      is_enabled: boolean;
-      health_status: string;
-      provider_type: string;
-      base_url: string | null;
-      secret_ref: string | null;
-    } | Array<{
-      id: string;
-      name: string;
-      is_enabled: boolean;
-      health_status: string;
-      provider_type: string;
-      base_url: string | null;
-      secret_ref: string | null;
-    }> | null | undefined);
+    const row = data?.[0];
 
-    if (!data || !data.is_enabled || !provider?.is_enabled) return ok({ tier, ready: false, blockedReason: tierBlockedMessage(tier) });
-    const baseStatus = { tier, modelId: data.model_id, providerId: data.provider_id, providerName: provider.name, providerType: provider.provider_type, baseUrl: provider.base_url, secretRef: provider.secret_ref, healthStatus: provider.health_status };
-    const healthBlockedReason = providerHealthBlockedReason(provider.name, provider.health_status);
+    if (!row || !row.binding_enabled || !row.provider_enabled) return ok({ tier, ready: false, blockedReason: tierBlockedMessage(tier) });
+    const baseStatus = {
+      tier,
+      modelId: row.model_id,
+      providerId: row.provider_id,
+      providerName: row.provider_name,
+      providerType: row.provider_type,
+      baseUrl: row.base_url,
+      secretRef: row.secret_ref,
+      healthStatus: row.health_status,
+    };
+    const healthBlockedReason = providerHealthBlockedReason(row.provider_name, row.health_status);
     if (healthBlockedReason) return ok({ ...baseStatus, ready: false, blockedReason: healthBlockedReason });
-    if (!provider.secret_ref) return ok({ ...baseStatus, secretRef: undefined, ready: false, blockedReason: `${provider.name} 缺少服务端 secret_ref。` });
-    if (!resolveEnvSecret(provider.secret_ref)) return ok({ ...baseStatus, ready: false, blockedReason: `${provider.name} 的 secret_ref 未在服务端环境中解析成功。` });
+    if (!row.secret_ref) return ok({ ...baseStatus, secretRef: undefined, ready: false, blockedReason: `${row.provider_name} 缺少服务端 secret_ref。` });
+    if (!resolveEnvSecret(row.secret_ref)) return ok({ ...baseStatus, ready: false, blockedReason: `${row.provider_name} 的 secret_ref 未在服务端环境中解析成功。` });
     return ok({ ...baseStatus, ready: true });
   } catch (error) {
     return fail('error', error instanceof Error ? error.message : '读取模型层配置失败');
@@ -107,64 +109,49 @@ export async function getCapability(capability: ProviderCapability): Promise<Dat
   if (capability === 'embedding') return getEmbeddingCapability();
   return getProviderCapability(capability);
 }
-type ProviderCapabilityProvider = {
-  name: string;
-  is_enabled: boolean;
-  health_status: string;
-  provider_type: string;
-  base_url: string | null;
-  secret_ref: string | null;
-};
-
 type ProviderCapabilityRow = {
   capability: ProviderCapability;
   model_id: string;
-  provider_configs: ProviderCapabilityProvider | ProviderCapabilityProvider[] | null;
+  provider_name: string;
+  provider_type: string;
+  base_url: string | null;
+  secret_ref: string | null;
+  health_status: string;
 };
 
 async function getProviderCapability(capability: ProviderCapability): Promise<DataResult<CapabilityStatus>> {
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase
-      .from('provider_capabilities')
-      .select('capability,model_id,is_enabled,provider_configs!inner(name,is_enabled,health_status,provider_type,base_url,secret_ref)')
-      .eq('capability', capability)
-      .eq('is_enabled', true)
-      .eq('provider_configs.is_enabled', true)
-      .order('provider_id', { ascending: true })
-      .order('model_id', { ascending: true });
+    const { data, error } = await supabase.rpc('get_provider_capability_provider', { p_capability: capability });
     if (error) return fail('error', `读取 ${capability} Provider 能力失败：${error.message}`);
 
     let blockedStatus: CapabilityStatus | null = null;
-    for (const row of (data ?? []) as ProviderCapabilityRow[]) {
-      const provider = normalizeProvider(row.provider_configs);
-      if (!provider?.is_enabled) continue;
-
+    for (const row of (data ?? []) as unknown as ProviderCapabilityRow[]) {
       const baseStatus = {
         capability,
         ready: false,
         modelId: row.model_id,
-        providerName: provider.name,
-        providerType: provider.provider_type,
-        baseUrl: provider.base_url,
-        secretRef: provider.secret_ref,
+        providerName: row.provider_name,
+        providerType: row.provider_type,
+        baseUrl: row.base_url,
+        secretRef: row.secret_ref,
       } satisfies CapabilityStatus;
 
       if (!row.model_id.trim()) {
-        blockedStatus ??= { ...baseStatus, blockedReason: `${provider.name} 的 ${capability} model_id 为空。` };
+        blockedStatus ??= { ...baseStatus, blockedReason: `${row.provider_name} 的 ${capability} model_id 为空。` };
         continue;
       }
-      const healthBlockedReason = providerHealthBlockedReason(provider.name, provider.health_status);
+      const healthBlockedReason = providerHealthBlockedReason(row.provider_name, row.health_status);
       if (healthBlockedReason) {
         blockedStatus ??= { ...baseStatus, blockedReason: healthBlockedReason };
         continue;
       }
-      if (!provider.secret_ref) {
-        blockedStatus ??= { ...baseStatus, secretRef: undefined, blockedReason: `${provider.name} 缺少服务端 secret_ref。` };
+      if (!row.secret_ref) {
+        blockedStatus ??= { ...baseStatus, secretRef: undefined, blockedReason: `${row.provider_name} 缺少服务端 secret_ref。` };
         continue;
       }
-      if (!resolveEnvSecret(provider.secret_ref)) {
-        blockedStatus ??= { ...baseStatus, blockedReason: `${provider.name} 的 secret_ref 未在服务端环境中解析成功。` };
+      if (!resolveEnvSecret(row.secret_ref)) {
+        blockedStatus ??= { ...baseStatus, blockedReason: `${row.provider_name} 的 secret_ref 未在服务端环境中解析成功。` };
         continue;
       }
       return ok({ ...baseStatus, ready: true, modelId: row.model_id.trim() });

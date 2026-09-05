@@ -14,32 +14,32 @@ export default async function AdminProvidersPage() {
     );
   }
 
-  const { providers, modelTiers } = result.data;
+  const { providers, modelTiers, scenarioTierBindings } = result.data;
   const flashStatus = modelTiers.flash.ready ? 'ready' : modelTiers.flash.blockedReason ? 'blocked' : 'missing';
   const advancedStatus = modelTiers.advanced.ready ? 'ready' : modelTiers.advanced.blockedReason ? 'blocked' : 'missing';
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="模型路由控制台"
-        title="两个模型层，统一驱动全部 AI 场景"
-        description="管理员只需要维护 Flash Model 与 Advanced Model；Provider 仍可独立创建、测速、拉取模型、编辑与删除。"
+        eyebrow="AI 运维 · Provider"
+        title="Provider、模型层与场景路由"
+        description="AI Native 后台在这里维护模型基础设施：Provider 健康、模型拉取、Flash / Advanced 路由层与 Embedding 能力独立配置。"
         metrics={[
-          { label: 'Flash Model', value: flashStatus, hint: modelTiers.flash.blockedReason ?? '学生与快速任务' },
-          { label: 'Advanced Model', value: advancedStatus, hint: modelTiers.advanced.blockedReason ?? '教师问答与挑战确认评估' },
-          { label: 'Provider', value: providers.length, hint: '已注册基础设施' },
+          { label: 'Flash Model', value: flashStatus, hint: modelTiers.flash.blockedReason ?? '学习提问、篇目归属与快速分类' },
+          { label: 'Advanced Model', value: advancedStatus, hint: modelTiers.advanced.blockedReason ?? '教师问答、挑战确认与核实辅助' },
+          { label: 'Provider', value: providers.length, hint: 'AI 运维基础设施' },
         ]}
       />
 
       <section className="space-y-4">
         <SectionHeader
-          title="模型层设置"
-          description="先选择 Flash / Advanced 两个全局模型层；下方 Provider 表只负责运维动作与使用情况。"
+          title="模型层与 Provider 运维"
+          description="先选择 Flash / Advanced 两个全局模型层；下方 Provider 表只负责健康检查、模型拉取、密钥状态与使用情况。"
           action={(
             <ProviderConfigDialog />
           )}
         />
-        <ProviderCapabilityMatrix providers={providers} modelTiers={modelTiers} />
+        <ProviderCapabilityMatrix providers={providers} modelTiers={modelTiers} scenarioTierBindings={scenarioTierBindings} />
       </section>
     </div>
   );

@@ -3,7 +3,8 @@ import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import type { Database } from '@/lib/supabase/database.types';
 
-export type DatasetType = 'sft' | 'dpo';
+export type DatasetType = 'sft' | 'dpo' | 'metadata';
+export type DatasetExportScope = 'unexported' | 'all';
 
 export type DatasetFilters = {
   startDate?: string;
@@ -12,6 +13,7 @@ export type DatasetFilters = {
   auditorIds?: string[];
   classId?: string | null;
   quality?: string | null;
+  scope?: DatasetExportScope;
 };
 
 export type SftMessage = {
@@ -39,6 +41,8 @@ export type SftRecord = {
   messages: SftMessage[];
   metadata: ExportSampleMetadata;
 };
+
+export type MetadataRecord = ExportSampleMetadata;
 
 export type DpoRecord = {
   prompt: string;
@@ -74,7 +78,7 @@ export type PreviewResult =
   | {
       type: DatasetType;
       totalCount: number;
-      sampleRecords: Array<SftRecord | DpoRecord>;
+      sampleRecords: Array<SftRecord | DpoRecord | MetadataRecord>;
     }
   | DatasetError;
 
@@ -92,6 +96,7 @@ type AuditRecordRow = {
   class_id: string | null;
   auditor_id: string | null;
   source_conversation_id: string | null;
+  metadata: unknown;
   created_at: string;
   updated_at: string;
 };
@@ -119,6 +124,7 @@ type DatasetContext = {
 };
 
 const EXPORTABLE_AUDIT_STATUSES: Array<AuditRecordRow['status']> = ['approved', 'exported'];
+const DEFAULT_EXPORT_SCOPE: DatasetExportScope = 'unexported';
 
 function firstJoined<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
@@ -127,6 +133,14 @@ function firstJoined<T>(value: T | T[] | null | undefined): T | null {
 
 function getRecordTimestamp(record: Pick<AuditRecordRow, 'updated_at' | 'created_at'>) {
   return record.updated_at || record.created_at;
+}
+
+function asMetadataObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function isFinalizedExportRecord(record: AuditRecordRow) {
+  return asMetadataObject(record.metadata).conversation_action === 'conversation_finalized';
 }
 
 function keepLatestBySourceMessage(records: AuditRecordRow[]) {
@@ -143,10 +157,13 @@ function keepLatestBySourceMessage(records: AuditRecordRow[]) {
   return [...latest.values()].sort((left, right) => right.created_at.localeCompare(left.created_at));
 }
 
-function keepLatestApprovedExports(records: AuditRecordRow[]) {
-  return keepLatestBySourceMessage(
-    records.filter((record) => EXPORTABLE_AUDIT_STATUSES.includes(record.status)),
-  ).filter((record) => record.status === 'approved');
+function keepLatestApprovedExports(records: AuditRecordRow[], scope: DatasetExportScope = DEFAULT_EXPORT_SCOPE) {
+  const latestRecords = keepLatestBySourceMessage(
+    records.filter((record) => EXPORTABLE_AUDIT_STATUSES.includes(record.status) && isFinalizedExportRecord(record)),
+  );
+  return scope === 'all'
+    ? latestRecords
+    : latestRecords.filter((record) => record.status === 'approved');
 }
 
 function anonymizeStudentId(ownerId: string | null | undefined) {
@@ -232,6 +249,10 @@ function toDpoRecord(context: DatasetContext): DpoRecord | null {
   };
 }
 
+function toMetadataRecord(context: DatasetContext): MetadataRecord {
+  return buildMetadata(context);
+}
+
 async function fetchAuditRecords(
   type: DatasetType,
   filters: DatasetFilters,
@@ -257,11 +278,13 @@ async function fetchAuditRecords(
   let query = supabase
     .from('audit_records')
     .select(
-      'id, source_message_id, kind, status, prompt, original_answer, corrected_answer, chosen_answer, rejected_answer, quality, class_id, auditor_id, source_conversation_id, created_at, updated_at',
+      'id, source_message_id, kind, status, prompt, original_answer, corrected_answer, chosen_answer, rejected_answer, quality, class_id, auditor_id, source_conversation_id, metadata, created_at, updated_at',
     )
     .not('source_message_id', 'is', null);
 
-  query = query.eq('kind', type).in('status', EXPORTABLE_AUDIT_STATUSES);
+  query = type === 'metadata'
+    ? query.in('kind', ['sft', 'dpo']).in('status', EXPORTABLE_AUDIT_STATUSES)
+    : query.eq('kind', type).in('status', EXPORTABLE_AUDIT_STATUSES);
 
   if (filters.startDate) query = query.gte('created_at', filters.startDate);
   if (filters.endDate) query = query.lte('created_at', filters.endDate);
@@ -273,7 +296,8 @@ async function fetchAuditRecords(
   const { data, error } = await query.order('created_at', { ascending: false });
   if (error) return { records: [], totalCount: 0, error: error.message };
 
-  const latestRecords = keepLatestApprovedExports((data ?? []) as AuditRecordRow[]);
+  const scope = filters.scope ?? DEFAULT_EXPORT_SCOPE;
+  const latestRecords = keepLatestApprovedExports((data ?? []) as AuditRecordRow[], scope);
   const slicedRecords = limit === undefined ? latestRecords : latestRecords.slice(0, limit);
   const conversationIds = [...new Set(slicedRecords.map((record) => record.source_conversation_id).filter((value): value is string => Boolean(value)))];
 
@@ -350,7 +374,9 @@ export async function exportDataset(
     for (const record of records) {
       const converted = type === 'sft'
         ? toSftRecord(record)
-        : toDpoRecord(record);
+        : type === 'dpo'
+          ? toDpoRecord(record)
+          : toMetadataRecord(record);
       if (!converted) continue;
       lines.push(JSON.stringify(converted));
       recordIds.push(record.record.id);
@@ -361,9 +387,11 @@ export async function exportDataset(
         success: false,
         error: `没有有效的 ${type.toUpperCase()} 记录可导出`,
         resolution:
-          type === 'dpo'
-            ? 'DPO 格式需要同时包含 chosen 和 rejected 答案；请确认最新修订记录包含完整偏好对。'
-            : 'SFT 格式需要包含可回放的上下文消息与最新 assistant 内容；请确认核实记录和会话上下文完整。',
+          type === 'sft'
+            ? 'SFT 格式需要包含可回放的上下文消息与最新 assistant 内容；请确认核实记录和会话上下文完整。'
+            : type === 'dpo'
+              ? 'DPO 格式需要同时包含 chosen 和 rejected 答案；请确认最新修订记录包含完整偏好对。'
+              : '审阅元数据需要关联可导出样本；请确认教师已确认无误或修订回答。',
       };
     }
 
@@ -397,12 +425,14 @@ export async function previewDataset(
       };
     }
 
-    const sampleRecords: Array<SftRecord | DpoRecord> = [];
+    const sampleRecords: Array<SftRecord | DpoRecord | MetadataRecord> = [];
 
     for (const record of records) {
       const converted = type === 'sft'
         ? toSftRecord(record)
-        : toDpoRecord(record);
+        : type === 'dpo'
+          ? toDpoRecord(record)
+          : toMetadataRecord(record);
       if (converted) sampleRecords.push(converted);
     }
 

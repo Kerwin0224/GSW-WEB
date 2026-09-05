@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { requireRole } from '@/lib/data/common';
-import { exportDataset, previewDataset, type DatasetFilters } from '@/lib/dataset-export';
+import { exportDataset, previewDataset, type DatasetFilters, type DatasetType } from '@/lib/dataset-export';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { createClient } from '@/lib/supabase/server';
 
@@ -10,7 +10,7 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 const exportSchema = z.object({
-  type: z.enum(['sft', 'dpo']),
+  type: z.enum(['sft', 'dpo', 'metadata']),
   filters: z.object({
     startDate: z.string().optional(),
     endDate: z.string().optional(),
@@ -18,6 +18,7 @@ const exportSchema = z.object({
     auditorIds: z.array(z.string()).optional(),
     classId: z.string().nullable().optional(),
     quality: z.string().nullable().optional(),
+    scope: z.enum(['unexported', 'all']).optional(),
   }).optional(),
   preview: z.boolean().optional(),
 });
@@ -31,6 +32,7 @@ type PreviewAuditRow = {
   rejected_answer: string | null;
   kind: 'sft' | 'dpo';
   status: 'approved' | 'exported';
+  metadata: unknown;
   created_at: string;
   updated_at: string;
   conversations?: { text_projects?: { title: string | null } | Array<{ title: string | null }> | null } | Array<{ text_projects?: { title: string | null } | Array<{ title: string | null }> | null }> | null;
@@ -47,6 +49,14 @@ function recordTimestamp(row: Pick<PreviewAuditRow, 'updated_at' | 'created_at'>
   return row.updated_at || row.created_at;
 }
 
+function asMetadataObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function isFinalizedExportRecord(row: PreviewAuditRow) {
+  return asMetadataObject(row.metadata).conversation_action === 'conversation_finalized';
+}
+
 function keepLatestBySourceMessage(rows: PreviewAuditRow[]) {
   const latest = new Map<string, PreviewAuditRow>();
 
@@ -59,21 +69,26 @@ function keepLatestBySourceMessage(rows: PreviewAuditRow[]) {
   return [...latest.values()].sort((left, right) => right.created_at.localeCompare(left.created_at));
 }
 
-function keepLatestApprovedExports(rows: PreviewAuditRow[]) {
-  return keepLatestBySourceMessage(
-    rows.filter((row) => EXPORTABLE_AUDIT_STATUSES.includes(row.status)),
-  ).filter((row) => row.status === 'approved');
+function keepLatestApprovedExports(rows: PreviewAuditRow[], scope: DatasetFilters['scope'] = 'unexported') {
+  const latestRows = keepLatestBySourceMessage(
+    rows.filter((row) => EXPORTABLE_AUDIT_STATUSES.includes(row.status) && isFinalizedExportRecord(row)),
+  );
+  return scope === 'all'
+    ? latestRows
+    : latestRows.filter((row) => row.status === 'approved');
 }
 
-async function getPreviewStats(type: 'sft' | 'dpo', filters: DatasetFilters, sampleLimit: number) {
+async function getPreviewStats(type: DatasetType, filters: DatasetFilters, sampleLimit: number) {
   const supabase = await createClient();
   let query = supabase
     .from('audit_records')
-    .select('id, source_message_id, original_answer, corrected_answer, chosen_answer, rejected_answer, created_at, updated_at, kind, status, conversations(text_projects(title))')
+    .select('id, source_message_id, original_answer, corrected_answer, chosen_answer, rejected_answer, metadata, created_at, updated_at, kind, status, conversations(text_projects(title))')
     .not('source_message_id', 'is', null)
     .order('created_at', { ascending: false });
 
-  query = query.eq('kind', type).in('status', EXPORTABLE_AUDIT_STATUSES);
+  query = type === 'metadata'
+    ? query.in('kind', ['sft', 'dpo']).in('status', EXPORTABLE_AUDIT_STATUSES)
+    : query.eq('kind', type).in('status', EXPORTABLE_AUDIT_STATUSES);
 
   if (filters.startDate) query = query.gte('created_at', filters.startDate);
   if (filters.endDate) query = query.lte('created_at', filters.endDate);
@@ -92,8 +107,9 @@ async function getPreviewStats(type: 'sft' | 'dpo', filters: DatasetFilters, sam
   const { data, error } = await query;
   if (error) throw new Error(`导出预览统计失败：${error.message}`);
 
-  const latestRows = keepLatestApprovedExports((data ?? []) as PreviewAuditRow[]);
+  const latestRows = keepLatestApprovedExports((data ?? []) as PreviewAuditRow[], filters.scope ?? 'unexported');
   const validRows = latestRows.filter((row) => {
+    if (type === 'metadata') return true;
     return type === 'sft'
       ? Boolean(row.corrected_answer ?? row.original_answer)
       : Boolean((row.chosen_answer ?? row.corrected_answer) && (row.rejected_answer ?? row.original_answer));
@@ -191,16 +207,18 @@ export async function POST(req: Request) {
         return Response.json({ error: `导出批次保存失败：${batchError?.message ?? 'unknown'}` }, { status: 500 });
       }
 
-      const { error: exportMarkError } = await supabase
-        .from('audit_records')
-        .update({ status: 'exported', exported_at: result.exportedAt })
-        .in('id', result.recordIds);
-      if (exportMarkError) {
-        const { error: rollbackError } = await supabase.from('export_batches').delete().eq('id', batch.id);
-        if (rollbackError) {
-          return Response.json({ error: `导出状态回写失败：${exportMarkError.message}；导出批次回滚失败：${rollbackError.message}` }, { status: 500 });
+      if (type !== 'metadata') {
+        const { error: exportMarkError } = await supabase
+          .from('audit_records')
+          .update({ status: 'exported', exported_at: result.exportedAt })
+          .in('id', result.recordIds);
+        if (exportMarkError) {
+          const { error: rollbackError } = await supabase.from('export_batches').delete().eq('id', batch.id);
+          if (rollbackError) {
+            return Response.json({ error: `导出状态回写失败：${exportMarkError.message}；导出批次回滚失败：${rollbackError.message}` }, { status: 500 });
+          }
+          return Response.json({ error: `导出状态回写失败：${exportMarkError.message}` }, { status: 500 });
         }
-        return Response.json({ error: `导出状态回写失败：${exportMarkError.message}` }, { status: 500 });
       }
 
       return Response.json({

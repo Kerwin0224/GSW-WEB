@@ -10,7 +10,6 @@ import {
   Download,
   FileSearch,
   FileText,
-  FolderOpen,
   MessageSquare,
   Puzzle,
   School,
@@ -50,23 +49,22 @@ interface NavGroup {
 
 const studentNavGroups: NavGroup[] = [
   {
-    label: '我的学习项目',
+    label: '学生工作区',
     items: [
-      { icon: MessageSquare, label: '学习提问', href: '/student', description: '从空白提问开始并自动归入篇目项目' },
-      { icon: FolderOpen, label: '篇目项目', href: '/student/projects', description: '项目、会话与布鲁姆认知路径' },
-      { icon: Swords, label: '挑战确认', href: '/student/challenge', description: '用挑战确认当前认知层级' },
-      { icon: User, label: '学生看板', href: '/student/me', description: '查看挑战确认后的项目概览' },
+      { icon: User, label: '学生看板', href: '/student/me', description: '查看项目概览与挑战确认状态' },
+      { icon: MessageSquare, label: '学习提问', href: '/student', description: '从空白提问开始并自动归入项目' },
+      { icon: Swords, label: '挑战确认', href: '/student/challenge', description: '按项目确认当前布鲁姆层级' },
     ],
   },
 ];
 
 const teacherNavGroups: NavGroup[] = [
   {
-    label: '教学与核实',
+    label: '教师工作区',
     items: [
-      { icon: BarChart3, label: '教师看板', href: '/teacher', description: '学生认知与待核实学习记录' },
-      { icon: FileSearch, label: '学习记录核实', href: '/teacher/audit', description: '按学生、项目、会话核实 AI 回答' },
-      { icon: MessageSquare, label: '学情线索', href: '/teacher/analytics', description: '回到下一节课前的可行动班级线索' },
+      { icon: BarChart3, label: '教师看板', href: '/teacher', description: '风险、认知与待核实优先级' },
+      { icon: MessageSquare, label: '教师问答', href: '/teacher/chat', description: '备课、追问与教学判断的 AI 交互' },
+      { icon: FileSearch, label: '学习记录核实', href: '/teacher/audit', description: '按班级、学生、项目、会话核实 AI 回答' },
     ],
   },
 ];
@@ -86,14 +84,14 @@ const adminNavGroups: NavGroup[] = [
       { icon: Cpu, label: 'Provider', href: '/admin/providers', description: '模型能力路由与密钥引用' },
       { icon: Puzzle, label: 'MCP', href: '/admin/mcp', description: '外部工具治理' },
       { icon: FileText, label: 'Prompt 预设', href: '/admin/presets', description: '全局预设生命周期' },
-      { icon: Download, label: '教学数据导出', href: '/admin/exports', description: 'SFT JSONL、DPO JSONL' },
+      { icon: Download, label: '教学数据导出', href: '/admin/exports', description: '教师确认与修订样本' },
       { icon: Activity, label: '运行日志', href: '/admin/logs', description: '错误与请求追踪' },
     ],
   },
 ];
 
 const navMap: Record<Role, NavGroup[]> = { student: studentNavGroups, teacher: teacherNavGroups, admin: adminNavGroups };
-const roleTitle: Record<Role, string> = { student: '学生工作台', teacher: '教师工作台', admin: 'AI Native 后台' };
+const roleTitle: Record<Role, string> = { student: '学生看板', teacher: '教师看板', admin: 'AI Native 后台' };
 
 interface AppSidebarProps { role: Role; displayName: string; }
 
@@ -145,7 +143,7 @@ export function AppSidebar({ role, displayName }: AppSidebarProps) {
       <SidebarFooter className="border-t border-sidebar-border/70 p-3">
         <div className="flex items-center gap-3 rounded-[1.3rem] border border-sidebar-border/65 bg-sidebar-accent/40 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:border-transparent group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:shadow-none">
           <Avatar className="size-10 shrink-0 ring-1 ring-sidebar-border">
-            <AvatarFallback className="bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground">{displayName.slice(0, 2)}</AvatarFallback>
+            <AvatarFallback className="bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground">{displayName.slice(0, 1)}</AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
             <p className="truncate text-sm font-medium leading-5">{displayName}</p>

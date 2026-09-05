@@ -13,6 +13,7 @@ web/node_modules/
 web/.next/
 web/*.log
 web/tsconfig.tsbuildinfo
+web/supabase/.temp/
 
 # Data / exports / models
 /data/

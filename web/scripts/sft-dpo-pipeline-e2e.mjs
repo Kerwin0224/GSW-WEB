@@ -230,18 +230,44 @@ async function seedInteractionTrace({ admin, studentClient, teacher, student, cl
   ]).select('id'), `${kind} message insert`);
   created.messageIds.push(userMessageId, assistantMessageId);
 
-  await assertOk(await admin.from('audit_records').insert({
+  // audit_records 没有 pending 中间态：会话级最终提交本身就是审批动作（CONTEXT.md
+  // "确认提交整个会话"），样本要么不存在，要么 approved/exported。
+  // e2e 直接 seed approved 样本，模拟"教师已完成会话级最终提交后的物化结果"，
+  // 让后续 admin 导出链路能命中。
+  const baseAudit = {
     id: auditRecordId,
     source_message_id: assistantMessageId,
     source_conversation_id: conversationId,
     auditor_id: teacher.id,
     class_id: classId,
-    kind: 'sft',
-    status: 'pending',
+    status: 'approved',
     prompt,
-    original_answer: answer,
-    metadata: { e2e_run_id: RUN_ID, trace_kind: kind, generated_from: 'real_supabase_rls_trace' },
-  }).select('id').single(), `${kind} pending audit insert`);
+    metadata: {
+      e2e_run_id: RUN_ID,
+      trace_kind: kind,
+      generated_from: 'real_supabase_rls_trace',
+      conversation_action: 'conversation_finalized',
+    },
+  };
+
+  const auditRow = kind === 'dpo'
+    ? {
+        ...baseAudit,
+        kind: 'dpo',
+        original_answer: answer,
+        chosen_answer: `${RUN_ID} DPO chosen：${answer}（教师修订版）`,
+        rejected_answer: answer,
+      }
+    : {
+        ...baseAudit,
+        kind: 'sft',
+        original_answer: answer,
+      };
+
+  await assertOk(
+    await admin.from('audit_records').insert(auditRow).select('id').single(),
+    `${kind} approved audit insert`,
+  );
   created.auditRecordIds.push(auditRecordId);
 
   return { projectId, conversationId, userMessageId, assistantMessageId, auditRecordId, prompt, answer, title };

@@ -70,10 +70,10 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="relative min-h-svh overflow-hidden bg-background text-foreground">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-[linear-gradient(135deg,color-mix(in_oklch,var(--background)_88%,white),var(--background)),repeating-linear-gradient(90deg,color-mix(in_oklch,var(--border)_18%,transparent)_0_1px,transparent_1px_5rem)]" />
-      </div>
+    <main className="relative min-h-svh overflow-hidden text-foreground">
+      {/* 登录品牌区是古典元素的主阵地，留足宣纸底色；体感靠 body 背景承载，这里只补一处柔光。 */}
+      <div className="pointer-events-none absolute -top-40 right-[-10%] size-[36rem] rounded-full bg-primary/8 blur-3xl" aria-hidden="true" />
+      <div className="pointer-events-none absolute -bottom-48 -left-20 size-[32rem] rounded-full bg-accent/10 blur-3xl" aria-hidden="true" />
 
       <div className="relative mx-auto grid min-h-svh w-full max-w-6xl items-center gap-10 px-5 py-8 lg:grid-cols-[1.05fr_0.95fr] lg:px-10">
         <section className="space-y-10">

@@ -1,7 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource/lxgw-wenkai-tc/chinese-traditional-400.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -147,8 +146,7 @@
 
   /* 字体 */
   --font-sans: "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  /* Heading font: loaded via @fontsource/lxgw-wenkai-tc/chinese-traditional-400.css (Strategy B) */
-  --font-heading-family: "LXGW WenKai TC", "霞鹜文楷", "STKaiti", "KaiTi", serif;
+  --font-heading-family: var(--font-noto-serif-sc), "Songti SC", "STSong", "SimSun", serif;
   --font-heading: var(--font-heading-family);
   --font-mono: var(--font-geist-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
 }
@@ -298,40 +296,41 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* ── 宣纸底：只保留黛蓝 + 紫金两处浸色，朱砂留给真正的警示态。 ── */
   body {
     @apply min-h-svh bg-background text-foreground font-sans;
     background:
-      radial-gradient(circle at 8% 0%, rgb(74 111 165 / 0.14), transparent 30rem),
-      radial-gradient(circle at 92% 12%, rgb(183 165 122 / 0.16), transparent 28rem),
-      radial-gradient(circle at 52% 94%, rgb(192 72 81 / 0.06), transparent 24rem),
-      linear-gradient(180deg, rgb(255 255 255 / 0.42), transparent 18rem),
+      radial-gradient(ellipse 42rem 28rem at 6% -4%, rgb(74 111 165 / 0.10), transparent 70%),
+      radial-gradient(ellipse 36rem 24rem at 96% 10%, rgb(183 165 122 / 0.12), transparent 70%),
+      linear-gradient(180deg, rgb(255 255 255 / 0.32), transparent 20rem),
       var(--background);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+  /* 细网格：压暗到 0.22，只在顶部淡出，让内容区有呼吸感。 */
   body::before {
     content: "";
     position: fixed;
     inset: 0;
     pointer-events: none;
     z-index: -1;
-    opacity: 0.46;
+    opacity: 0.22;
     background-image:
-      linear-gradient(90deg, rgb(74 111 165 / 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(74 111 165 / 0.05) 1px, transparent 1px),
       linear-gradient(0deg, rgb(183 165 122 / 0.05) 1px, transparent 1px);
-    background-size: 48px 48px;
-    mask-image: linear-gradient(to bottom, black, transparent 72%);
+    background-size: 56px 56px;
+    mask-image: linear-gradient(to bottom, black, transparent 60%);
   }
+  /* 宣纸韵：四角柔边 + 中央透光，替代之前的斜纹装饰。 */
   body::after {
     content: "";
     position: fixed;
     inset: 0;
     pointer-events: none;
     z-index: -1;
-    opacity: 0.12;
-    background-image:
-      linear-gradient(115deg, transparent 0 46%, rgb(45 45 45 / 0.16) 46% 46.4%, transparent 46.4% 100%);
-    background-size: 280px 180px;
+    opacity: 0.5;
+    background:
+      radial-gradient(ellipse 90% 70% at 50% 50%, transparent 40%, rgb(45 45 45 / 0.05) 100%);
     mix-blend-mode: multiply;
   }
   h1, h2, h3, h4, h5, h6 {

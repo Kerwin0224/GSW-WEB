@@ -9,7 +9,7 @@ export default async function StudentLayout({ children }: { children: React.Reac
   if (profile.status !== 'active') redirect('/login?error=account_disabled');
 
   return (
-    <AppShell role="student" displayName={profile.display_name ?? '同学'} breadcrumbs={[{ label: '学生工作台' }]}>
+    <AppShell role="student" displayName={profile.display_name ?? '同学'} breadcrumbs={[{ label: '学生看板' }]}>
       {children}
     </AppShell>
   );

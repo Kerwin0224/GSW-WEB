@@ -1,10 +1,13 @@
 'use server';
 
+import { createMCPClient } from '@ai-sdk/mcp';
 import { revalidatePath } from 'next/cache';
 import { encryptSecret } from '@/lib/crypto/secret-cipher';
+import { transportForConnectionRef } from '@/lib/mcp-runtime';
+import { assertStdioMcpDisabled, requireAllowedMcpRemoteUrl } from '@/lib/mcp-runtime-policy';
 import { createClient } from '@/lib/supabase/server';
 import type { AppRole, Database, Json, ModelTier, ProviderCapability } from '@/lib/supabase/database.types';
-import { fail, getModelTiers, ok, requireRole, tierScenarios, type DataResult, type ModelTierStatus } from './common';
+import { fail, getModelTiers, ok, requireRole, scenarioModelTiers, type DataResult, type ModelTierStatus } from './common';
 import { exportDataset } from '@/lib/dataset-export';
 
 export type AdminActionState = { ok: boolean; message: string; errors?: Record<string, string> };
@@ -51,7 +54,8 @@ export type CsvUserPreviewRow = {
   errors: string[];
 };
 export type CsvUserPreview = { rows: CsvUserPreviewRow[]; validCount: number; invalidCount: number };
-export type AdminModelTierStatus = ModelTierStatus;
+export type AdminModelTierStatus = Omit<ModelTierStatus, 'secretRef'>;
+export type AdminScenarioTierBinding = { scenario: ProviderCapability; tier: ModelTier };
 
 const providerCapabilities = [
   'student_chat',
@@ -64,6 +68,8 @@ const providerCapabilities = [
   'embedding',
 ] as const satisfies readonly ProviderCapability[];
 
+const configurableScenarios = providerCapabilities.filter((capability) => capability !== 'embedding');
+
 const appRoles = ['admin', 'teacher', 'student'] as const satisfies readonly AppRole[];
 
 type ProviderConfigRow = Database['public']['Tables']['provider_configs']['Row'];
@@ -72,12 +78,17 @@ type McpServerInsert = Database['public']['Tables']['mcp_servers']['Insert'];
 type McpServerUpdate = Database['public']['Tables']['mcp_servers']['Update'];
 
 type ProviderWithCapabilities = ProviderConfigRow & { provider_capabilities?: ProviderCapabilityRow[] | null };
+
+function asMetadataObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
 type ProviderApiModel = { id: string; ownedBy?: string };
 
 type ProviderConfigInput = { name: string; providerType: string; baseUrl: string; apiKey: string };
 type ProviderPatchInput = { name?: string; providerType?: string; baseUrl?: string | null; apiKey?: string; isEnabled?: boolean };
 type ProviderCapabilityInput = { capability: string; modelId: string };
-type McpServerInput = { name?: string; description?: string | null; connectionRef?: string | null; token?: string; enabledTools?: unknown; allowedRoles?: AppRoleArray; isEnabled?: boolean; metadata?: Json };
+type McpServerInput = { name?: string; description?: string | null; connectionRef?: string | null; token?: string; enabledTools?: unknown; allowedRoles?: AppRoleArray; isEnabled?: boolean; metadata?: Json; healthStatus?: string };
+type McpServerTestResult = { ok: true; message: string; connectionRef: string; serverName: string; toolNames: string[]; healthStatus: string } | { ok: false; message: string };
 
 function actionResult(okResult: boolean, message: string, errors?: Record<string, string>): AdminActionState {
   return { ok: okResult, message, errors };
@@ -87,16 +98,64 @@ function resolveActionArgs(first: FormData | AdminActionState, second?: FormData
   return { formData: second ?? (first as FormData), shouldReturnState: Boolean(second) };
 }
 
+function normalizeMcpEnabledTools(value: unknown) {
+  if (!Array.isArray(value)) return [] as string[];
+  const seen = new Set<string>();
+  return value.flatMap((item) => {
+    if (typeof item !== 'string') return [];
+    const tool = item.trim();
+    if (!tool || seen.has(tool)) return [];
+    seen.add(tool);
+    return [tool];
+  });
+}
+
 function lastFour(secret: string) {
   return secret.slice(-4) || null;
 }
 
+function deriveMcpServerName(rawName: string | undefined, connectionRef: string) {
+  const name = rawName?.trim();
+  if (name) return name;
+  const remoteUrl = connectionRef.startsWith('sse:')
+    ? connectionRef.slice(4).trim()
+    : connectionRef.startsWith('http-mcp:')
+      ? connectionRef.slice(9).trim()
+      : connectionRef;
+  try {
+    return new URL(remoteUrl).hostname || '未命名 MCP Server';
+  } catch {
+    return '未命名 MCP Server';
+  }
+}
+
+function validateMcpConnectionRef(rawConnectionRef: string) {
+  const connectionRef = rawConnectionRef.trim();
+  if (!connectionRef) throw new Error('请填写远程 MCP 地址。');
+  assertStdioMcpDisabled(connectionRef);
+  if (connectionRef.startsWith('sse:')) {
+    requireAllowedMcpRemoteUrl(connectionRef.slice(4).trim());
+    return connectionRef;
+  }
+  if (connectionRef.startsWith('http-mcp:')) {
+    requireAllowedMcpRemoteUrl(connectionRef.slice(9).trim());
+    return connectionRef;
+  }
+  if (connectionRef.startsWith('http:') || connectionRef.startsWith('https:')) {
+    return requireAllowedMcpRemoteUrl(connectionRef);
+  }
+  throw new Error('仅支持远程 https MCP 地址；可直接填写 https://…，或使用 sse:/http-mcp: 前缀。');
+}
+
 function normalizeApiModels(value: Json): ProviderApiModel[] {
   if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
   return value.flatMap((item) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
-    const id = typeof item.id === 'string' ? item.id : null;
-    if (!id) return [];
+    const rawId = typeof item.id === 'string' ? item.id : null;
+    const id = rawId?.trim();
+    if (!id || seen.has(id)) return [];
+    seen.add(id);
     const ownedBy = typeof item.ownedBy === 'string' ? item.ownedBy : typeof item.owned_by === 'string' ? item.owned_by : undefined;
     return [{ id, ownedBy }];
   });
@@ -138,6 +197,48 @@ function isProviderCapability(value: string): value is ProviderCapability {
 
 function isAppRole(value: string): value is AppRole {
   return appRoles.includes(value as AppRole);
+}
+
+async function getScenarioTierBindingsFromDb(supabase: Awaited<ReturnType<typeof createClient>>): Promise<AdminScenarioTierBinding[]> {
+  const { data, error } = await supabase
+    .from('scenario_tier_bindings')
+    .select('scenario,tier,is_enabled')
+    .eq('is_enabled', true);
+  if (error) throw new Error(`场景路由映射加载失败：${error.message}`);
+
+  const configured = new Map<ProviderCapability, ModelTier>();
+  for (const row of data ?? []) {
+    if (isProviderCapability(row.scenario) && row.scenario !== 'embedding' && (row.tier === 'flash' || row.tier === 'advanced')) {
+      configured.set(row.scenario, row.tier);
+    }
+  }
+
+  return configurableScenarios.map((scenario) => ({
+    scenario,
+    tier: configured.get(scenario) ?? scenarioModelTiers[scenario] ?? 'flash',
+  }));
+}
+
+function toAdminModelTierStatus(status: ModelTierStatus): AdminModelTierStatus {
+  const safeStatus = { ...status };
+  delete safeStatus.secretRef;
+  return safeStatus;
+}
+
+async function getAdminModelTiers() {
+  const modelTiers = await getModelTiers(['flash', 'advanced']);
+  return {
+    flash: toAdminModelTierStatus(modelTiers.flash),
+    advanced: toAdminModelTierStatus(modelTiers.advanced),
+  } satisfies Record<ModelTier, AdminModelTierStatus>;
+}
+
+async function syncScenarioCapabilities(supabase: Awaited<ReturnType<typeof createClient>>, bindings: AdminScenarioTierBinding[]) {
+  const { error } = await supabase.rpc('save_scenario_tier_bindings_and_sync', {
+    p_bindings: bindings.map((binding) => ({ scenario: binding.scenario, tier: binding.tier })) as Json,
+  });
+  if (error) return providerFailure(`场景能力同步失败：${error.message}`);
+  return providerSuccess('场景路由映射已保存，并已同步到运行时能力。');
 }
 
 function normalizeMembership(row: {
@@ -330,7 +431,11 @@ export async function addClassMember(formData: FormData): Promise<void> {
   }
   const { error } = await supabase.from('class_memberships').upsert({ class_id: classId, profile_id: profileId, role: targetRole }, { onConflict: 'class_id,profile_id' });
   if (error) return;
-  revalidatePath('/admin/classes');
+  // 迁班后同步历史项目和会话的 class_id，使新班教师可见所有历史核实记录。
+  if (targetRole === 'student') {
+    await supabase.from('text_projects').update({ class_id: classId }).eq('owner_id', profileId);
+    await supabase.from('conversations').update({ class_id: classId }).eq('owner_id', profileId).eq('source', 'student_chat').is('deleted_at', null);
+  }
   revalidatePath('/admin/users');
   revalidatePath('/admin');
 }
@@ -384,13 +489,19 @@ export async function getAdminProviders() {
   const role = await requireRole('admin');
   if (!role.ok) return role;
   const supabase = await createClient();
-  const [{ data, error }, modelTiers] = await Promise.all([
-    supabase.from('provider_configs').select('*, provider_capabilities(*)').order('created_at', { ascending: false }),
-    getModelTiers(['flash', 'advanced']),
-  ]);
-  if (error) return fail('error', `Provider 能力加载失败：${error.message}`);
-  return ok({ providers: ((data ?? []) as ProviderWithCapabilities[]).map(toProviderListItem), modelTiers });
+  try {
+    const [{ data, error }, modelTiers, scenarioTierBindings] = await Promise.all([
+      supabase.from('provider_configs').select('*, provider_capabilities(*)').order('created_at', { ascending: false }),
+      getAdminModelTiers(),
+      getScenarioTierBindingsFromDb(supabase),
+    ]);
+    if (error) return fail('error', `Provider 能力加载失败：${error.message}`);
+    return ok({ providers: ((data ?? []) as ProviderWithCapabilities[]).map(toProviderListItem), modelTiers, scenarioTierBindings });
+  } catch (error) {
+    return fail('error', error instanceof Error ? error.message : 'Provider 能力加载失败');
+  }
 }
+
 
 export async function saveProviderConfig(formData: FormData): Promise<void> {
   const role = await requireRole('admin');
@@ -466,27 +577,21 @@ export async function updateProviderCapabilities(providerId: string, rows: Provi
   if (!role.ok) return providerFailure(role.message);
   const validRows = rows
     .map((row) => ({ capability: row.capability.trim(), modelId: row.modelId.trim() }))
-    .filter((row): row is { capability: ProviderCapability; modelId: string } => isProviderCapability(row.capability) && Boolean(row.modelId));
-  if (validRows.length === 0) return providerFailure('请至少配置一个有效能力。');
+    .filter((row): row is { capability: ProviderCapability; modelId: string } => row.capability === 'embedding' && Boolean(row.modelId));
+  if (validRows.length === 0) return providerFailure('场景能力由场景路由映射管理；这里只能配置 Embedding 能力。');
   const supabase = await createClient();
-  const { error: deleteError } = await supabase.from('provider_capabilities').delete().eq('provider_id', providerId);
-  if (deleteError) return providerFailure(`旧能力清理失败：${deleteError.message}`);
+  const { error: deleteError } = await supabase
+    .from('provider_capabilities')
+    .delete()
+    .eq('provider_id', providerId)
+    .eq('capability', 'embedding');
+  if (deleteError) return providerFailure(`旧 Embedding 能力清理失败：${deleteError.message}`);
   const { error } = await supabase.from('provider_capabilities').insert(validRows.map((row) => ({ provider_id: providerId, capability: row.capability, model_id: row.modelId, is_enabled: true })));
-  if (error) return providerFailure(`能力配置保存失败：${error.message}`);
-
-  const tierRows = (['flash', 'advanced'] as ModelTier[]).flatMap((tier) => {
-    const scenario = tierScenarios[tier].find((capability) => validRows.some((row) => row.capability === capability));
-    const match = scenario ? validRows.find((row) => row.capability === scenario) : undefined;
-    return match ? [{ tier, provider_id: providerId, model_id: match.modelId, is_enabled: true, metadata: { synced_from: 'provider_capabilities', scenario } }] : [];
-  });
-  if (tierRows.length > 0) {
-    const tierSync = await supabase.from('model_tier_bindings').upsert(tierRows, { onConflict: 'tier' });
-    if (tierSync.error) return providerFailure(`模型层同步失败：${tierSync.error.message}`);
-  }
+  if (error) return providerFailure(`Embedding 能力保存失败：${error.message}`);
 
   revalidatePath('/admin/providers');
   revalidatePath('/admin');
-  return providerSuccess('能力配置已保存。');
+  return providerSuccess('Embedding 能力已保存。');
 }
 
 export async function deleteProvider(providerId: string): Promise<ProviderActionResult> {
@@ -521,7 +626,13 @@ export async function saveProviderHealthCheck(providerId: string, result: { heal
 export async function saveProviderApiModels(providerId: string, models: ProviderApiModel[]): Promise<ProviderActionResult> {
   const role = await requireRole('admin');
   if (!role.ok) return providerFailure(role.message);
-  const apiModels = models.map((model) => ({ id: model.id, ownedBy: model.ownedBy ?? null }));
+  const seen = new Set<string>();
+  const apiModels = models.flatMap((model) => {
+    const id = model.id.trim();
+    if (!id || seen.has(id)) return [];
+    seen.add(id);
+    return [{ id, ownedBy: model.ownedBy ?? null }];
+  });
   const supabase = await createClient();
   const { error } = await supabase.from('provider_configs').update({ api_models: apiModels }).eq('id', providerId);
   if (error) return providerFailure(`模型列表保存失败：${error.message}`);
@@ -535,34 +646,31 @@ export async function saveModelTierBinding(input: { tier: ModelTier; providerId:
   const modelId = input.modelId.trim();
   if (!modelId) return providerFailure('请填写模型 ID。');
   const supabase = await createClient();
-  const { error } = await supabase.from('model_tier_bindings').upsert({
-    tier: input.tier,
-    provider_id: input.providerId,
-    model_id: modelId,
-    is_enabled: true,
-    metadata: { source_of_truth: 'provider_capabilities', synced_from: 'admin_model_tier_binding' },
-  }, { onConflict: 'tier' });
+  const { error } = await supabase.rpc('save_model_tier_binding_and_sync', {
+    p_tier: input.tier,
+    p_provider_id: input.providerId,
+    p_model_id: modelId,
+  });
   if (error) return providerFailure(`模型层保存失败：${error.message}`);
-
-  const scenarioRows = tierScenarios[input.tier].map((capability) => ({
-    provider_id: input.providerId,
-    capability,
-    model_id: modelId,
-    is_enabled: true,
-    metadata: { synced_from: 'model_tier_bindings', tier: input.tier },
-  }));
-  const scenarioDelete = await supabase
-    .from('provider_capabilities')
-    .delete()
-    .eq('provider_id', input.providerId)
-    .in('capability', [...tierScenarios[input.tier]]);
-  if (scenarioDelete.error) return providerFailure(`旧场景能力清理失败：${scenarioDelete.error.message}`);
-  const scenarioInsert = await supabase.from('provider_capabilities').insert(scenarioRows);
-  if (scenarioInsert.error) return providerFailure(`场景能力同步失败：${scenarioInsert.error.message}`);
 
   revalidatePath('/admin/providers');
   revalidatePath('/admin');
-  return providerSuccess('模型层已保存，并已同步到场景能力。');
+  return providerSuccess('模型层已保存，并已按自定义场景映射同步。');
+}
+
+export async function saveScenarioTierBindings(input: AdminScenarioTierBinding[]): Promise<ProviderActionResult> {
+  const role = await requireRole('admin');
+  if (!role.ok) return providerFailure(role.message);
+  const normalized = configurableScenarios.map((scenario) => {
+    const tier = input.find((binding) => binding.scenario === scenario)?.tier ?? scenarioModelTiers[scenario] ?? 'flash';
+    return { scenario, tier } satisfies AdminScenarioTierBinding;
+  });
+  const supabase = await createClient();
+  const syncResult = await syncScenarioCapabilities(supabase, normalized);
+  if (!syncResult.ok) return syncResult;
+  revalidatePath('/admin/providers');
+  revalidatePath('/admin');
+  return syncResult;
 }
 
 export async function getAdminMcp() {
@@ -574,19 +682,62 @@ export async function getAdminMcp() {
   return ok(data ?? []);
 }
 
+export async function testMcpServerConnection(input: McpServerInput): Promise<McpServerTestResult> {
+  const role = await requireRole('admin');
+  if (!role.ok) return { ok: false, message: role.message };
+
+  let connectionRef: string;
+  try {
+    connectionRef = validateMcpConnectionRef(input.connectionRef ?? '');
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : 'MCP 连接配置不合法。' };
+  }
+
+  const serverName = deriveMcpServerName(input.name, connectionRef);
+  let client: Awaited<ReturnType<typeof createMCPClient>> | undefined;
+
+  try {
+    client = await createMCPClient({
+      transport: transportForConnectionRef(connectionRef, input.token?.trim() || undefined),
+    });
+    const tools = await client.tools();
+    const toolNames = Object.keys(tools).sort((a, b) => a.localeCompare(b));
+
+    return {
+      ok: true,
+      message: toolNames.length > 0 ? `连接成功，发现 ${toolNames.length} 个工具。` : '连接成功，但服务端未暴露任何工具。',
+      connectionRef,
+      serverName,
+      toolNames,
+      healthStatus: 'healthy',
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? `MCP 测试失败：${error.message}` : 'MCP 测试失败。' };
+  } finally {
+    await client?.close();
+  }
+}
+
 export async function createMcpServer(input: McpServerInput): Promise<ProviderActionResult> {
   const role = await requireRole('admin');
   if (!role.ok) return providerFailure(role.message);
-  const name = input.name?.trim() || '未命名 MCP Server';
+  let connectionRef: string;
+  try {
+    connectionRef = validateMcpConnectionRef(input.connectionRef ?? '');
+  } catch (error) {
+    return providerFailure(error instanceof Error ? error.message : 'MCP 连接配置不合法。');
+  }
+  const name = deriveMcpServerName(input.name, connectionRef);
   const allowedRoles = (input.allowedRoles ?? []).filter((item): item is AppRole => item !== 'admin' && isAppRole(item));
   const insert: McpServerInsert = {
     name,
     description: input.description?.trim() || null,
-    connection_ref: input.connectionRef?.trim() || null,
-    enabled_tools: (input.enabledTools ?? []) as Json,
+    connection_ref: connectionRef,
+    enabled_tools: normalizeMcpEnabledTools(input.enabledTools) as Json,
     allowed_roles: allowedRoles,
     metadata: (input.metadata ?? {}) as Json,
     is_enabled: input.isEnabled ?? false,
+    health_status: input.healthStatus?.trim() || 'unchecked',
     created_by: role.data.id,
   };
   if (input.token?.trim()) {
@@ -604,16 +755,23 @@ export async function createMcpServer(input: McpServerInput): Promise<ProviderAc
 export async function updateMcpServer(id: string, input: McpServerInput): Promise<ProviderActionResult> {
   const role = await requireRole('admin');
   if (!role.ok) return providerFailure(role.message);
-  const name = input.name?.trim() || '未命名 MCP Server';
+  let connectionRef: string;
+  try {
+    connectionRef = validateMcpConnectionRef(input.connectionRef ?? '');
+  } catch (error) {
+    return providerFailure(error instanceof Error ? error.message : 'MCP 连接配置不合法。');
+  }
+  const name = deriveMcpServerName(input.name, connectionRef);
   const allowedRoles = (input.allowedRoles ?? []).filter((item): item is AppRole => item !== 'admin' && isAppRole(item));
   const update: McpServerUpdate = {
     name,
     description: input.description?.trim() || null,
-    connection_ref: input.connectionRef?.trim() || null,
-    enabled_tools: (input.enabledTools ?? []) as Json,
+    connection_ref: connectionRef,
+    enabled_tools: normalizeMcpEnabledTools(input.enabledTools) as Json,
     allowed_roles: allowedRoles,
     metadata: (input.metadata ?? {}) as Json,
     is_enabled: input.isEnabled ?? false,
+    health_status: input.healthStatus?.trim() || 'unchecked',
   };
   if (input.token?.trim()) {
     update.secret_ref = encryptSecret(input.token.trim());
@@ -726,6 +884,11 @@ export async function importUsersFromCsv(csvText: string): Promise<{ ok: true; i
       }
       const { error: membershipError } = await supabase.from('class_memberships').upsert({ class_id: classRow.id, profile_id: profile.id, role: row.role }, { onConflict: 'class_id,profile_id' });
       if (membershipError) return { ok: false, message: `第 ${row.rowNumber} 行班级关系导入失败：${membershipError.message}`, preview };
+      // 迁班后同步历史项目和会话的 class_id，使新班教师可见所有历史核实记录。
+      if (row.role === 'student') {
+        await supabase.from('text_projects').update({ class_id: classRow.id }).eq('owner_id', profile.id);
+        await supabase.from('conversations').update({ class_id: classRow.id }).eq('owner_id', profile.id).eq('source', 'student_chat').is('deleted_at', null);
+      }
     }
     imported += 1;
   }
@@ -742,7 +905,7 @@ export async function getAdminExports() {
   const [{ data: approved, error: approvedError }, { data: history, error: historyError }] = await Promise.all([
     supabase
       .from('audit_records')
-      .select('id,source_message_id,status,created_at,updated_at')
+      .select('id,source_message_id,status,metadata,created_at,updated_at')
       .in('status', ['approved', 'exported'])
       .not('source_message_id', 'is', null)
       .order('created_at', { ascending: false }),
@@ -751,9 +914,10 @@ export async function getAdminExports() {
   if (approvedError) return fail('error', `可导出记录加载失败：${approvedError.message}`);
   if (historyError) return fail('error', `导出历史加载失败：${historyError.message}`);
 
-  const latestByMessage = new Map<string, { id: string; status: string; created_at: string; updated_at: string }>();
+  const latestByMessage = new Map<string, { id: string; status: string; created_at: string; updated_at: string; metadata: unknown }>();
   for (const record of approved ?? []) {
     if (!record.source_message_id) continue;
+    if (asMetadataObject(record.metadata).conversation_action !== 'conversation_finalized') continue;
     const previous = latestByMessage.get(record.source_message_id);
     const recordTime = record.updated_at || record.created_at;
     const previousTime = previous ? previous.updated_at || previous.created_at : '';

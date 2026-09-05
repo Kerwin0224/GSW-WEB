@@ -1,7 +1,9 @@
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import type { BloomLevel } from '@/lib/challenge-progression';
 
-export type BloomLevel = 1 | 2 | 3 | 4 | 5 | 6;
+// BloomLevel 类型定义在 lib/challenge-progression.ts，这里只做 re-export 维持向后兼容。
+export type { BloomLevel } from '@/lib/challenge-progression';
 
 export const bloomLevelInfo: Record<BloomLevel, { label: string; hint: string; meaning: string }> = {
   1: { label: '记忆', hint: '背诵、识记、找出处', meaning: 'recognize / recall' },

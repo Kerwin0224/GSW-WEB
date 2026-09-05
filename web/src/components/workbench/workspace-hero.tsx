@@ -38,29 +38,31 @@ export function WorkspaceHero({
   className?: string;
 }) {
   return (
-    <section className={cn('relative overflow-hidden rounded-lg border border-primary/15 bg-card/92 shadow-ink backdrop-blur-xl', className)}>
-      <div className="absolute inset-0 bg-[linear-gradient(135deg,color-mix(in_oklch,var(--primary)_10%,transparent),transparent_42%),repeating-linear-gradient(90deg,color-mix(in_oklch,var(--border)_18%,transparent)_0_1px,transparent_1px_5rem)]" />
-      <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+    <section className={cn('relative overflow-hidden rounded-lg border border-primary/15 bg-card/94 shadow-soft', className)}>
+      {/* 单一主色浸染，不再叠重复网格，避免和 body 网格竞争。 */}
+      <div className="pointer-events-none absolute -top-24 -left-16 size-80 rounded-full bg-primary/10 blur-3xl" aria-hidden="true" />
+      <div className="pointer-events-none absolute -bottom-32 -right-20 size-96 rounded-full bg-accent/10 blur-3xl" aria-hidden="true" />
+      <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" aria-hidden="true" />
       <div className="relative grid gap-8 p-6 sm:p-8 lg:grid-cols-[1.15fr_0.85fr] lg:p-10 xl:p-12">
         <div className="space-y-6">
-          <Badge variant="outline" className="w-fit border-primary/25 bg-background/80 px-3 py-1 text-primary shadow-sm backdrop-blur">{eyebrow}</Badge>
+          <Badge variant="outline" className="w-fit border-primary/25 bg-background/85 px-3 py-1 text-primary shadow-sm">{eyebrow}</Badge>
           <div className="space-y-4">
-            <h1 className="max-w-3xl font-heading text-4xl leading-tight tracking-tight text-foreground sm:text-5xl lg:text-6xl">{title}</h1>
+            <h1 className="max-w-3xl font-heading text-4xl leading-tight tracking-tight text-foreground sm:text-5xl lg:text-[3.25rem]">{title}</h1>
             <p className="max-w-2xl text-base leading-8 text-muted-foreground sm:text-lg">{description}</p>
           </div>
           {(primaryAction || secondaryAction) ? (
             <div className="flex flex-wrap gap-3">
               {primaryAction ? <Button nativeButton={false} render={<Link href={primaryAction.href}>{primaryAction.label}</Link>} size="lg" variant={primaryAction.variant ?? 'default'} className="min-h-11 cursor-pointer rounded-lg px-6 shadow-ink" /> : null}
-              {secondaryAction ? <Button nativeButton={false} render={<Link href={secondaryAction.href}>{secondaryAction.label}</Link>} size="lg" variant={secondaryAction.variant ?? 'outline'} className="min-h-11 cursor-pointer rounded-lg bg-background/78 px-6 backdrop-blur" /> : null}
+              {secondaryAction ? <Button nativeButton={false} render={<Link href={secondaryAction.href}>{secondaryAction.label}</Link>} size="lg" variant={secondaryAction.variant ?? 'outline'} className="min-h-11 cursor-pointer rounded-lg bg-background/80 px-6" /> : null}
             </div>
           ) : null}
         </div>
         <div className="grid gap-3 self-end sm:grid-cols-3 lg:grid-cols-1">
           {metrics.map((metric) => (
-            <Card key={metric.label} className="border-border/65 bg-background/82 shadow-soft backdrop-blur transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/35 hover:bg-background/95 hover:shadow-ink">
+            <Card key={metric.label} className="border-border/60 bg-background/85 shadow-soft transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/35 hover:bg-background hover:shadow-ink">
               <CardContent className="space-y-1.5 p-4">
-                <p className="text-xs font-medium text-muted-foreground">{metric.label}</p>
-                <p className="text-3xl font-semibold tracking-tight text-foreground">{metric.value}</p>
+                <p className="text-xs font-medium tracking-wide text-muted-foreground">{metric.label}</p>
+                <p className="text-3xl font-semibold tracking-tight text-foreground tabular-nums">{metric.value}</p>
                 <p className="text-xs leading-5 text-muted-foreground">{metric.hint}</p>
               </CardContent>
             </Card>
