@@ -44,6 +44,7 @@ export type ProviderListItem = {
  * 独立的"测速"按钮 — 点击立即调用 health-check API。
  */
 export function HealthCheckButton({ provider }: { provider: ProviderListItem }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   function ping() {
@@ -56,10 +57,11 @@ export function HealthCheckButton({ provider }: { provider: ProviderListItem }) 
         });
         const data = await res.json();
         if (data.healthy) {
-          toast.success(`✓ ${provider.name} 连接正常 · ${data.latencyMs}ms`);
+          toast.success(`${provider.name} 连接正常 · ${data.latencyMs}ms`);
         } else {
-          toast.error(`✗ ${provider.name}：${data.message ?? data.error ?? '连接失败'}`);
+          toast.error(`${provider.name}：${data.message ?? data.error ?? '连接失败'}`);
         }
+        router.refresh();
       } catch (error) {
         toast.error(`测速失败：${error instanceof Error ? error.message : '未知错误'}`);
       }
@@ -146,7 +148,7 @@ export function CapabilityAssignmentDialog({ provider }: { provider: ProviderLis
         </Button>
       }
       title={`配置 Embedding — ${provider.name}`}
-      description="学生会话、教师问答、挑战和核实辅助由场景路由映射统一管理；这里仅配置向量嵌入模型，不提供学生会话内容浏览。"
+       description="学生提问、备课问答、挑战和 AI 初筛由场景路由映射统一管理；这里仅配置向量嵌入模型。"
       icon={<SlidersHorizontal className="size-5" />}
       footer={(
         <Button onClick={submit} disabled={submitting || !modelId.trim()} type="button">
@@ -346,7 +348,7 @@ export function DeleteProviderButton({ provider }: { provider: ProviderListItem 
       <Alert variant="destructive">
         <XCircle className="size-4" />
         <AlertDescription>
-          删除后会重新计算能力绑定；如果这是唯一绑定，学生提问、教师问答或挑战功能会显示不可用。
+          删除后会重新计算能力绑定；如果这是唯一绑定，学生提问、备课问答或挑战练习会显示不可用。
         </AlertDescription>
       </Alert>
     </AdminDialogShell>

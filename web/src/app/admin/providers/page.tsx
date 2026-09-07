@@ -15,26 +15,25 @@ export default async function AdminProvidersPage() {
   }
 
   const { providers, modelTiers, scenarioTierBindings } = result.data;
-  const flashStatus = modelTiers.flash.ready ? 'ready' : modelTiers.flash.blockedReason ? 'blocked' : 'missing';
-  const advancedStatus = modelTiers.advanced.ready ? 'ready' : modelTiers.advanced.blockedReason ? 'blocked' : 'missing';
+  const checkedProviders = providers.filter((provider) => provider.lastHealthCheckAt).length;
+  const configuredTiers = [modelTiers.flash, modelTiers.advanced].filter((tier) => tier.providerId && tier.modelId).length;
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="模型接入"
-        title="模型、能力分层与场景绑定"
-        description="在这里维护 AI 模型服务：检查连通性、拉取模型列表，并为 Flash / Advanced 两层模型和 Embedding 分别配置。"
+        title="模型供应商"
+        description="添加模型服务、检查连通性，并为 Flash、Advanced 和 Embedding 配置明确的模型 ID。"
         metrics={[
-          { label: '快速模型 (Flash)', value: flashStatus, hint: modelTiers.flash.blockedReason ?? '学习提问、篇目归档与快速分类' },
-          { label: '深度模型 (Advanced)', value: advancedStatus, hint: modelTiers.advanced.blockedReason ?? '教师问答、挑战与核实辅助' },
-          { label: '模型服务', value: providers.length, hint: '已配置的服务数量' },
+          { label: '模型供应商', value: providers.length, hint: '已保存的服务配置' },
+          { label: '已检查连接', value: checkedProviders, hint: '有最近检查记录' },
+          { label: '已配置模型层', value: `${configuredTiers}/2`, hint: 'Flash / Advanced' },
         ]}
       />
 
       <section className="space-y-4">
         <SectionHeader
-          title="模型层与服务状态"
-          description="先给 Flash / Advanced 两个模型层选好模型；下面的服务列表负责健康检查、拉取模型和密钥状态。"
+          title="模型层与供应商状态"
+          description="模型层显示路由配置，供应商列表显示密钥、模型列表和最近一次连接检查。"
           action={(
             <ProviderConfigDialog />
           )}

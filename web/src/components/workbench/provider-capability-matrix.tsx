@@ -40,23 +40,23 @@ export const capabilities = [
 
 const CAPABILITY_LABELS: Record<string, string> = {
   student_chat: '学生会话回答',
-  teacher_chat: '教师问答',
-  bloom_classification: '学生问题布鲁姆路径判断',
+  teacher_chat: '备课问答',
+  bloom_classification: '学生提问类型判断',
   project_classification: '篇目识别',
   practice_generation: '挑战出题',
-  practice_evaluation: '挑战评估',
-  audit_assist: '核实辅助',
+  practice_evaluation: '挑战评阅',
+  audit_assist: 'AI 初筛',
   embedding: '向量嵌入',
 };
 
 const SCENARIO_ROWS = [
   { role: '学生 /student', scenario: 'student_chat', defaultTier: 'flash', impact: '学习提问的即时会话回答' },
-  { role: '学生 /student', scenario: 'bloom_classification', defaultTier: 'flash', impact: '学生问题的布鲁姆认知路径最高层判断' },
-  { role: '学生 /student', scenario: 'project_classification', defaultTier: 'flash', impact: '首问篇目识别与项目归属' },
+  { role: '学生 /student', scenario: 'bloom_classification', defaultTier: 'flash', impact: '标记学生提问类型' },
+  { role: '学生 /student', scenario: 'project_classification', defaultTier: 'flash', impact: '首问篇目识别与篇目归属' },
   { role: '学生 /student/challenge', scenario: 'practice_generation', defaultTier: 'flash', impact: '低成本挑战生成' },
-  { role: '教师 /teacher', scenario: 'teacher_chat', defaultTier: 'advanced', impact: '教师问答高质量回答' },
-  { role: '挑战确认', scenario: 'practice_evaluation', defaultTier: 'advanced', impact: '挑战确认强判断评估' },
-  { role: '教师 /teacher/audit', scenario: 'audit_assist', defaultTier: 'advanced', impact: '教学正确性核实辅助' },
+  { role: '教师 /teacher/chat', scenario: 'teacher_chat', defaultTier: 'advanced', impact: '备课问答' },
+  { role: '挑战评阅', scenario: 'practice_evaluation', defaultTier: 'advanced', impact: '判断挑战是否通过并给出反馈' },
+  { role: '教师 /teacher/audit', scenario: 'audit_assist', defaultTier: 'advanced', impact: '回答审核前的 AI 初筛' },
 ] as const satisfies ReadonlyArray<{ role: string; scenario: AdminScenarioTierBinding['scenario']; defaultTier: ModelTier; impact: string }>;
 
 const EMBEDDING_ROW = { role: 'RAG /student', scenario: 'embedding', impact: '项目检索的独立向量嵌入配置' } as const;
@@ -72,14 +72,14 @@ const TIER_COPY: Record<ModelTier, {
   flash: {
     title: 'Flash Model',
     subtitle: '快速、低成本、高吞吐',
-    intent: '面向学习提问、学生问题布鲁姆认知路径判断、篇目归属与挑战生成，优先响应速度和单位成本。',
+    intent: '面向学习提问、提问类型判断、篇目归属与挑战生成，优先响应速度和单位成本。',
     tone: 'from-primary/15 via-background to-background',
     icon: <Zap className="size-5" />,
   },
   advanced: {
     title: 'Advanced Model',
     subtitle: '更强推理、更高质量',
-    intent: '面向教师问答、挑战评估与教学正确性核实辅助，优先复杂推理和输出质量。',
+    intent: '面向备课问答、挑战评阅与 AI 初筛，优先复杂推理和输出质量。',
     tone: 'from-accent/25 via-background to-background',
     icon: <Brain className="size-5" />,
   },
@@ -101,8 +101,8 @@ function getTierView(tier: ModelTier, providers: ProviderListItem[], modelTiers:
   const provider = status.providerId ? providers.find((item) => item.id === status.providerId) : undefined;
   const scenarios = scenarioTierBindings.filter((binding) => binding.tier === tier).map((binding) => binding.scenario);
 
-  if (status.ready) return { tier, status, provider, viewStatus: 'ready', statusText: '可用', scenarios };
-  if (status.providerId || status.modelId || status.blockedReason) return { tier, status, provider, viewStatus: 'blocked', statusText: '不可用', scenarios };
+  if (status.ready) return { tier, status, provider, viewStatus: 'ready', statusText: '可路由', scenarios };
+  if (status.providerId || status.modelId || status.blockedReason) return { tier, status, provider, viewStatus: 'blocked', statusText: '不可路由', scenarios };
   return { tier, status, provider, viewStatus: 'missing', statusText: '未配置', scenarios };
 }
 
@@ -282,7 +282,7 @@ function ModelTierCard({ tierView, providers }: { tierView: TierView; providers:
   );
 }
 
-function ScenarioMappingTable({ tierViews, embeddingReady, scenarioTierBindings }: { tierViews: Record<ModelTier, TierView>; embeddingReady: boolean; scenarioTierBindings: AdminScenarioTierBinding[] }) {
+function ScenarioMappingTable({ tierViews, embeddingConfigured, scenarioTierBindings }: { tierViews: Record<ModelTier, TierView>; embeddingConfigured: boolean; scenarioTierBindings: AdminScenarioTierBinding[] }) {
   const router = useRouter();
   const [draftBindings, setDraftBindings] = useState(scenarioTierBindings);
   const [savedBindings, setSavedBindings] = useState(scenarioTierBindings);
@@ -365,7 +365,7 @@ function ScenarioMappingTable({ tierViews, embeddingReady, scenarioTierBindings 
               </TableCell>
               <TableCell><Badge variant="outline">Embedding</Badge></TableCell>
               <TableCell>
-                <Badge variant={embeddingReady ? 'default' : 'outline'}>{embeddingReady ? '可用' : '需单独配置'}</Badge>
+                <Badge variant={embeddingConfigured ? 'default' : 'outline'}>{embeddingConfigured ? '已配置' : '需单独配置'}</Badge>
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">{EMBEDDING_ROW.impact}</TableCell>
             </TableRow>
@@ -404,7 +404,7 @@ function ProviderOperationsTable({ providers, modelTiers }: { providers: Provide
             <TableHead>Provider</TableHead>
             <TableHead>Base URL</TableHead>
             <TableHead>密钥</TableHead>
-            <TableHead>健康</TableHead>
+            <TableHead>最近检查</TableHead>
             <TableHead>模型</TableHead>
             <TableHead>用途</TableHead>
             <TableHead className="text-right">操作</TableHead>
@@ -468,10 +468,9 @@ export function ProviderCapabilityMatrix({ providers, modelTiers, scenarioTierBi
     flash: getTierView('flash', providers, modelTiers, scenarioTierBindings),
     advanced: getTierView('advanced', providers, modelTiers, scenarioTierBindings),
   }), [providers, modelTiers, scenarioTierBindings]);
-  const embeddingReady = providers.some((provider) =>
+  const embeddingConfigured = providers.some((provider) =>
     provider.isEnabled &&
-    provider.capabilities.some((capability) => capability.capability === 'embedding' && capability.modelId.trim()) &&
-    (provider.healthStatus === 'healthy' || provider.healthStatus === 'unchecked')
+    provider.capabilities.some((capability) => capability.capability === 'embedding' && capability.modelId.trim())
   );
 
   return (
@@ -491,13 +490,13 @@ export function ProviderCapabilityMatrix({ providers, modelTiers, scenarioTierBi
             <Sparkles className="mr-1 size-3" />模型路由状态
           </Badge>
         </div>
-        <ScenarioMappingTable tierViews={tierViews} embeddingReady={embeddingReady} scenarioTierBindings={scenarioTierBindings} />
+        <ScenarioMappingTable tierViews={tierViews} embeddingConfigured={embeddingConfigured} scenarioTierBindings={scenarioTierBindings} />
       </section>
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-lg font-semibold">Provider / MCP 运维诊断</h2>
-          <p className="text-sm text-muted-foreground">保留健康检查、拉取模型、密钥状态、编辑与删除；用途列展示哪些模型层或 Embedding 能力正在使用该 Provider。</p>
+          <h2 className="text-lg font-semibold">模型供应商</h2>
+          <p className="text-sm text-muted-foreground">查看最近连接检查、已拉取模型、密钥状态和当前用途。</p>
         </div>
         <ProviderOperationsTable providers={providers} modelTiers={modelTiers} />
       </section>

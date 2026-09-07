@@ -103,7 +103,7 @@ export function ProviderConfigDialog() {
           <div className="space-y-2">
             <Label htmlFor="provider-apikey">API Key</Label>
             <Input id="provider-apikey" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-..." autoComplete="off" />
-            <p className="text-xs text-muted-foreground">服务端会用 AES-256-GCM 加密保存，前端永远拿不到明文。</p>
+            <p className="text-xs text-muted-foreground">保存后仅显示末四位，编辑时不会回显密钥明文。</p>
           </div>
 
           {error ? (
