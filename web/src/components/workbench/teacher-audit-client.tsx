@@ -397,7 +397,7 @@ export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] })
                 ) : null}
                 <div className="flex flex-col gap-3 border-t border-border/60 pt-4 md:flex-row md:items-start md:justify-between">
                   <ConversationPreReviewButton record={selected} />
-                  <FinalizeConversationForm record={selected} />
+                  <FinalizeConversationForm key={selected.conversationId} record={selected} />
                 </div>
               </CardContent>
             </Card>
