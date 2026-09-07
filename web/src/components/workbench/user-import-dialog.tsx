@@ -15,9 +15,9 @@ import type { CsvUserPreview } from '@/lib/data/admin';
 
 type ImportResponse = CsvUserPreview | { error: string; preview?: CsvUserPreview };
 
-const SAMPLE = `display_name,login_id,role,class_name,last_login_at
-王同学,20260001,student,高一(3)班,
-李老师,T2026001,teacher,高一(3)班,`;
+const SAMPLE = `display_name,login_id,role,class_name
+王同学,20260001,student,高一(3)班
+李老师,T2026001,teacher,高一(3)班`;
 
 export function UserImportDialog() {
   const router = useRouter();
@@ -62,7 +62,7 @@ export function UserImportDialog() {
         </Button>
       )}
       title="CSV 导入账号"
-      description="先解析并显示行级预览；存在错误时不会提交。表头必须包含 display_name, login_id, role。"
+      description="先检查整批数据；任一行有误都会阻止提交。表头必须包含 display_name、login_id、role，class_name 可选。"
       icon={<Upload className="size-5" />}
       className="sm:max-w-4xl"
       footer={(
@@ -72,7 +72,7 @@ export function UserImportDialog() {
             解析预览
           </Button>
           <Button type="button" onClick={() => requestPreview(true)} disabled={pending || !preview || preview.invalidCount > 0}>
-            提交有效行
+            导入整批
           </Button>
         </div>
       )}
@@ -80,9 +80,14 @@ export function UserImportDialog() {
       <div className="space-y-4">
         <Textarea
           value={csvText}
-          onChange={(event) => setCsvText(event.target.value)}
+          onChange={(event) => {
+            setCsvText(event.target.value);
+            setPreview(null);
+            setError(null);
+          }}
           className="min-h-40 font-mono text-xs"
         />
+        <p className="text-xs leading-5 text-muted-foreground">同一 login_id 会更新现有账号；导入账号统一设为启用。学生填写班级后会迁入该班级，教师可加入多个班级。</p>
         {error ? (
           <Alert variant="destructive">
             <XCircle className="size-4" />
