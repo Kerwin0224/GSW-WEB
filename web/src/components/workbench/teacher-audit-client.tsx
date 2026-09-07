@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { MarkdownContent } from '@/components/workbench/markdown-content';
 import { EmptyState } from '@/components/workbench/state-surfaces';
 import type { AuditQueueRecord, TeacherAuditMessage } from '@/lib/data/teacher';
@@ -52,16 +53,16 @@ function reviewStateLabel(state: AuditQueueRecord['reviewState']) {
 
 function assistantStateLabel(message: TeacherAuditMessage) {
   if (message.reviewState === 'revised') return '已修订';
-  if (message.reviewState === 'confirmed') return '已确认';
+  if (message.reviewState === 'confirmed') return '已审核';
   return '待随会话提交';
 }
 
 function preReviewLabel(record: AuditQueueRecord) {
-  if (record.preReviewState === 'ready') return record.preReviewIssues.length ? `AI 预审 ${record.preReviewIssues.length} 处疑点 · 覆盖 ${record.preReviewCoveredMessageCount}/${record.assistantCount}` : `AI 预审已覆盖 ${record.preReviewCoveredMessageCount}/${record.assistantCount} · 无明显疑点`;
-  if (record.preReviewState === 'partial') return `AI 预审待补审 ${record.preReviewCoveredMessageCount}/${record.assistantCount}`;
-  if (record.preReviewState === 'blocked') return 'AI 预审能力未就绪';
-  if (record.preReviewState === 'failed') return 'AI 预审失败';
-  return '尚未 AI 预审';
+  if (record.preReviewState === 'ready') return record.preReviewIssues.length ? `AI 初筛 ${record.preReviewIssues.length} 处疑点 · 覆盖 ${record.preReviewCoveredMessageCount}/${record.assistantCount}` : `AI 初筛已覆盖 ${record.preReviewCoveredMessageCount}/${record.assistantCount} · 无明显疑点`;
+  if (record.preReviewState === 'partial') return `AI 初筛待补充 ${record.preReviewCoveredMessageCount}/${record.assistantCount}`;
+  if (record.preReviewState === 'blocked') return 'AI 初筛暂不可用';
+  if (record.preReviewState === 'failed') return 'AI 初筛失败';
+  return '尚未运行 AI 初筛';
 }
 
 function PreReviewStatusPanel({ record }: { record: AuditQueueRecord }) {
@@ -73,12 +74,12 @@ function PreReviewStatusPanel({ record }: { record: AuditQueueRecord }) {
   const message = (() => {
     if (record.preReviewState === 'ready') {
       return hasIssues
-        ? `AI 辅助审计已完成，覆盖 ${record.preReviewCoveredMessageCount}/${record.assistantCount} 条 AI 回答，发现 ${record.preReviewIssues.length} 处需教师核实的疑点。`
-        : `AI 辅助审计已完成，覆盖 ${record.preReviewCoveredMessageCount}/${record.assistantCount} 条 AI 回答，未发现明显教学正确性疑点。`;
+        ? `AI 初筛已完成，覆盖 ${record.preReviewCoveredMessageCount}/${record.assistantCount} 条 AI 回答，发现 ${record.preReviewIssues.length} 处需教师审核的疑点。`
+        : `AI 初筛已完成，覆盖 ${record.preReviewCoveredMessageCount}/${record.assistantCount} 条 AI 回答，未发现明显疑点。`;
     }
-    if (record.preReviewState === 'partial') return `AI 辅助审计已保存，但只覆盖 ${record.preReviewCoveredMessageCount}/${record.assistantCount} 条 AI 回答，请继续补审。`;
-    if (record.preReviewState === 'failed') return record.preReviewBlocked ?? 'AI 辅助审计失败，请重新发起。';
-    return record.preReviewBlocked ?? 'AI 辅助审计能力未就绪。';
+    if (record.preReviewState === 'partial') return `AI 初筛已保存，目前覆盖 ${record.preReviewCoveredMessageCount}/${record.assistantCount} 条 AI 回答，请继续补充。`;
+    if (record.preReviewState === 'failed') return record.preReviewBlocked ?? 'AI 初筛失败，请重新运行。';
+    return record.preReviewBlocked ?? 'AI 初筛暂不可用。';
   })();
 
   return (
@@ -109,9 +110,9 @@ function ConversationPreReviewButton({ record }: { record: AuditQueueRecord }) {
     <form action={action} aria-busy={pending} aria-describedby={statusId} className="min-w-0 space-y-2">
       <Button type="submit" disabled={disabled} variant="outline" className="min-h-10 cursor-pointer rounded-lg">
         {pending ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Sparkles className="mr-2 size-4" />}
-        {pending ? 'AI 预审中...' : record.preReviewState === 'ready' ? '重新发起 AI 辅助审计' : record.preReviewState === 'partial' ? '补审 AI 辅助审计' : 'AI 辅助审计'}
+        {pending ? 'AI 初筛中...' : record.preReviewState === 'ready' ? '重新运行 AI 初筛' : record.preReviewState === 'partial' ? '补充 AI 初筛' : '运行 AI 初筛'}
       </Button>
-      {pending ? <p id={statusId} className="rounded-lg border border-primary/20 bg-primary/5 p-2 text-sm text-primary" role="status" aria-live="polite">AI 辅助审计正在处理完整会话，完成后会自动更新疑点和标红片段。</p> : null}
+      {pending ? <p id={statusId} className="rounded-lg border border-primary/20 bg-primary/5 p-2 text-sm text-primary" role="status" aria-live="polite">AI 初筛正在处理完整会话，完成后会更新疑点和标记片段。</p> : null}
       <FormStatus state={state} />
     </form>
   );
@@ -120,19 +121,41 @@ function ConversationPreReviewButton({ record }: { record: AuditQueueRecord }) {
 function FinalizeConversationForm({ record }: { record: AuditQueueRecord }) {
   const router = useRouter();
   const [state, action, pending] = useActionState(finalizeLearningConversation.bind(null, record.conversationId), initialState);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [handledState, setHandledState] = useState(state);
+  const formId = `finalize_conversation_${record.conversationId}`;
+
+  if (state !== handledState) {
+    setHandledState(state);
+    if (state.ok && state.message) setConfirmOpen(false);
+  }
 
   useEffect(() => {
     if (state.ok && state.message) router.refresh();
   }, [router, state]);
 
   return (
-    <form action={action} className="space-y-2">
-      <Button type="submit" disabled={pending || record.conversationFinalized || record.assistantCount === 0} className="min-h-10 cursor-pointer rounded-lg shadow-ink">
-        {pending ? <Loader2 className="mr-2 size-4 animate-spin" /> : record.conversationFinalized ? <LockKeyhole className="mr-2 size-4" /> : <CheckCircle2 className="mr-2 size-4" />}
-        {pending ? '提交中...' : record.conversationFinalized ? '已提交会话核实' : '确认提交整个会话'}
-      </Button>
-      <FormStatus state={state} />
-    </form>
+    <>
+      <form id={formId} action={action} className="space-y-2">
+        <Button type="button" onClick={() => setConfirmOpen(true)} disabled={pending || record.conversationFinalized || record.assistantCount === 0} className="min-h-10 cursor-pointer rounded-lg shadow-ink">
+          {pending ? <Loader2 className="mr-2 size-4 animate-spin" /> : record.conversationFinalized ? <LockKeyhole className="mr-2 size-4" /> : <CheckCircle2 className="mr-2 size-4" />}
+          {pending ? '提交中...' : record.conversationFinalized ? '已提交回答审核' : '最终提交整个会话'}
+        </Button>
+        <FormStatus state={state} />
+      </form>
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认最终提交？</DialogTitle>
+            <DialogDescription>提交后，这条会话中的回答将完成教师审核，学生不能继续追问。请先确认所有修订已经保存。</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setConfirmOpen(false)} disabled={pending}>取消</Button>
+            <Button type="submit" form={formId} disabled={pending}>{pending ? '提交中...' : '确认最终提交'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -167,7 +190,7 @@ function InlineAssistantEditor({ record, message }: { record: AuditQueueRecord; 
   if (record.conversationFinalized) {
     return (
       <div className="mt-3 rounded-lg border border-border/60 bg-muted/45 px-3 py-2 text-xs text-muted-foreground">
-        该会话已完成最终核实提交，学生不能继续追问。
+        该会话已完成最终审核，学生不能继续追问。
       </div>
     );
   }
@@ -175,7 +198,7 @@ function InlineAssistantEditor({ record, message }: { record: AuditQueueRecord; 
   if (!editing) {
     return (
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/55 pt-3">
-        <span className="text-xs text-muted-foreground">可直接修订学生侧可见回答；最终提交在会话顶部完成。</span>
+        <span className="text-xs text-muted-foreground">修订会立即同步给学生；整条会话仍需在顶部最终提交。</span>
         <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)} className="cursor-pointer rounded-lg">
           <Pencil className="mr-1.5 size-3.5" />
           修订回答
@@ -266,27 +289,27 @@ export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] })
 
   return (
     <div className="grid min-h-[calc(100vh-4rem)] gap-0 bg-[radial-gradient(circle_at_18%_0%,color-mix(in_oklch,var(--primary)_10%,transparent),transparent_24rem),color-mix(in_oklch,var(--background)_86%,transparent)] xl:h-[calc(100svh-4rem)] xl:min-h-0 xl:max-h-[calc(100svh-4rem)] xl:grid-cols-[23rem_minmax(0,1fr)] xl:overflow-hidden">
-      <aside className="max-h-none overflow-y-visible border-b border-border/60 bg-card/90 p-4 shadow-ink backdrop-blur-xl xl:h-full xl:min-h-0 xl:overflow-y-auto xl:border-b-0 xl:border-r" aria-label="班级、学生、项目与会话导航">
+      <aside className="max-h-none overflow-y-visible border-b border-border/60 bg-card/90 p-4 shadow-ink backdrop-blur-xl xl:h-full xl:min-h-0 xl:overflow-y-auto xl:border-b-0 xl:border-r" aria-label="班级、学生、篇目与会话导航">
         <div className="mb-4 space-y-4 rounded-xl border border-primary/20 bg-primary/6 p-4 shadow-soft">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">学习记录核实</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">回答审核</p>
               <h1 className="mt-2 font-heading text-2xl">班级总览</h1>
             </div>
             <Badge variant="outline" className="bg-card/80">{records.length} 个会话</Badge>
           </div>
-          <p className="text-sm leading-6 text-muted-foreground">按班级 → 学生 → 项目 → 会话逐层进入完整记录；AI 辅助审计覆盖整个会话，教师最终提交也以整个会话为单位。</p>
+          <p className="text-sm leading-6 text-muted-foreground">按班级 → 学生 → 篇目 → 会话查看完整记录；AI 初筛提供疑点参考，最终审核由教师提交。</p>
           <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
             <div className="rounded-lg border border-border/65 bg-background/78 px-3 py-2 shadow-sm"><span className="text-foreground">{classCount}</span> 个班级</div>
             <div className="rounded-lg border border-border/65 bg-background/78 px-3 py-2 shadow-sm"><span className="text-foreground">{studentCount}</span> 名学生</div>
-            <div className="rounded-lg border border-border/65 bg-background/78 px-3 py-2 shadow-sm"><span className="text-foreground">{projectCount}</span> 个项目</div>
+            <div className="rounded-lg border border-border/65 bg-background/78 px-3 py-2 shadow-sm"><span className="text-foreground">{projectCount}</span> 个篇目</div>
             <div className="rounded-lg border border-border/65 bg-background/78 px-3 py-2 shadow-sm"><span className="text-foreground">{assistantCount}</span> 条 AI 回答</div>
           </div>
-          {issueCount > 0 ? <Badge variant="destructive" className="shadow-soft">AI 预审提示 {issueCount} 处需核实</Badge> : null}
+          {issueCount > 0 ? <Badge variant="destructive" className="shadow-soft">AI 初筛提示 {issueCount} 处待审核</Badge> : null}
         </div>
         <div className="space-y-4">
           {records.length === 0 ? (
-            <EmptyState title="暂无待核实学习记录" description="真实学生 AI 学习记录产生后，会进入这里等待教师核实。不会显示演示记录。" />
+            <EmptyState title="暂无待审核回答" description="学生产生新的 AI 学习记录后，会进入这里等待教师审核。" />
           ) : (
             groupedRecords.map((group) => (
               <section key={group.classLabel} className="rounded-xl border border-border/65 bg-background/78 p-3 shadow-soft backdrop-blur">
@@ -318,7 +341,7 @@ export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] })
                                     <Badge variant={session.conversationFinalized ? 'secondary' : 'outline'}>{reviewStateLabel(session.reviewState)}</Badge>
                                   </span>
                                   <span className="mt-2 block text-muted-foreground">
-                                    {session.assistantCount} 条 AI 回答 · 待提交 {session.pendingAssistantCount} 条 · 风险 {session.riskAssistantCount} 条
+                                     {session.assistantCount} 条 AI 回答 · 待提交 {session.pendingAssistantCount} 条 · 疑点 {session.riskAssistantCount} 条
                                   </span>
                                   <span className="mt-1 block text-muted-foreground">{preReviewLabel(session)}</span>
                                   <span className="mt-1 block text-muted-foreground">{new Date(session.createdAt).toLocaleString('zh-CN')}</span>
@@ -345,7 +368,7 @@ export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] })
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <CardTitle className="font-heading">{selected.classLabel} · {selected.studentName}</CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">《{selected.projectTitle}》 · {selected.sessionLabel}；右侧是完整对话，提交前每条 AI 回答都可以修订。</p>
+                     <p className="mt-1 text-sm text-muted-foreground">《{selected.projectTitle}》 · {selected.sessionLabel}；提交前可逐条修订 AI 回答。</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Badge variant={selected.conversationFinalized ? 'secondary' : 'outline'}>{reviewStateLabel(selected.reviewState)}</Badge>
@@ -358,13 +381,13 @@ export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] })
                   <div className="rounded-lg border border-border/65 bg-background/78 p-3"><span className="text-muted-foreground">AI 回答</span><p className="mt-1 text-2xl font-semibold">{selected.assistantCount}</p></div>
                   <div className="rounded-lg border border-primary/20 bg-primary/6 p-3"><span className="text-muted-foreground">待最终提交</span><p className="mt-1 text-2xl font-semibold text-primary">{selected.pendingAssistantCount}</p></div>
                   <div className="rounded-lg border border-border/65 bg-background/78 p-3"><span className="text-muted-foreground">已修订</span><p className="mt-1 text-2xl font-semibold">{selected.revisedAssistantCount}</p></div>
-                  <div className="rounded-lg border border-destructive/25 bg-destructive/5 p-3"><span className="text-muted-foreground">风险回答</span><p className="mt-1 text-2xl font-semibold text-destructive">{selected.riskAssistantCount}</p></div>
+                  <div className="rounded-lg border border-destructive/25 bg-destructive/5 p-3"><span className="text-muted-foreground">有疑点</span><p className="mt-1 text-2xl font-semibold text-destructive">{selected.riskAssistantCount}</p></div>
                 </div>
                 <PreReviewStatusPanel record={selected} />
                 {selected.preReviewIssues.length > 0 ? (
                   <div className="space-y-2">
-                    {selected.preReviewIssues.map((issue, index) => (
-                      <div key={`${issue.messageId}-${issue.quote}-${index}`} className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                    {selected.preReviewIssues.map((issue) => (
+                      <div key={`${issue.messageId}-${issue.label}-${issue.quote}`} className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
                         <AlertTriangle className="mr-2 inline size-4 text-destructive" aria-hidden="true" />
                         <span className="font-medium">{issue.label}</span>
                         <span className="ml-2 text-muted-foreground">{issue.quote}</span>
@@ -392,8 +415,8 @@ export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] })
                           <Badge variant={isAssistant ? 'outline' : 'secondary'}>{hasRevision ? 'AI 原回答' : isAssistant ? 'AI 回答' : '学生提问'}</Badge>
                           {isAssistant ? <Badge variant={transcriptItem.reviewState === 'revised' ? 'default' : 'outline'}>{assistantStateLabel(transcriptItem)}</Badge> : null}
                           {isAssistant && transcriptItem.preReviewIssues.length > 0 ? <Badge variant="destructive">{transcriptItem.preReviewIssues.length} 处疑点</Badge> : null}
-                          {isAssistant && transcriptItem.preReviewChecked && transcriptItem.preReviewIssues.length === 0 ? <Badge variant="outline">AI 已预审 · 无明显疑点</Badge> : null}
-                          {isAssistant && selected.preReviewState === 'partial' && !transcriptItem.preReviewChecked ? <Badge variant="outline">待补审</Badge> : null}
+                           {isAssistant && transcriptItem.preReviewChecked && transcriptItem.preReviewIssues.length === 0 ? <Badge variant="outline">AI 初筛 · 无明显疑点</Badge> : null}
+                           {isAssistant && selected.preReviewState === 'partial' && !transcriptItem.preReviewChecked ? <Badge variant="outline">待补充初筛</Badge> : null}
                           <span>{new Date(transcriptItem.createdAt).toLocaleString('zh-CN')}</span>
                         </div>
                         {isAssistant ? (
@@ -454,7 +477,7 @@ export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] })
                   <p className="mt-2 text-3xl font-semibold tracking-tight">{studentCount}</p>
                 </div>
                 <div className="rounded-xl border border-border/65 bg-background/78 p-4 shadow-soft">
-                  <p className="text-sm text-muted-foreground">项目</p>
+                  <p className="text-sm text-muted-foreground">篇目</p>
                   <p className="mt-2 text-3xl font-semibold tracking-tight">{projectCount}</p>
                 </div>
                 <div className="rounded-xl border border-border/65 bg-background/78 p-4 shadow-soft">
@@ -463,7 +486,7 @@ export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] })
                 </div>
               </CardContent>
             </Card>
-            <EmptyState title="请选择一条会话" description="左侧按班级 → 学生 → 项目 → 会话组织；选择后可审计整个会话，并在每个 AI 回答气泡内直接修订。" action={<FileSearch className="size-5 text-primary" />} />
+            <EmptyState title="请选择一条会话" description="左侧按班级 → 学生 → 篇目 → 会话组织；选择后可运行 AI 初筛、逐条修订并最终提交。" action={<FileSearch className="size-5 text-primary" />} />
           </div>
         )}
       </main>
