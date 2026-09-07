@@ -1,11 +1,7 @@
-import { Sparkles } from 'lucide-react';
-
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent } from '@/components/ui/card';
 import { StudentChatClient } from '@/components/workbench/student-chat-client';
 import { ErrorState } from '@/components/workbench/state-surfaces';
 import { getStudentConversation, getStudentProjects, getStudentWorkspace } from '@/lib/data/student';
-import { getStudentChatBlockedReasons, shouldClassifyProjectForStudentTurn } from '@/lib/student-chat-contract';
 
 export default async function StudentChatPage({ searchParams }: { searchParams?: Promise<{ projectId?: string; conversationId?: string }> }) {
   const params = await searchParams;
@@ -40,27 +36,8 @@ export default async function StudentChatPage({ searchParams }: { searchParams?:
   const chatClientKey = initialConversation
     ? `${initialConversation.id}|${initialConversation.conversationFinalized ? 'finalized' : 'open'}`
     : initialActiveProjectId ?? 'archive';
-  const projectClassificationRequired = shouldClassifyProjectForStudentTurn({
-    hasConversation: Boolean(initialConversation),
-    hasProject: Boolean(initialActiveProjectId),
-  });
-  const blockedReasons = getStudentChatBlockedReasons({
-    providerBlocked: workspace.data.providerBlocked,
-    projectClassificationBlocked: workspace.data.projectClassificationBlocked,
-    bloomClassificationBlocked: workspace.data.bloomClassificationBlocked,
-    projectClassificationRequired,
-  });
-
   return (
     <div className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-[100rem] flex-col px-3 py-3 sm:px-5 lg:h-[calc(100svh-3.5rem)] lg:overflow-hidden">
-      {blockedReasons.length > 0 ? (
-        <Alert className="shrink-0 border-destructive/30 bg-destructive/8 shadow-soft backdrop-blur">
-          <Sparkles className="size-4" aria-hidden="true" />
-          <AlertTitle className="font-heading">AI 服务还没有准备好</AlertTitle>
-          <AlertDescription>{blockedReasons.join('；')}</AlertDescription>
-        </Alert>
-      ) : null}
-
       <Card className="relative flex min-h-0 flex-1 overflow-hidden border-primary/20 bg-card/92 shadow-ink backdrop-blur-xl">
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-accent to-destructive/70" />
         <CardContent className="flex min-h-0 flex-1 p-0">

@@ -45,5 +45,6 @@ export function useMessageQueue({
     setQueue([]);
   }, []);
 
-  return { queue, queueCount: queue.length, enqueue, clear } as const;
+  const visibleQueue = blocked ? [] : queue;
+  return { queue: visibleQueue, queueCount: visibleQueue.length, enqueue, clear } as const;
 }

@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/dialog';
 import { AIMessageList } from '@/components/workbench/ai-message-list';
 import { ChatComposer } from '@/components/workbench/chat-composer';
-import { BlockedState, EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
+import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import type { BloomStatus } from '@/components/workbench/bloom-status-badge';
 import type { DailyArchiveSummary, ProjectSummary, StudentConversationInitial } from '@/lib/data/student';
 import {
@@ -36,8 +36,8 @@ import { useMessageQueue, type QueuedStudentMessage } from '@/hooks/use-message-
 import { useConversationSync } from '@/hooks/use-conversation-sync';
 import { useStudentAssignment } from '@/hooks/use-student-assignment';
 
-const globalPromptChips = ['《静夜思》的“疑”是什么意思？', '这句怎么翻译？', '诗人为什么这样写？', '帮我从分析层级继续追问'];
-const finalizedConversationBlockedReason = '这条会话已完成教师核实，不能继续追问。请从项目或空白入口新开一个会话继续学习。';
+const globalPromptChips = ['《静夜思》的“疑”是什么意思？', '这句怎么翻译？', '诗人为什么这样写？', '帮我换一个分析角度追问'];
+const finalizedConversationBlockedReason = '这条会话已完成教师审核，不能继续追问。请从篇目或空白入口新开会话。';
 
 type StudentChatMessage = UIMessage<unknown, {
   'student-assignment': StudentAssignmentData;
@@ -131,7 +131,6 @@ export function StudentChatClient({
       const payload = await response.clone().json().catch(() => ({})) as { blockedReason?: string };
       if (payload.blockedReason === 'teacher_conversation_finalized') {
         setConversationLocked(true);
-        clearQueue();
       }
     }
     if (nextConversationId) {
@@ -178,12 +177,12 @@ export function StudentChatClient({
   const busy = status === 'submitted' || status === 'streaming';
   const activeProject = useMemo(() => projects.find((project) => project.id === activeProjectId), [activeProjectId, projects]);
   const inProjectContext = Boolean(activeProjectId);
-  const projectDisplayName = activeProject?.title ? `《${activeProject.title}》项目` : '当前项目';
+  const projectDisplayName = activeProject?.title ? `《${activeProject.title}》` : '当前篇目';
   const promptChips = !inProjectContext
     ? globalPromptChips
     : activeProject?.title
-      ? [`《${activeProject.title}》里这句怎么翻译？`, '这处字词是什么意思？', '作者为什么这样写？', '帮我从分析层级继续追问']
-      : ['这句怎么翻译？', '这处字词是什么意思？', '作者为什么这样写？', '帮我从分析层级继续追问'];
+      ? [`《${activeProject.title}》里这句怎么翻译？`, '这处字词是什么意思？', '作者为什么这样写？', '帮我换一个分析角度追问']
+      : ['这句怎么翻译？', '这处字词是什么意思？', '作者为什么这样写？', '帮我换一个分析角度追问'];
   const classificationRequired = shouldClassifyProjectForStudentTurn({
     hasConversation: Boolean(conversationId),
     hasProject: inProjectContext,
@@ -193,38 +192,9 @@ export function StudentChatClient({
   const composerValue = error && !input.trim() && lastSubmittedInput ? lastSubmittedInput : input;
 
   useEffect(() => {
+    if (messages.length === 0) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
-
-  useEffect(() => {
-    if (busy || initialConversationSignatureRef.current === initialConversationSignature) return;
-    initialConversationSignatureRef.current = initialConversationSignature;
-
-    setConversationId(initialConversation?.id ?? '');
-    conversationIdRef.current = initialConversation?.id ?? '';
-    setConversationLocked(Boolean(initialConversation?.conversationFinalized));
-    syncFromConversation(initialConversation, initialActiveProjectId, projects);
-    clearQueue();
-    // 从服务端载入的历史消息 parts 里提取布鲁姆认知路径状态，恢复 bloomStatus，
-    // 使历史会话也能渲染 BloomStatusBadge（而不只是流式期间才显示）。
-    const initialBloomStatus: Record<string, BloomStatus> = {};
-    for (const message of initialConversation?.messages ?? []) {
-      if (message.role !== 'user') continue;
-      const bloomPart = (message.parts ?? []).find(
-        (part): part is { type: 'data-student-bloom'; data: StudentBloomData } =>
-          typeof part === 'object' && part !== null && (part as Record<string, unknown>).type === 'data-student-bloom',
-      );
-      if (!bloomPart) continue;
-      const { data } = bloomPart;
-      initialBloomStatus[data.messageId] = data.state === 'classified'
-        ? { state: 'classified', level: data.level }
-        : data.state === 'failed'
-          ? { state: 'failed', reason: data.reason }
-          : { state: 'pending' };
-    }
-    resetBloomStatus(initialBloomStatus);
-    setMessages((initialConversation?.messages ?? []) as StudentChatMessage[]);
-  }, [busy, initialActiveProjectId, initialConversation, initialConversationSignature, projects, setMessages, resetBloomStatus, syncFromConversation]);
 
   useEffect(() => {
     conversationIdRef.current = conversationId;
@@ -249,6 +219,36 @@ export function StudentChatClient({
     blocked: Boolean(providerBlocked) || conversationLocked,
     onDequeue: handleDequeue,
   });
+
+  useEffect(() => {
+    if (busy || initialConversationSignatureRef.current === initialConversationSignature) return;
+    initialConversationSignatureRef.current = initialConversationSignature;
+
+    setConversationId(initialConversation?.id ?? '');
+    conversationIdRef.current = initialConversation?.id ?? '';
+    setConversationLocked(Boolean(initialConversation?.conversationFinalized));
+    syncFromConversation(initialConversation, initialActiveProjectId, projects);
+    clearQueue();
+    // 从服务端载入的历史消息 parts 里提取提问类型状态，恢复 bloomStatus，
+    // 使历史会话也能渲染 BloomStatusBadge（而不只是流式期间才显示）。
+    const initialBloomStatus: Record<string, BloomStatus> = {};
+    for (const message of initialConversation?.messages ?? []) {
+      if (message.role !== 'user') continue;
+      const bloomPart = (message.parts ?? []).find(
+        (part): part is { type: 'data-student-bloom'; data: StudentBloomData } =>
+          typeof part === 'object' && part !== null && (part as Record<string, unknown>).type === 'data-student-bloom',
+      );
+      if (!bloomPart) continue;
+      const { data } = bloomPart;
+      initialBloomStatus[data.messageId] = data.state === 'classified'
+        ? { state: 'classified', level: data.level }
+        : data.state === 'failed'
+          ? { state: 'failed', reason: data.reason }
+          : { state: 'pending' };
+    }
+    resetBloomStatus(initialBloomStatus);
+    setMessages((initialConversation?.messages ?? []) as StudentChatMessage[]);
+  }, [busy, clearQueue, initialActiveProjectId, initialConversation, initialConversationSignature, projects, resetBloomStatus, setMessages, syncFromConversation]);
 
   const displayMessages = useMemo(
     () => [
@@ -295,7 +295,6 @@ export function StudentChatClient({
     setUploading(true);
     setUploadStatus('');
     setUploadError('');
-    const uploadStartTime = Date.now();
     const form = new FormData();
     form.set('file', file);
     form.set('metadata', JSON.stringify(conversationId
@@ -324,8 +323,7 @@ export function StudentChatClient({
         setAssignmentNotice({ kind: 'archive' });
       }
       refreshStudentRoute(payload.conversationId);
-      const elapsedSeconds = Math.round((Date.now() - uploadStartTime) / 1000);
-      setUploadStatus(`已上传《${payload.fileName ?? file.name}》，生成 ${payload.chunkCount ?? 0} 段检索片段（耗时约 ${elapsedSeconds} 秒）。`);
+      setUploadStatus(`${payload.fileName ?? file.name} 已上传，可用于当前会话`);
     } catch (uploadError) {
       setUploadError(uploadError instanceof Error ? uploadError.message : '附件上传失败。');
     } finally {
@@ -409,8 +407,8 @@ export function StudentChatClient({
           <button
             type="button"
             onClick={toggleSidebar}
-            title={sidebarCollapsed ? "展开项目归档" : "收起项目归档"}
-            aria-label={sidebarCollapsed ? "展开项目归档" : "收起项目归档"}
+            title={sidebarCollapsed ? "展开篇目与会话" : "收起篇目与会话"}
+            aria-label={sidebarCollapsed ? "展开篇目与会话" : "收起篇目与会话"}
             className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background/80 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
           >
             {sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
@@ -420,15 +418,15 @@ export function StudentChatClient({
           <section className="rounded-2xl border border-border/65 bg-card/86 p-3 shadow-soft">
             <div className="mb-3 flex items-start justify-between gap-3 px-1">
               <div>
-                <p className="font-heading text-lg">项目归档</p>
-                <p className="mt-1 text-xs text-muted-foreground">点项目开新会话；提到篇目的问题会自动归入。</p>
+                <p className="font-heading text-lg">篇目</p>
+                <p className="mt-1 text-xs text-muted-foreground">选择篇目开始新会话；明确提到篇目时会自动归入。</p>
               </div>
               <Badge variant="outline">{projects.length}</Badge>
             </div>
             {projects.length === 0 ? (
               <EmptyState
                 title="先自然提问"
-                description="系统会在识别到篇目后自动归档；无法识别时会提示原因。"
+                description="系统识别到篇目后会在这里保存学习记录。"
                 className="bg-background/60"
               />
             ) : (
@@ -452,7 +450,7 @@ export function StudentChatClient({
                           <span className="min-w-0">
                             <span className="block truncate font-heading text-base">《{project.title}》</span>
                             <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs leading-5 text-muted-foreground">
-                              <span>{project.questionCount} 个问题</span>
+                              <span>{project.questionCount} 条提问</span>
                               <span>{project.challengeProgress.statusLabel}</span>
                             </span>
                           </span>
@@ -503,14 +501,14 @@ export function StudentChatClient({
           <section className="rounded-2xl border border-border/65 bg-card/86 p-3 shadow-soft">
             <div className="mb-3 flex items-start justify-between gap-3 px-1">
               <div>
-                <p className="font-heading text-lg">日常会话归档</p>
-                <p className="mt-1 text-xs text-muted-foreground">没识别到篇目的会话保存在这里，可回看续问。</p>
+                <p className="font-heading text-lg">其他会话</p>
+                <p className="mt-1 text-xs text-muted-foreground">未归入篇目的会话保存在这里，可回看续问。</p>
               </div>
               <Badge variant="secondary">{dailyArchive.sessions.length}</Badge>
             </div>
             {dailyArchive.sessions.length === 0 ? (
               <div className="rounded-xl border border-dashed bg-background/50 px-3 py-4 text-xs text-muted-foreground">
-                暂无日常会话归档。
+                暂无其他会话。
               </div>
             ) : (
               <div className="space-y-1 rounded-xl border bg-background/60 p-2">
@@ -522,7 +520,7 @@ export function StudentChatClient({
                         <MessageSquare className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                         <span className="min-w-0">
                           <span className="block truncate font-medium text-foreground">{session.title}</span>
-                          <span>日常会话 · {session.messageCount} 条消息 · {session.updatedLabel}</span>
+                          <span>{session.messageCount} 条消息 · {session.updatedLabel}</span>
                         </span>
                       </Link>
                       <button
@@ -547,14 +545,14 @@ export function StudentChatClient({
           <div className="mx-auto flex max-w-3xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-medium text-muted-foreground">当前会话空间</p>
-              <p className="font-heading text-2xl tracking-tight">{inProjectContext ? projectDisplayName : conversationId ? '日常会话归档' : '从一个古诗文问题开始'}</p>
+              <p className="font-heading text-2xl tracking-tight">{inProjectContext ? projectDisplayName : conversationId ? '其他会话' : '从一个古诗文问题开始'}</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 {conversationLocked
                   ? '这条会话已完成教师核实，只能回看，不能继续追问。'
-                  : inProjectContext ? '新问题会直接归入当前项目，不再进行篇目识别。' : conversationId ? '这条会话不会补归属到项目；若要进入篇目学习流，请从项目或空白入口另开新会话。' : '直接提问即可；当问题里明确出现篇目时，系统会自动归入对应项目。'}
+                  : inProjectContext ? '新问题会直接归入当前篇目。' : conversationId ? '继续追问会保留在这条会话中；也可以从篇目或空白入口另开会话。' : '直接提问即可；问题中明确出现篇目时，系统会自动归入对应篇目。'}
               </p>
             </div>
-            <Badge className="w-fit border-primary/25 bg-primary/8 text-primary" variant="outline"><Sparkles className="mr-1 size-3" />{conversationLocked ? '教师已核实' : '提问 · 归档 · 挑战'}</Badge>
+            <Badge className="w-fit border-primary/25 bg-primary/8 text-primary" variant="outline"><Sparkles className="mr-1 size-3" />{conversationLocked ? '教师已审核' : '学习提问'}</Badge>
           </div>
         </div>
         <div className="order-2 border-t border-border/60 bg-card/92 p-4 shadow-[0_-18px_48px_-42px_rgba(26,26,46,0.55)] backdrop-blur lg:order-3">
@@ -576,25 +574,24 @@ export function StudentChatClient({
         </div>
         <div ref={scrollRef} className="order-3 min-h-0 flex-1 overflow-y-auto px-4 py-7 lg:order-2">
           <div className="mx-auto max-w-3xl space-y-6">
-            {providerBlocked ? <BlockedState title="学生 AI 能力未就绪" description={providerBlocked} /> : null}
             {classificationUnavailable ? (
               <div className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-muted-foreground">
-                篇目识别能力暂未就绪；从全局空白入口发起的新会话会先保存到日常会话归档，不影响继续提问。
+                篇目识别暂不可用；从空白入口发起的新会话会先保存到其他会话，不影响继续提问。
               </div>
             ) : null}
             {bloomUnavailable ? (
               <div className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-muted-foreground">
-                布鲁姆认知路径判断暂未就绪；项目问题会先照常保存，稍后不显示路径层级反馈。
+                提问类型判断暂不可用；问题会照常保存，但暂不显示提问类型。
               </div>
             ) : null}
             {messages.length === 0 ? (
               <EmptyState
                 title={inProjectContext ? `继续提问${activeProject?.title ? `《${activeProject.title}》` : '当前项目'}` : '把正在学的古诗文问题直接问出来'}
                 description={inProjectContext
-                  ? '这条新会话已经在当前项目下，首问会直接继承该项目，不触发篇目识别或篇目冲突检测。'
+                  ? '这条新会话已归入当前篇目。'
                   : conversationId
-                    ? '这是日常会话归档中的历史会话，继续追问只延续当前会话，不会补归属到项目。'
-                    : '第一屏从空白提问开始，不默认替你选最近项目。提到具体篇目时，系统会自动归入对应项目；无法可靠识别时会保存到日常会话归档。'}
+                    ? '继续追问会保留在当前会话中。'
+                    : '提到具体篇目时，系统会自动归入对应篇目；无法识别时会保存到其他会话。'}
                 action={(
                   <div className="flex flex-wrap justify-center gap-2">
                     {promptChips.map((chip) => (
@@ -612,8 +609,8 @@ export function StudentChatClient({
               <div className={cn('animate-in fade-in slide-in-from-bottom-2 rounded-lg border px-4 py-3 text-sm duration-300', assignmentNotice.kind === 'project' ? 'border-primary/20 bg-primary/5' : 'bg-muted/50 text-muted-foreground')} aria-live="polite">
                 <BookOpen className={cn('mr-2 inline size-4', assignmentNotice.kind === 'project' ? 'text-primary' : 'text-muted-foreground')} aria-hidden="true" />
                 {assignmentNotice.kind === 'project'
-                  ? `已归入《${assignmentNotice.title}》项目。`
-                  : '暂未可靠识别到具体篇目，已保存到日常会话归档。'}
+                  ? `已归入《${assignmentNotice.title}》。`
+                  : '暂未识别到具体篇目，已保存到其他会话。'}
               </div>
             ) : null}
             {busy ? (
@@ -637,7 +634,7 @@ export function StudentChatClient({
           <DialogHeader>
             <DialogTitle>删除会话</DialogTitle>
             <DialogDescription>
-              删除后，这条会话会从学生侧移除；未被教师确认无误或修订回答的内容不再进入学习记录核实、布鲁姆认知路径或挑战依据，已形成导出样本的后台数据仍保留。
+              删除后，这条会话会从学习记录中移除；其中尚未完成教师审核的内容不再用于提问类型判断或挑战参考。已经形成的导出数据仍会保留。
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-lg border bg-muted/40 p-3 text-sm">{deleteTarget?.title}</div>

@@ -11,7 +11,7 @@ export type ProjectCardData = ProjectSummary;
 function BloomMiniBar({ project }: { project: ProjectCardData }) {
   const confirmedLevel = project.challengeProgress.confirmedLevel;
   return (
-    <div className="grid grid-cols-6 gap-1.5" aria-label={`《${project.title}》挑战确认层级缩略图，学生问题路径只作挑战参考`}>
+    <div className="grid grid-cols-6 gap-1.5">
       {([1, 2, 3, 4, 5, 6] as BloomLevel[]).map((level) => {
         const info = bloomLevelInfo[level];
         const summary = project.levelSummary.find((item) => item.level === level);
@@ -23,7 +23,7 @@ function BloomMiniBar({ project }: { project: ProjectCardData }) {
               'rounded-md border px-1.5 py-2 text-center text-[10px] transition-[border-color,background-color] duration-200',
               active ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border/60 bg-muted/30 text-muted-foreground'
             )}
-            title={`L${level} ${info.label}：学生问题路径参考 ${summary?.pathQuestionCount ?? 0} 个，挑战通过确认 ${summary?.confirmedChallengeCount ?? 0} 次`}
+            title={`L${level} ${info.label}：相关提问 ${summary?.pathQuestionCount ?? 0} 条，挑战通过 ${summary?.confirmedChallengeCount ?? 0} 次`}
           >
             <span className="block font-semibold">L{level}</span>
             <span className="sr-only">{info.label}</span>
@@ -54,7 +54,7 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
           {confirmedLevel ? (
             <BloomBadge level={confirmedLevel} />
           ) : (
-            <span className="shrink-0 rounded-md border border-accent/40 bg-accent/8 px-2.5 py-1 text-xs text-accent-foreground/80">等待挑战</span>
+            <span className="shrink-0 rounded-md border border-accent/40 bg-accent/8 px-2.5 py-1 text-xs text-accent-foreground/80">尚未挑战</span>
           )}
         </div>
       </CardHeader>
@@ -66,19 +66,19 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
         <dl className="grid grid-cols-3 divide-x divide-border/60 rounded-lg border border-border/55 bg-background/70">
           <div className="flex flex-col items-center gap-1 px-2 py-3 text-center">
             <dt className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              <MessageSquare className="size-3" aria-hidden="true" />问题
+              <MessageSquare className="size-3" aria-hidden="true" />提问
             </dt>
             <dd className="font-heading text-xl tabular-nums">{project.questionCount}</dd>
           </div>
           <div className="flex flex-col items-center gap-1 px-2 py-3 text-center">
             <dt className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              <Swords className="size-3" aria-hidden="true" />当前
+              <Swords className="size-3" aria-hidden="true" />已通过
             </dt>
             <dd className="font-heading text-xl tabular-nums">{confirmedLevel ? `L${confirmedLevel}` : '—'}</dd>
           </div>
           <div className="flex flex-col items-center gap-1 px-2 py-3 text-center">
             <dt className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              <Route className="size-3" aria-hidden="true" />下一
+              <Route className="size-3" aria-hidden="true" />接下来
             </dt>
             <dd className="font-heading text-xl tabular-nums">{project.challengeProgress.isComplete ? '✓' : `L${project.challengeProgress.nextLevel}`}</dd>
           </div>
@@ -95,7 +95,7 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
       <CardFooter className="pt-0">
         <Button
           nativeButton={false}
-          render={<a href={`/student?projectId=${project.id}`}><BookOpen className="mr-2 size-4" aria-hidden="true" />进入项目新会话</a>}
+          render={<a href={`/student?projectId=${project.id}`}><BookOpen className="mr-2 size-4" aria-hidden="true" />进入篇目提问</a>}
           className="min-h-11 w-full cursor-pointer rounded-lg"
         />
       </CardFooter>
