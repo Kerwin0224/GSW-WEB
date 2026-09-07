@@ -17,8 +17,8 @@ const notoSerifSC = Noto_Serif_SC({
 });
 
 export const metadata: Metadata = {
-  title: "文韵智途 — 古诗文 AI 教学助手",
-  description: "以布鲁姆认知层次为核心的古典中文 AI 学习平台",
+  title: "文韵智途 · 古诗文学习与教学平台",
+  description: "围绕古诗文提问、练习与备课，支持教师审核 AI 回答。",
 };
 
 export default function RootLayout({

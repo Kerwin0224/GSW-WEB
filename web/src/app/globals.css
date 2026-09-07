@@ -95,7 +95,7 @@
 
   /* 静音 */
   --muted: oklch(0.946 0.011 89.7); /* #F0EDE5 */
-  --muted-foreground: oklch(0.623 0.011 72.6); /* #8B8680 */
+  --muted-foreground: #69645E; /* 辅助文字在宣纸底色上保持可读对比度。 */
 
   /* 强调色: 紫金 */
   --accent: oklch(0.727 0.062 87.9); /* #B7A57A */
@@ -215,6 +215,10 @@
   --bloom-6-fg: oklch(0.228 0.038 282.9); /* #1A1A2E — 9.88:1 on dark bloom-6 */
 }
 
+[data-role="admin"] .font-heading {
+  font-family: var(--font-sans);
+}
+
 /* Hex fallbacks for browsers without oklch support */
 @supports not (color: oklch(0 0 0)) {
   :root {
@@ -229,7 +233,7 @@
     --secondary: #F0EDE5;
     --secondary-foreground: #2D2D2D;
     --muted: #F0EDE5;
-    --muted-foreground: #8B8680;
+    --muted-foreground: #69645E;
     --accent: #B7A57A;
     --accent-foreground: #1A1A2E;
     --destructive: #C04851;
