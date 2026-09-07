@@ -1,6 +1,7 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type AppRole = 'admin' | 'teacher' | 'student';
+export type AvatarKey = 'ink' | 'pine' | 'cinnabar' | 'moon' | 'bamboo' | 'plum';
 export type ModelTier = 'flash' | 'advanced';
 export type ProviderCapability =
   | 'student_chat'
@@ -30,8 +31,8 @@ export interface Database {
   public: {
     Tables: {
       profiles: {
-        Row: { id: string; login_id: string | null; display_name: string; role: AppRole; status: 'active' | 'disabled'; created_at: string; updated_at: string };
-        Insert: { id: string; login_id?: string | null; display_name: string; role: AppRole; status?: 'active' | 'disabled' };
+        Row: { id: string; login_id: string | null; display_name: string; role: AppRole; status: 'active' | 'disabled'; avatar_key: AvatarKey; session_version: number; created_at: string; updated_at: string };
+        Insert: { id: string; login_id?: string | null; display_name: string; role: AppRole; status?: 'active' | 'disabled'; avatar_key?: AvatarKey };
         Update: Partial<Database['public']['Tables']['profiles']['Insert']>;
       };
       classes: {
@@ -131,6 +132,15 @@ export interface Database {
         Args: { p_login_id: string; p_password: string };
         Returns: { id: string; login_id: string; role: AppRole; display_name: string }[];
       };
+      authenticate_school_account_v2: {
+        Args: { p_login_id: string; p_password: string; p_server_signature: string };
+        Returns: { id: string; login_id: string; role: AppRole; display_name: string; avatar_key: AvatarKey; session_version: number }[];
+      };
+      change_own_password: {
+        Args: { p_current_password: string; p_new_password: string };
+        Returns: { id: string; login_id: string; role: AppRole; display_name: string; avatar_key: AvatarKey; session_version: number }[];
+      };
+      update_own_avatar: { Args: { p_avatar_key: string }; Returns: AvatarKey };
       get_profile: { Args: { p_user_id: string }; Returns: Database['public']['Tables']['profiles']['Row'][] };
       match_document_chunks: {
         Args: { query_embedding: Vector; match_count?: number; match_threshold?: number; project_id?: string | null };
