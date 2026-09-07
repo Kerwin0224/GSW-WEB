@@ -10,7 +10,7 @@ export default async function AdminExportsPage() {
   if (!result.ok) {
     return (
       <div className="p-6">
-        <ErrorState title="教学数据导出加载失败" description={result.message} />
+        <ErrorState title="SFT / DPO 导出加载失败" description={result.message} />
       </div>
     );
   }
@@ -23,9 +23,8 @@ export default async function AdminExportsPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="教学数据导出"
-        title="只把教师核实过的学习记录带出系统。"
-        description="这里把已确认无误或已修订的学习记录整理成教学数据导出批次，支持按时间、项目、教师等维度筛选并导出 SFT、DPO JSONL。"
+        title="SFT / DPO 导出"
+        description="按类型和筛选条件预览样本，再生成 SFT、DPO 或审核元数据 JSONL。"
         metrics={[
           { label: '可导出', value: approved.length, hint: '每条回答只取最新可导出版本' },
           { label: '历史批次', value: history.length, hint: 'export_batches' },
@@ -33,20 +32,14 @@ export default async function AdminExportsPage() {
         ]}
       />
 
-      <section className="space-y-4">
-        <SectionHeader
-          eyebrow="教学数据导出"
-          title="教学数据导出"
-          description="设置筛选条件，预览真实学习记录样本，再导出 SFT/DPO JSONL。"
-        />
+      <section>
         <DatasetExportClient />
       </section>
 
       <section className="space-y-4">
         <SectionHeader
-          eyebrow="导出历史"
           title="导出历史"
-          description="查看历史教学数据导出批次记录。"
+          description="查看历史 SFT / DPO 导出批次记录。"
         />
         <div className="rounded-xl border bg-card">
           <Table>
@@ -84,7 +77,7 @@ export default async function AdminExportsPage() {
                               : 'secondary'
                         }
                       >
-                        {batch.status}
+                        {{ ready: '可下载', failed: '失败', pending: '处理中' }[batch.status] ?? batch.status}
                       </Badge>
                     </TableCell>
                     <TableCell>{new Date(batch.created_at).toLocaleString('zh-CN')}</TableCell>

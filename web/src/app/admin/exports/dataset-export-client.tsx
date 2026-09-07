@@ -41,6 +41,19 @@ export default function DatasetExportClient() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const changeType = (value: string | null) => {
+    if (value !== 'sft' && value !== 'dpo' && value !== 'metadata') return;
+    setType(value);
+    setPreview(null);
+    setSuccess(null);
+  };
+
+  const changeFilters = (nextFilters: DatasetFilters) => {
+    setFilters(nextFilters);
+    setPreview(null);
+    setSuccess(null);
+  };
+
   const requestExport = async (previewOnly: boolean) => {
     if (previewOnly) {
       setLoading(true);
@@ -66,6 +79,7 @@ export default function DatasetExportClient() {
         setPreview(data);
       } else {
         setSuccess(`成功导出 ${data.recordCount} 条记录`);
+        setPreview(null);
         if (data.downloadUrl) window.location.href = data.downloadUrl;
       }
     } catch (err) {
@@ -86,18 +100,18 @@ export default function DatasetExportClient() {
           </Button>
         }
         title="筛选与预览"
-        description="预览返回前 100 条、篇目分布和样本覆盖率。"
+        description="修改类型或筛选条件后需要重新预览；确认导出才会创建 JSONL 文件与批次记录。"
         icon={<Filter className="size-5" />}
         className="max-w-3xl"
         footer={(
           <>
             <Button variant="outline" onClick={() => requestExport(true)} disabled={loading || exporting}>
               {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Eye className="mr-2 size-4" />}
-              预览前 100 条
+              预览样本
             </Button>
             <Button onClick={() => requestExport(false)} disabled={loading || exporting || !preview || preview.coverage.validRecords === 0}>
               {exporting ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Download className="mr-2 size-4" />}
-              导出 JSONL
+              生成并下载
             </Button>
           </>
         )}
@@ -106,7 +120,7 @@ export default function DatasetExportClient() {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>数据集类型</Label>
-              <Select value={type} onValueChange={(value) => setType(value as DatasetType)}>
+              <Select value={type} onValueChange={changeType} disabled={loading || exporting}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="sft">SFT JSONL</SelectItem>
@@ -117,7 +131,7 @@ export default function DatasetExportClient() {
             </div>
             <div className="space-y-2">
               <Label>导出范围</Label>
-              <Select value={filters.scope ?? 'unexported'} onValueChange={(value) => setFilters({ ...filters, scope: value === 'all' ? 'all' : 'unexported' })}>
+              <Select value={filters.scope ?? 'unexported'} disabled={loading || exporting} onValueChange={(value) => changeFilters({ ...filters, scope: value === 'all' ? 'all' : 'unexported' })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unexported">默认：尚未导出过</SelectItem>
@@ -127,7 +141,7 @@ export default function DatasetExportClient() {
             </div>
             <div className="space-y-2">
               <Label>质量等级</Label>
-              <Select value={filters.quality || 'all'} onValueChange={(value) => setFilters({ ...filters, quality: value === 'all' ? null : value })}>
+              <Select value={filters.quality || 'all'} disabled={loading || exporting} onValueChange={(value) => changeFilters({ ...filters, quality: value === 'all' ? null : value })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部</SelectItem>
@@ -139,11 +153,11 @@ export default function DatasetExportClient() {
             </div>
             <div className="space-y-2">
               <Label className="flex items-center gap-2"><Calendar className="size-4" />开始日期</Label>
-              <Input type="date" value={filters.startDate || ''} onChange={(e) => setFilters({ ...filters, startDate: e.target.value || undefined })} />
+              <Input type="date" disabled={loading || exporting} value={filters.startDate || ''} onChange={(event) => changeFilters({ ...filters, startDate: event.target.value || undefined })} />
             </div>
             <div className="space-y-2">
               <Label className="flex items-center gap-2"><Calendar className="size-4" />结束日期</Label>
-              <Input type="date" value={filters.endDate || ''} onChange={(e) => setFilters({ ...filters, endDate: e.target.value || undefined })} />
+              <Input type="date" disabled={loading || exporting} value={filters.endDate || ''} onChange={(event) => changeFilters({ ...filters, endDate: event.target.value || undefined })} />
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -176,7 +190,7 @@ export default function DatasetExportClient() {
               <Badge variant="outline">候选 {preview.coverage.eligibleRecords}</Badge>
               <Badge variant="secondary">有效 {preview.coverage.validRecords}</Badge>
               <Badge variant={preview.coverage.invalidRecords > 0 ? 'destructive' : 'outline'}>无效 {preview.coverage.invalidRecords}</Badge>
-              <Badge variant="outline">limit {preview.coverage.sampleLimit}</Badge>
+              <Badge variant="outline">预览上限 {preview.coverage.sampleLimit}</Badge>
             </div>
             <div className="rounded-lg border">
               <Table>
@@ -202,7 +216,7 @@ export default function DatasetExportClient() {
             </div>
             <div className="space-y-3">
               {preview.sampleRecords.map((record, index) => (
-                <div key={index} className="rounded-lg border bg-muted/30 p-4">
+                <div key={'metadata' in record ? record.metadata.sampleId : record.sampleId} className="rounded-lg border bg-muted/30 p-4">
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-xs font-medium text-muted-foreground">样本 #{index + 1}</span>
                     <span className="text-xs text-muted-foreground">{type.toUpperCase()} 格式</span>
