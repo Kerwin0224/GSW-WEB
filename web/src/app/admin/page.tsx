@@ -7,13 +7,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { getAdminDashboard } from '@/lib/data/admin';
-import { getLogFileStatus, readRecentAppEvents } from '@/lib/observability/server-log-store';
+import { AppLogReadError, getLogFileStatus, readRecentAppEvents } from '@/lib/observability/server-log-store';
 
 export default async function AdminDashboard() {
-  const [result, logStatus, logEvents] = await Promise.all([
+  const [result, logStatus, logLoadState] = await Promise.all([
     getAdminDashboard(),
     getLogFileStatus(),
-    readRecentAppEvents(6),
+    readRecentAppEvents(6).then(
+      (events) => ({ kind: 'loaded', events } as const),
+      (error: unknown) => {
+        if (error instanceof AppLogReadError) return { kind: 'unavailable' } as const;
+        throw error;
+      },
+    ),
   ]);
 
   if (!result.ok) {
@@ -24,6 +30,8 @@ export default async function AdminDashboard() {
     );
   }
 
+  const logEvents = logLoadState.kind === 'loaded' ? logLoadState.events : [];
+  const logsAvailable = logLoadState.kind === 'loaded';
   const { users, classes, readyCaps, mcp, exports } = result.data;
   const capabilityLabels = {
     student_chat: '学生提问回答',
@@ -49,7 +57,11 @@ export default async function AdminDashboard() {
   const aiOpsItems = [
     { label: '可路由能力', value: readyCaps.size, hint: '已配置模型路由，连接需另行检查' },
     { label: '外部工具', value: mcp.length, hint: '已启用的 MCP 服务' },
-    { label: '技术错误', value: logEvents.filter((event) => event.level === 'error').length, hint: '近期错误事件' },
+    {
+      label: '技术错误',
+      value: logsAvailable ? logEvents.filter((event) => event.level === 'error').length : '不可用',
+      hint: logsAvailable ? '近期错误事件' : '运行日志读取失败',
+    },
     { label: '教学样本', value: exports.reduce((sum, batch) => sum + batch.record_count, 0), hint: '可导出的确认/修订样本' },
   ];
 
@@ -63,7 +75,11 @@ export default async function AdminDashboard() {
         metrics={[
           { label: '账号', value: users.length, hint: '教师、学生与管理员' },
           { label: '班级', value: classes.length, hint: '教学范围' },
-          { label: '日志事件', value: logEvents.length, hint: '最近写入的技术事件' },
+          {
+            label: '日志事件',
+            value: logsAvailable ? logEvents.length : '不可用',
+            hint: logsAvailable ? '最近写入的技术事件' : '运行日志读取失败',
+          },
         ]}
       />
 
@@ -108,19 +124,35 @@ export default async function AdminDashboard() {
           </CardContent>
         </Card>
 
-        <Card className={hasTraceRecords ? 'border-primary/25 bg-primary/6' : 'border-accent/35 bg-accent/8'}>
+        <Card
+          className={
+            !logsAvailable
+              ? 'border-destructive/35 bg-destructive/6'
+              : hasTraceRecords
+                ? 'border-primary/25 bg-primary/6'
+                : 'border-accent/35 bg-accent/8'
+          }
+        >
           <CardHeader>
             <CardTitle className="flex items-center justify-between gap-3">
               <span className="flex items-center gap-2">
-                {hasTraceRecords ? <CheckCircle2 className="size-5 text-primary" aria-hidden="true" /> : <AlertTriangle className="size-5 text-primary" aria-hidden="true" />}
+                {logsAvailable && hasTraceRecords ? (
+                  <CheckCircle2 className="size-5 text-primary" aria-hidden="true" />
+                ) : (
+                  <AlertTriangle className="size-5 text-primary" aria-hidden="true" />
+                )}
                 追踪记录
               </span>
-              <Badge variant={hasTraceRecords ? 'secondary' : 'outline'}>{hasTraceRecords ? '已有记录' : '暂无记录'}</Badge>
+              <Badge variant={!logsAvailable ? 'destructive' : hasTraceRecords ? 'secondary' : 'outline'}>
+                {!logsAvailable ? '日志不可用' : hasTraceRecords ? '已有记录' : '暂无记录'}
+              </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <p className="leading-6 text-muted-foreground">
-              {hasTraceRecords
+              {!logsAvailable
+                ? '运行日志暂时无法读取，请稍后重试或前往运行日志页查看故障说明。'
+                : hasTraceRecords
                 ? `当前可查看 ${logEvents.length} 条近期事件和 ${exports.length} 个导出批次。`
                 : '暂无日志和导出记录。系统开始使用后，这里会出现可追溯的事件。'}
             </p>

@@ -64,6 +64,15 @@ async function insertLogEventRow(entry: StoredLogEvent) {
 
 export type StoredLogEvent = ReturnType<typeof sanitizeLogEvent>;
 
+export class AppLogReadError extends Error {
+  constructor(databaseCause: unknown, fileCause: unknown) {
+    super('运行日志的数据库和本地文件通道均不可用。', {
+      cause: new AggregateError([databaseCause, fileCause], 'Application log sources unavailable'),
+    });
+    this.name = 'AppLogReadError';
+  }
+}
+
 const APP_EVENT_TAIL_BYTES = 512 * 1024;
 const DEV_LOG_TAIL_BYTES = 256 * 1024;
 
@@ -170,6 +179,7 @@ function rowToStoredEvent(row: AppLogEventRow): StoredLogEvent {
  * 数据库不可用或非管理员会话（本地开发）时回落本地 .logs 文件。
  */
 export async function readRecentAppEvents(limit = 80): Promise<StoredLogEvent[]> {
+  let databaseCause: unknown = 'database returned no result';
   try {
     const supabase = await createClient();
     const { data, error } = await supabase
@@ -177,19 +187,20 @@ export async function readRecentAppEvents(limit = 80): Promise<StoredLogEvent[]>
       .select('created_at,level,area,event,route,method,status,request_id,message,digest,context')
       .order('created_at', { ascending: false })
       .limit(limit);
-    if (!error && data && data.length > 0) {
+    if (!error && data) {
       return (data as AppLogEventRow[]).map(rowToStoredEvent);
     }
-  } catch {
-    // 数据库通道不可用时走本地文件。
+    databaseCause = error;
+  } catch (error) {
+    databaseCause = error;
   }
   try {
     return (await readTailUtf8Lines(APP_LOG_FILE, APP_EVENT_TAIL_BYTES))
       .slice(-limit)
       .map((line) => JSON.parse(line) as StoredLogEvent)
       .reverse();
-  } catch {
-    return [];
+  } catch (fileCause) {
+    throw new AppLogReadError(databaseCause, fileCause);
   }
 }
 
