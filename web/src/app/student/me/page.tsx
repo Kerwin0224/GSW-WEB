@@ -20,27 +20,27 @@ export default async function StudentProfilePage() {
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="学习情况"
-        title="看看自己的学习足迹。"
-        description="每个篇目学到了第几层、下一步挑战什么，这里都能看到。层级由挑战产生。"
-        primaryAction={{ label: '继续提问', href: '/student' }}
-        secondaryAction={{ label: '去挑战', href: '/student/challenge' }}
+        title="学习记录"
+        description="按篇目查看提问记录、挑战练习和已经通过的层级。"
+        primaryAction={{ label: '学习提问', href: '/student' }}
+        secondaryAction={{ label: '挑战练习', href: '/student/challenge' }}
         metrics={[
-          { label: '项目', value: projects.length, hint: '正在学习的篇目' },
+          { label: '篇目', value: projects.length, hint: '有学习记录的篇目' },
           { label: '提问记录', value: totalQuestions, hint: '累计提问次数' },
-          { label: '待挑战', value: awaitingChallengeCount, hint: '还没有发起挑战的项目' },
+          { label: '挑战记录', value: totalChallenges, hint: '累计生成的挑战题' },
+          { label: '尚未通过', value: awaitingChallengeCount, hint: '还没有通过挑战的篇目' },
         ]}
       />
 
       <section className="space-y-4">
         <SectionHeader
-          title="我的项目"
-          description="点击项目，直接开始新的提问。"
+          title="我的篇目"
+          description="选择篇目，开始新的学习提问。"
         />
         {projects.length === 0 ? (
           <EmptyState
-            title="还没有项目"
-            description="提出第一个古诗文问题后，系统会按真实篇目保存学习记录；没有真实记录时不显示示例项目。"
+            title="还没有篇目记录"
+            description="提出第一个古诗文问题后，学习记录会按识别到的篇目保存。"
             action={<Button nativeButton={false} render={<Link href="/student">开始提问</Link>} />}
           />
         ) : (
@@ -54,22 +54,22 @@ export default async function StudentProfilePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>认知攀登进度</CardTitle>
-          <CardDescription>每一行是一个篇目，从 L1 记忆到 L6 创造，看你登到了第几层。</CardDescription>
+          <CardTitle>篇目挑战进度</CardTitle>
+          <CardDescription>每一行对应一个篇目，显示 L1 到 L6 的挑战通过情况。</CardDescription>
         </CardHeader>
         <CardContent>
           {hasRecords ? null : (
             <EmptyState
               title="等待第一次挑战"
-              description="完成第一次挑战后，这里会出现你的攀登路线图。"
+              description="完成第一次挑战后，这里会出现各层级的通过情况。"
               action={<Button nativeButton={false} render={<Link href="/student/challenge">去挑战</Link>} />}
             />
           )}
           {hasRecords ? <CognitiveProfileMatrix rows={projectBloomMatrix} /> : null}
           <div className="mt-6 rounded-lg border border-border/60 bg-background/60 p-4">
             <div className="mb-3 flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">已确认项目分布</p>
-              <p className="text-xs text-muted-foreground">按最高确认层级统计</p>
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">已通过层级分布</p>
+              <p className="text-xs text-muted-foreground">按各篇目最高通过层级统计</p>
             </div>
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
               {distribution.map((item) => (
@@ -80,7 +80,6 @@ export default async function StudentProfilePage() {
               ))}
             </div>
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">累计挑战 {totalChallenges} 次。</p>
         </CardContent>
       </Card>
     </div>

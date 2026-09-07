@@ -19,8 +19,8 @@ function levelCellCopy(row: ProjectBloomMatrixRow, level: BloomLevel) {
 
   if (state === 'achieved') {
     return {
-      label: '已确认',
-      ariaLabel: `《${row.title}》L${level} ${info.label} 已确认`,
+      label: '已通过',
+      ariaLabel: `《${row.title}》L${level} ${info.label} 已通过挑战`,
       icon: CheckCircle2,
       className: 'border-transparent shadow-sm',
       style: { backgroundColor: `var(--bloom-${level})`, color: `var(--bloom-${level}-fg)` },
@@ -29,8 +29,8 @@ function levelCellCopy(row: ProjectBloomMatrixRow, level: BloomLevel) {
 
   if (state === 'current') {
     return {
-      label: row.confirmedLevel ? '当前' : '待确认',
-      ariaLabel: `《${row.title}》L${level} ${info.label} ${row.confirmedLevel ? '当前待挑战' : '等待挑战'}`,
+      label: '待挑战',
+      ariaLabel: `《${row.title}》L${level} ${info.label} 待挑战`,
       icon: Circle,
       className: 'border-primary/55 bg-primary/10 text-primary ring-1 ring-primary/20',
       style: undefined,
@@ -38,8 +38,8 @@ function levelCellCopy(row: ProjectBloomMatrixRow, level: BloomLevel) {
   }
 
   return {
-    label: '未解锁',
-    ariaLabel: `《${row.title}》L${level} ${info.label} 未解锁`,
+    label: '未开放',
+    ariaLabel: `《${row.title}》L${level} ${info.label} 未开放`,
     icon: Lock,
     className: 'border-border/45 bg-muted/40 text-muted-foreground',
     style: undefined,
@@ -48,13 +48,13 @@ function levelCellCopy(row: ProjectBloomMatrixRow, level: BloomLevel) {
 
 export function CognitiveProfileMatrix({ rows }: { rows: ProjectBloomMatrixRow[] }) {
   return (
-    <div className="overflow-hidden rounded-lg border bg-background/50" aria-label="各项目布鲁姆认知攀登进度">
+    <div className="overflow-hidden rounded-lg border bg-background/50">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[48rem] border-collapse text-sm">
-          <caption className="sr-only">每个项目在 L1 到 L6 六个布鲁姆层级上的挑战确认状态</caption>
+          <caption className="sr-only">每个篇目在 L1 到 L6 六个层级上的挑战通过状态</caption>
           <thead>
             <tr className="border-b bg-muted/45">
-              <th scope="col" className="w-[15rem] px-4 py-3 text-left font-medium text-muted-foreground">项目</th>
+              <th scope="col" className="w-[15rem] px-4 py-3 text-left font-medium text-muted-foreground">篇目</th>
               {bloomLevels.map((level) => (
                 <th key={level} scope="col" className="px-3 py-3 text-center font-medium text-muted-foreground">
                   <span className="block text-foreground">L{level}</span>
@@ -70,7 +70,7 @@ export function CognitiveProfileMatrix({ rows }: { rows: ProjectBloomMatrixRow[]
                 <th scope="row" className="px-4 py-3 text-left align-middle font-medium">
                   <span className="line-clamp-2">《{row.title}》</span>
                   <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                    {row.confirmedLevel ? `已确认到 L${row.confirmedLevel}` : '尚无确认层级'}
+                    {row.confirmedLevel ? `已通过到 L${row.confirmedLevel}` : '尚未通过挑战'}
                   </span>
                 </th>
                 {bloomLevels.map((level) => {
@@ -85,7 +85,6 @@ export function CognitiveProfileMatrix({ rows }: { rows: ProjectBloomMatrixRow[]
                           cell.className
                         )}
                         style={cell.style}
-                        aria-label={cell.ariaLabel}
                         title={cell.ariaLabel}
                       >
                         <Icon className="size-3.5 shrink-0" aria-hidden="true" />
@@ -101,9 +100,9 @@ export function CognitiveProfileMatrix({ rows }: { rows: ProjectBloomMatrixRow[]
         </table>
       </div>
       <div className="flex flex-wrap gap-3 border-t bg-muted/25 px-4 py-3 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="size-3.5 text-primary" />已确认</span>
-        <span className="inline-flex items-center gap-1.5"><Circle className="size-3.5 text-primary" />当前待确认</span>
-        <span className="inline-flex items-center gap-1.5"><Lock className="size-3.5" />未解锁</span>
+        <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="size-3.5 text-primary" />已通过</span>
+        <span className="inline-flex items-center gap-1.5"><Circle className="size-3.5 text-primary" />待挑战</span>
+        <span className="inline-flex items-center gap-1.5"><Lock className="size-3.5" />未开放</span>
       </div>
     </div>
   );
