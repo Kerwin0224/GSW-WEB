@@ -47,9 +47,19 @@ export function AIMessagePart({ part, markdown = false }: { part: unknown; markd
     );
   }
   if (type.includes('classification')) {
-    return <Badge variant="outline">分类状态更新</Badge>;
+    return <Badge variant="outline">提问类型已更新</Badge>;
   }
   return null;
+}
+
+function keyedParts(parts: unknown[]) {
+  const occurrences = new Map<string, number>();
+  return parts.map((part) => {
+    const type = partType(part);
+    const occurrence = occurrences.get(type) ?? 0;
+    occurrences.set(type, occurrence + 1);
+    return { key: `${type}-${occurrence}`, part };
+  });
 }
 
 export function AIMessageList({ messages, userBloomStatus, assistantCardClassName }: { messages: MessageLike[]; userBloomStatus?: Record<string, BloomStatus>; assistantCardClassName?: string }) {
@@ -67,7 +77,7 @@ export function AIMessageList({ messages, userBloomStatus, assistantCardClassNam
               {status ? <BloomStatusBadge status={status} /> : null}
               <Card className={cn('px-4 py-3 text-left shadow-soft', isUser ? 'border-primary/20 bg-primary text-primary-foreground ring-primary/20' : 'border-border/60 bg-card/92', !isUser && assistantCardClassName)}>
                 <div className="space-y-2 text-sm">
-                  {(message.parts ?? []).map((part, index) => <AIMessagePart key={`${message.id}-${index}`} part={part} markdown={!isUser} />)}
+                  {keyedParts(message.parts ?? []).map(({ key, part }) => <AIMessagePart key={`${message.id}-${key}`} part={part} markdown={!isUser} />)}
                 </div>
               </Card>
             </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react';
+import type { ChangeEvent, KeyboardEvent, SubmitEvent } from 'react';
 import { Paperclip, Send } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -36,7 +36,7 @@ export function ChatComposer({
   uploadStatus,
   uploadError,
 }: ChatComposerProps) {
-  const submit = (event: FormEvent) => {
+  const submit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!value.trim() || disabled) return;
     onSubmit();
@@ -99,6 +99,7 @@ export function ChatComposer({
         </Button>
       </div>
       </form>
+      {onFileUpload ? <p className="text-xs text-muted-foreground">支持 TXT、MD、JSON，最大 512 KB。</p> : null}
     </div>
   );
 }
