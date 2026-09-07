@@ -10,18 +10,25 @@ export type BloomStatus =
   | { state: 'unclassified' };
 
 export function BloomStatusBadge({ status }: { status: BloomStatus }) {
-  if (status.state === 'classified') return <BloomBadge level={status.level} />;
+  if (status.state === 'classified') {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span className="text-xs text-muted-foreground">提问类型</span>
+        <BloomBadge level={status.level} />
+      </span>
+    );
+  }
   if (status.state === 'failed') {
     return (
-      <Badge variant="destructive" title={status.reason ?? '路径判断失败'}>
-        <AlertTriangle className="mr-1 size-3" />布鲁姆路径判断失败
+      <Badge variant="destructive" title={status.reason ?? '提问类型判断失败'}>
+        <AlertTriangle className="mr-1 size-3" />提问类型判断失败
       </Badge>
     );
   }
   if (status.state === 'pending') {
     return (
       <Badge variant="outline" className="bg-muted/60">
-        <Clock className="mr-1 size-3" />等待布鲁姆路径判断
+        <Clock className="mr-1 size-3" />正在判断提问类型
       </Badge>
     );
   }
@@ -32,10 +39,10 @@ export function BloomStatusBadge({ status }: { status: BloomStatus }) {
       </Badge>
     );
   }
-  return <Badge variant="secondary">未做路径判断</Badge>;
+  return <Badge variant="secondary">未判断提问类型</Badge>;
 }
 
 export function BloomText({ level }: { level: BloomLevel }) {
   const info = bloomLevelInfo[level];
-  return <span>L{level} {info.label} · {info.hint}</span>;
+  return <span>提问类型：L{level} {info.label} · {info.hint}</span>;
 }

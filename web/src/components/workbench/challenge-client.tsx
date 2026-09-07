@@ -22,6 +22,13 @@ type ApiIssue = { message?: string };
 type ApiIssueBag = ApiIssue[] | { formErrors?: string[]; fieldErrors?: Record<string, string[] | undefined> };
 type ApiError = { state?: ChallengeState | string; error?: string; resolution?: string; issues?: ApiIssueBag };
 
+const evaluationStateLabel: Record<PracticeRecord['evaluation_state'], string> = {
+  pending: '待作答',
+  evaluated: '已评阅',
+  failed: '评阅失败',
+  blocked: '暂不可用',
+};
+
 function getIssueMessages(issues: ApiIssueBag | undefined) {
   if (Array.isArray(issues)) return issues.map((issue) => issue.message).filter(Boolean);
   if (!issues || typeof issues !== 'object') return [];
@@ -62,7 +69,7 @@ function LevelRoute({ currentLevel, targetLevel }: { currentLevel?: number | nul
           <div key={level} className={cn('rounded-lg border bg-background/70 p-4', reached && 'border-primary/30 bg-primary/5', isTarget && 'ring-2 ring-primary/30')}>
             <BloomBadge level={level} className={reached || isTarget ? undefined : 'opacity-70'} />
             <p className="mt-3 text-sm font-medium">{info.hint}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{reached ? '已确认' : isTarget ? '当前挑战' : '待攀登'}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{reached ? '已通过' : isTarget ? '当前挑战' : '未开放'}</p>
           </div>
         );
       })}
@@ -110,7 +117,7 @@ export function ChallengeClient({
 
   const generateChallenge = async () => {
     if (localIsComplete) {
-      setMessage('L1 到 L6 已全部确认，本页保留路线图复盘，不再生成更高层级挑战。');
+       setMessage('L1 到 L6 的挑战已全部通过，不再生成更高层级挑战。');
       return;
     }
     setState('generating');
@@ -174,7 +181,7 @@ export function ChallengeClient({
       const nextLevel = Math.min((result.achieved ? result.target_bloom_level : confirmedLevel ?? 0) + 1 || 1, 6) as BloomLevel;
       setTargetLevel(nextLevel);
       setState('evaluated');
-      setMessage(result.achieved ? '挑战通过，项目当前确认层级已更新。' : '本次尚未通过，请先回到项目会话继续学习，再决定是否再次挑战。');
+      setMessage(result.achieved ? '挑战已通过，篇目的通过层级已更新。' : '本次尚未通过，请先回到学习提问继续复习，再来挑战。');
       router.refresh();
     } catch (error) {
       setState('error');
@@ -188,8 +195,8 @@ export function ChallengeClient({
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <CardTitle className="font-heading">《{projectTitle}》{projectAuthor ? ` · ${projectAuthor}` : ''}认知攀登路线</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">当前已确认层级：{localConfirmedLevel ? `L${localConfirmedLevel}` : '等待挑战'}；本页只调用真实 Provider 生成挑战并确认结果。</p>
+              <CardTitle className="font-heading">《{projectTitle}》{projectAuthor ? ` · ${projectAuthor}` : ''}挑战进度</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">已通过到：{localConfirmedLevel ? `L${localConfirmedLevel}` : '尚未通过挑战'}</p>
             </div>
             <Badge variant="outline">目标 L{targetLevel}</Badge>
           </div>
@@ -229,7 +236,7 @@ export function ChallengeClient({
               <div className="rounded-lg border bg-background/70 p-4">
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <BloomBadge level={challenge.target_bloom_level} />
-                  <Badge variant={challenge.evaluation_state === 'evaluated' ? 'default' : 'outline'}>{challenge.evaluation_state}</Badge>
+                   <Badge variant={challenge.evaluation_state === 'evaluated' ? 'default' : 'outline'}>{evaluationStateLabel[challenge.evaluation_state]}</Badge>
                   {resultTone ? <Badge variant={challenge.achieved ? 'default' : 'secondary'}>{resultTone}</Badge> : null}
                 </div>
                 <MarkdownContent content={challenge.prompt ?? ''} />
@@ -250,7 +257,7 @@ export function ChallengeClient({
                 <p className="text-sm text-muted-foreground">提交后你会看到本次是否通过，以及下一步可以怎么学。</p>
                 <Button type="button" disabled={!canEvaluate} onClick={evaluateChallenge}>
                   {state === 'evaluating' ? <Loader2 className="mr-2 size-4 animate-spin" /> : <CheckCircle2 className="mr-2 size-4" />}
-                  提交评估
+                  提交作答
                 </Button>
               </div>
 

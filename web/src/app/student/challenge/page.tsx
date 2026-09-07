@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { BookOpenText, Search, SlidersHorizontal, Swords } from 'lucide-react';
+import { BookOpenText, Search, SlidersHorizontal } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,11 +16,11 @@ type ChallengeFilter = 'all' | 'waiting' | 'active' | 'reinforce' | 'complete';
 type ChallengePageSearchParams = { projectId?: string | string[]; q?: string | string[]; status?: string | string[] };
 
 const challengeFilters: Array<{ value: ChallengeFilter; label: string; description: string }> = [
-  { value: 'all', label: '全部', description: '所有可挑战项目' },
-  { value: 'waiting', label: '等待挑战', description: '尚未开始确认' },
-  { value: 'active', label: '进行中', description: '已有挑战记录' },
+  { value: 'all', label: '全部', description: '所有可挑战篇目' },
+  { value: 'waiting', label: '等待挑战', description: '还没有挑战记录' },
+  { value: 'active', label: '进行中', description: '可以继续挑战' },
   { value: 'reinforce', label: '待巩固', description: '最近挑战未通过' },
-  { value: 'complete', label: '已完成', description: '六层均已确认' },
+  { value: 'complete', label: '已完成', description: '六层挑战均已通过' },
 ];
 
 function singleParam(value: string | string[] | undefined) {
@@ -57,7 +57,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
   const params = await searchParams;
   const [workspace, projectsResult] = await Promise.all([getStudentWorkspace(), getStudentProjects()]);
   if (!workspace.ok) return <div className="p-6"><ErrorState title="挑战入口加载失败" description={workspace.message} /></div>;
-  if (!projectsResult.ok) return <div className="p-6"><ErrorState title="项目挑战加载失败" description={projectsResult.message} /></div>;
+  if (!projectsResult.ok) return <div className="p-6"><ErrorState title="挑战练习加载失败" description={projectsResult.message} /></div>;
 
   const projects = projectsResult.data;
   const query = (singleParam(params?.q) ?? '').trim();
@@ -95,8 +95,8 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
       <header className="flex flex-col gap-4 rounded-lg border bg-background/80 p-5 sm:flex-row sm:items-start sm:justify-between">
         <SectionHeader
           eyebrow="挑战"
-          title="选择篇目，发起挑战"
-          description="选一篇学过的文章，检验自己学到了第几层。"
+          title="选择篇目，开始挑战练习"
+          description="选一篇学过的文章，完成当前层级的挑战题。"
         />
         <div className="flex shrink-0 flex-wrap gap-2">
           <Button nativeButton={false} render={<Link href="/student/me" />} variant="outline">
@@ -110,7 +110,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
       ) : null}
 
       {projects.length === 0 ? (
-        <EmptyState title="还没有可挑战的篇目" description="先在学习提问里形成项目，再来发起挑战。" />
+        <EmptyState title="还没有可挑战的篇目" description="先在学习提问中选择篇目并完成一次对话。" />
       ) : (
         <section className="grid gap-5 lg:grid-cols-[22rem_minmax(0,1fr)]">
           <aside className="space-y-4">
@@ -118,7 +118,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 font-heading text-lg">
                   <SlidersHorizontal className="size-5 text-primary" />
-                  筛选项目
+                  筛选篇目
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -128,7 +128,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                     <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input name="q" defaultValue={query} placeholder="搜索篇目或作者" className="pl-8" />
                   </div>
-                  <Button type="submit" size="sm" aria-label="筛选项目">
+                  <Button type="submit" size="sm" aria-label="筛选篇目">
                     <Search className="size-4" />
                   </Button>
                 </form>
@@ -153,11 +153,11 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
 
             <div className="overflow-hidden rounded-lg border bg-card">
               <div className="border-b px-4 py-3">
-                <p className="font-heading text-base">项目列表</p>
-                <p className="text-xs text-muted-foreground">点击项目后，右侧挑战区立即切换。</p>
+                <p className="font-heading text-base">篇目列表</p>
+                <p className="text-xs text-muted-foreground">选择篇目后，右侧显示对应挑战。</p>
               </div>
               {filteredProjects.length === 0 ? (
-                <div className="p-4 text-sm text-muted-foreground">没有匹配项目。清空搜索词或切换筛选条件后再试。</div>
+                <div className="p-4 text-sm text-muted-foreground">没有匹配篇目。清空搜索词或切换筛选条件后再试。</div>
               ) : (
                 <div className="divide-y">
                   {filteredProjects.map((project) => {
@@ -172,9 +172,9 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="truncate font-medium">《{project.title}》</p>
-                            <p className="mt-1 truncate text-xs text-muted-foreground">{project.author ?? '作者未标注'} · {project.questionCount} 个项目问题</p>
+                            <p className="mt-1 truncate text-xs text-muted-foreground">{project.author ?? '作者未标注'} · {project.questionCount} 条提问记录</p>
                           </div>
-                          {project.challengeProgress.confirmedLevel ? <BloomBadge level={project.challengeProgress.confirmedLevel} /> : <Badge variant="outline">待确认</Badge>}
+                          {project.challengeProgress.confirmedLevel ? <BloomBadge level={project.challengeProgress.confirmedLevel} /> : <Badge variant="outline">尚未通过</Badge>}
                         </div>
                         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                           <Badge variant={isReinforceProject(project) ? 'secondary' : 'outline'}>{project.challengeProgress.statusLabel}</Badge>
@@ -194,33 +194,29 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                 <div className="rounded-lg border bg-background/80 p-5">
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <SectionHeader
-                      eyebrow="当前挑战项目"
+                      eyebrow="当前篇目"
                       title={`《${selectedProject.title}》挑战`}
-                      description="挑战会告诉你通过与否、达到了哪一层。没通过就先回去再读一读，再来挑战。"
+                      description="提交作答后查看是否通过以及下一步学习建议。"
                     />
                     <div className="flex flex-wrap gap-2">
                       <Button nativeButton={false} render={<Link href={`/student?projectId=${selectedProject.id}`} />} variant="outline">
                         <BookOpenText className="mr-2 size-4" />
-                        项目提问
-                      </Button>
-                      <Button nativeButton={false} render={<Link href={buildHref(selectedProject.id)} />}>
-                        <Swords className="mr-2 size-4" />
-                        当前挑战
+                        学习提问
                       </Button>
                     </div>
                   </div>
 
                   <div className="mt-5 grid gap-3 md:grid-cols-3">
                     <div className="rounded-lg border bg-card/60 p-4">
-                      <p className="text-xs text-muted-foreground">当前已确认层级</p>
-                      <div className="mt-2">{selectedProgress.confirmedLevel ? <BloomBadge level={selectedProgress.confirmedLevel} /> : <Badge variant="outline">等待挑战</Badge>}</div>
+                      <p className="text-xs text-muted-foreground">已通过到</p>
+                      <div className="mt-2">{selectedProgress.confirmedLevel ? <BloomBadge level={selectedProgress.confirmedLevel} /> : <Badge variant="outline">尚未通过挑战</Badge>}</div>
                     </div>
                     <div className="rounded-lg border bg-card/60 p-4">
                       <p className="text-xs text-muted-foreground">下一挑战</p>
                       <p className="mt-2 font-heading text-lg">L{selectedProgress.nextLevel}</p>
                     </div>
                     <div className="rounded-lg border bg-card/60 p-4">
-                      <p className="text-xs text-muted-foreground">项目状态</p>
+                      <p className="text-xs text-muted-foreground">篇目状态</p>
                       <p className="mt-2 text-sm">{selectedProgress.statusLabel}</p>
                     </div>
                   </div>
@@ -240,11 +236,11 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                     isComplete={selectedProgress.isComplete}
                   />
                 ) : (
-                  <EmptyState title="未找到真实项目" description="当前项目不再可访问。请从左侧项目列表重新选择。" />
+                  <EmptyState title="未找到篇目" description="当前篇目不再可访问，请从左侧篇目列表重新选择。" />
                 )}
               </>
             ) : (
-              <EmptyState title="没有可挑战项目" description="当前筛选条件下没有可挑战项目。" />
+              <EmptyState title="没有可挑战篇目" description="当前筛选条件下没有可挑战篇目。" />
             )}
           </section>
         </section>
