@@ -1,8 +1,10 @@
 import 'server-only';
 
+import { randomUUID } from 'node:crypto';
 import { appendFile, mkdir, open, stat } from 'node:fs/promises';
 import path from 'node:path';
 
+import { createDatabaseSessionSignature } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
 import { emitLogEvent, sanitizeLogEvent, type LogEvent } from '@/lib/observability/log-event';
 
@@ -37,18 +39,21 @@ async function appendLogEventToFile(entry: StoredLogEvent) {
 
 async function insertLogEventRow(entry: StoredLogEvent) {
   try {
+    const eventId = randomUUID();
     const supabase = await createClient();
-    const { error } = await supabase.from('app_log_events').insert({
-      level: entry.level,
-      area: entry.area,
-      event: entry.event,
-      route: entry.route ?? null,
-      method: entry.method ?? null,
-      status: entry.status ?? null,
-      request_id: entry.requestId ?? null,
-      message: entry.message ?? null,
-      digest: entry.digest ?? null,
-      context: entry.context ?? null,
+    const { error } = await supabase.rpc('write_app_log_event', {
+      p_event_id: eventId,
+      p_level: entry.level,
+      p_area: entry.area,
+      p_event: entry.event,
+      p_route: entry.route ?? null,
+      p_method: entry.method ?? null,
+      p_status: entry.status ?? null,
+      p_request_id: entry.requestId ?? null,
+      p_message: entry.message ?? null,
+      p_digest: entry.digest ?? null,
+      p_context: entry.context ?? null,
+      p_server_signature: createDatabaseSessionSignature(`log:${eventId}`),
     });
     if (error) throw new Error(error.message);
   } catch (error) {

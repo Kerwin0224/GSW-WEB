@@ -141,6 +141,10 @@ export interface Database {
         Returns: { id: string; login_id: string; role: AppRole; display_name: string; avatar_key: AvatarKey; session_version: number }[];
       };
       update_own_avatar: { Args: { p_avatar_key: string }; Returns: AvatarKey };
+      write_app_log_event: {
+        Args: { p_event_id: string; p_level: 'debug' | 'info' | 'warn' | 'error'; p_area: string; p_event: string; p_route: string | null; p_method: string | null; p_status: number | null; p_request_id: string | null; p_message: string | null; p_digest: string | null; p_context: Json | null; p_server_signature: string };
+        Returns: undefined;
+      };
       get_profile: { Args: { p_user_id: string }; Returns: Database['public']['Tables']['profiles']['Row'][] };
       match_document_chunks: {
         Args: { query_embedding: Vector; match_count?: number; match_threshold?: number; project_id?: string | null };
