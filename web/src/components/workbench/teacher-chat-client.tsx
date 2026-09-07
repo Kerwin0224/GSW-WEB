@@ -85,8 +85,8 @@ function CreatePresetDialog({ open, onOpenChange }: { open: boolean; onOpenChang
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>新建提示词模板</DialogTitle>
-          <DialogDescription>只保存模板名称和提示词内容；保存后会回到教师问答继续使用。</DialogDescription>
+          <DialogTitle>新建教学模板</DialogTitle>
+          <DialogDescription>保存常用问法或教学要求，之后可直接填入备课问答。</DialogDescription>
         </DialogHeader>
         <form action={action} className="space-y-4">
           <div className="space-y-2">
@@ -95,11 +95,11 @@ function CreatePresetDialog({ open, onOpenChange }: { open: boolean; onOpenChang
             <FieldError message={state.errors?.title} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="quick-preset-content">提示词内容</Label>
+            <Label htmlFor="quick-preset-content">模板内容</Label>
             <Textarea id="quick-preset-content" name="system_instruction" className="min-h-44" placeholder="写下希望填入输入框的常用问法或教学处理要求。" />
             <FieldError message={state.errors?.system_instruction} />
           </div>
-          <input type="hidden" name="scenario" value="教师自建模板" />
+           <input type="hidden" name="scenario" value="备课问答" />
           {state.message ? (
             <p className={state.ok ? 'rounded-lg border border-primary/30 bg-primary/10 p-2 text-sm text-primary' : 'rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive'} role={state.ok ? 'status' : 'alert'}>
               {state.message}
@@ -186,6 +186,7 @@ export function TeacherChatClient({
   const currentSessionTitle = conversationId ? currentSession?.title ?? initialConversation?.title ?? '当前会话' : '新会话';
 
   useEffect(() => {
+    if (messages.length === 0) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
@@ -230,7 +231,6 @@ export function TeacherChatClient({
     setUploading(true);
     setUploadStatus('');
     setUploadError('');
-    const uploadStartTime = Date.now();
     const form = new FormData();
     form.set('file', file);
     form.set('metadata', JSON.stringify({
@@ -253,8 +253,7 @@ export function TeacherChatClient({
           return [nextSession, ...current.filter((session) => session.id !== nextConversationId)].slice(0, 12);
         });
       }
-      const elapsedSeconds = Math.round((Date.now() - uploadStartTime) / 1000);
-      setUploadStatus(`已上传《${payload.fileName ?? file.name}》，生成 ${payload.chunkCount ?? 0} 段检索片段（耗时约 ${elapsedSeconds} 秒）。`);
+      setUploadStatus(`${payload.fileName ?? file.name} 已上传，可用于当前会话`);
     } catch (uploadError) {
       setUploadError(uploadError instanceof Error ? uploadError.message : '附件上传失败。');
     } finally {
@@ -302,7 +301,7 @@ export function TeacherChatClient({
       <CreatePresetDialog open={createPresetOpen} onOpenChange={setCreatePresetOpen} />
       <PresetConflictDialog preset={pendingPreset} onCancel={() => setPendingPreset(null)} onReplace={replaceWithPendingPreset} onAppend={appendPendingPreset} />
 
-      <aside className={cn("order-2 border-t border-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--primary)_8%,transparent),transparent_18%),color-mix(in_oklch,var(--card)_92%,transparent)] p-3 shadow-soft backdrop-blur-xl lg:order-1 lg:max-h-[calc(100svh-5rem)] lg:overflow-y-auto lg:border-r lg:border-t-0 transition-all duration-300", sidebarCollapsed ? "lg:p-2" : "lg:p-4")} aria-label="教师问答会话管理">
+      <aside className={cn("order-2 border-t border-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--primary)_8%,transparent),transparent_18%),color-mix(in_oklch,var(--card)_92%,transparent)] p-3 shadow-soft backdrop-blur-xl lg:order-1 lg:max-h-[calc(100svh-5rem)] lg:overflow-y-auto lg:border-r lg:border-t-0 transition-all duration-300", sidebarCollapsed ? "lg:p-2" : "lg:p-4")} aria-label="备课问答会话管理">
         <div className="flex items-center justify-between gap-2 mb-3">
           <button
             type="button"
@@ -318,8 +317,8 @@ export function TeacherChatClient({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">会话管理</p>
-                <h2 className="mt-2 font-heading text-xl tracking-tight">教师问答</h2>
-                <p className="mt-2 text-xs leading-5 text-muted-foreground">左侧切换历史会话，右侧专注当前问答，不再展示看板式概览。</p>
+                <h2 className="mt-2 font-heading text-xl tracking-tight">备课问答</h2>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">切换历史会话，继续准备课堂内容。</p>
               </div>
               <Button type="button" size="sm" onClick={openNewConversation} disabled={busy} className="min-h-10 cursor-pointer rounded-xl shadow-ink">
                 <Plus className="size-4" />新会话
@@ -381,7 +380,7 @@ export function TeacherChatClient({
                   <ClipboardList className="size-4" aria-hidden="true" />
                 </span>
                 <div>
-                  <CardTitle className="font-heading">提示词模板</CardTitle>
+                  <CardTitle className="font-heading">教学模板</CardTitle>
                   <CardDescription>点击模板只填入输入框，不会自动发送。</CardDescription>
                 </div>
               </div>
@@ -408,14 +407,14 @@ export function TeacherChatClient({
                 </div>
               )}
               <Button type="button" variant="outline" onClick={() => setCreatePresetOpen(true)} className="min-h-11 w-full cursor-pointer rounded-xl bg-background/78 transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/35 hover:bg-primary/5 hover:shadow-soft">
-                <Plus className="size-4" />新建提示词模板
+                <Plus className="size-4" />新建教学模板
               </Button>
             </CardContent>
           </Card>
         </div>
       </aside>
 
-      <section className="order-1 flex max-h-[calc(100svh-8rem)] min-w-0 flex-col lg:order-2 lg:max-h-[calc(100svh-5rem)]" aria-label="教师问答工作区">
+      <section className="order-1 flex max-h-[calc(100svh-8rem)] min-w-0 flex-col lg:order-2 lg:max-h-[calc(100svh-5rem)]" aria-label="备课问答工作区">
         <div className="border-b border-border/60 bg-card/92 px-4 py-4 shadow-soft backdrop-blur">
           <div className="mx-auto flex max-w-4xl flex-col gap-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -423,7 +422,7 @@ export function TeacherChatClient({
                 <p className="text-sm font-medium text-muted-foreground">当前会话</p>
                 <p className="font-heading text-2xl tracking-tight">{currentSessionTitle}</p>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {conversationId ? '继续围绕当前问题链追问、上传附件或套用模板。' : '从空白输入开始，不打断教师问答节奏。'}
+                  {conversationId ? '继续围绕当前问题链追问、上传附件或套用模板。' : '从空白输入开始，不打断备课问答节奏。'}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -431,22 +430,14 @@ export function TeacherChatClient({
                 <Badge className="w-fit" variant="secondary">{uploadStatus ? '已含附件' : '可传附件'}</Badge>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {teacherPrompts.map((prompt) => (
-                <button key={prompt} type="button" className="min-h-10 cursor-pointer rounded-full border border-primary/20 bg-background/78 px-3 py-1.5 text-xs shadow-soft transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/40 hover:bg-primary/6 hover:shadow-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setInput(prompt)}>
-                  {prompt}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
 
         <div ref={scrollRef} className="order-2 min-h-0 flex-1 overflow-y-auto px-4 py-6">
           <div className="mx-auto flex max-w-4xl flex-col gap-6">
-            {providerBlocked ? <BlockedState title="教师 AI 能力未就绪" description={providerBlocked} /> : null}
             {messages.length === 0 ? (
               <EmptyState
-                title="开始一个新的教师问答会话"
+                title="开始新的备课问答"
                 description="围绕篇目、课堂目标、学生误区或追问设计直接提问；需要时再补模板或附件。"
                 action={(
                   <div className="flex flex-wrap justify-center gap-2">
@@ -467,7 +458,7 @@ export function TeacherChatClient({
                 {status === 'submitted' ? '已提交，等待模型首个响应…' : 'AI 正在生成教学支持…'}
               </div>
             ) : null}
-            {error ? <ErrorState title="教师问答响应失败" description={error.message} /> : null}
+            {error ? <ErrorState title="备课问答响应失败" description={error.message} /> : null}
           </div>
         </div>
 
@@ -493,8 +484,8 @@ export function TeacherChatClient({
       <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除教师会话</DialogTitle>
-            <DialogDescription>删除后，这条教师问答会话会从侧栏移除，相关附件也不再从该会话继续检索。</DialogDescription>
+             <DialogTitle>删除备课会话</DialogTitle>
+             <DialogDescription>删除后，这条备课问答会话会从侧栏移除，相关附件也不再用于这条会话。</DialogDescription>
           </DialogHeader>
           <div className="rounded-lg border bg-muted/40 p-3 text-sm">{deleteTarget?.title}</div>
           {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
