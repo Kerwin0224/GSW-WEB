@@ -6,9 +6,9 @@ import { Badge } from '@/components/ui/badge';
 type Role = 'admin' | 'teacher' | 'student';
 
 const roleConfig: Record<Role, { label: string; className: string }> = {
-  admin: { label: '管理员', className: 'bg-[hsl(var(--destructive))] text-white hover:bg-[hsl(var(--destructive))]' },
-  teacher: { label: '教师', className: 'bg-[hsl(var(--bloom-2))] text-white hover:bg-[hsl(var(--bloom-2))]' },
-  student: { label: '学生', className: 'bg-[hsl(var(--primary))] text-white hover:bg-[hsl(var(--primary))]' },
+  admin: { label: '管理员', className: 'bg-secondary text-secondary-foreground' },
+  teacher: { label: '教师', className: 'bg-bloom-2/15 text-foreground' },
+  student: { label: '学生', className: 'bg-primary/10 text-primary' },
 };
 
 export function RoleBadge({ role, className }: { role: Role; className?: string }) {
