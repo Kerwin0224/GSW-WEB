@@ -36,7 +36,7 @@ export async function createClient() {
         headers: session
           ? {
               'x-cwb-user-id': session.sub,
-              'x-cwb-session-signature': createDatabaseSessionSignature(session.sub),
+              'x-cwb-session-signature': createDatabaseSessionSignature(session.sub, session.sessionVersion),
               Authorization: `Bearer ${publishableKey}`,
             }
           : undefined,
