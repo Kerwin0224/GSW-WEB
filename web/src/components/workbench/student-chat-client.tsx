@@ -217,6 +217,7 @@ export function StudentChatClient({
   const { queue: queuedMessages, queueCount, enqueue: enqueueMessage, clear: clearQueue } = useMessageQueue({
     busy,
     blocked: Boolean(providerBlocked) || conversationLocked,
+    discard: conversationLocked,
     onDequeue: handleDequeue,
   });
 
