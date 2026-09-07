@@ -68,6 +68,12 @@ function SidebarProvider({
 }) {
   const isMobile = useIsMobile()
   const [openMobile, setOpenMobile] = React.useState(false)
+  const [previousMobile, setPreviousMobile] = React.useState(isMobile)
+
+  if (previousMobile !== isMobile) {
+    setPreviousMobile(isMobile)
+    if (!isMobile) setOpenMobile(false)
+  }
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
@@ -256,7 +262,7 @@ function SidebarTrigger({
   onClick,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar } = useSidebar()
+  const { toggleSidebar, isMobile, openMobile, open } = useSidebar()
 
   return (
     <Button
@@ -264,6 +270,8 @@ function SidebarTrigger({
       data-slot="sidebar-trigger"
       variant="ghost"
       size="icon-sm"
+      aria-expanded={isMobile ? openMobile : open}
+      aria-haspopup={isMobile ? "dialog" : undefined}
       className={cn(className)}
       onClick={(event) => {
         onClick?.(event)

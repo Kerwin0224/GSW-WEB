@@ -31,7 +31,7 @@ export type RoleNavItem = {
   icon: LucideIcon;
   /** 侧边栏悬停说明 */
   description?: string;
-  /** 是否进入头像菜单的快捷入口（学生端无侧边栏，菜单是唯一导航位） */
+  /** 头像菜单快捷入口，同时用于学生顶栏导航。 */
   primary?: boolean;
 };
 
@@ -44,9 +44,9 @@ const studentNavGroups: RoleNavGroup[] = [
   {
     label: '学习',
     items: [
-      { icon: BarChart3, label: '学习情况', href: '/student/me', description: '学习进度与认知分布', primary: true },
-      { icon: MessageSquare, label: '学习提问', href: '/student', description: '提出问题，自动按篇目整理' },
-      { icon: Swords, label: '挑战', href: '/student/challenge', description: '选择篇目检验学到了哪一层', primary: true },
+      { icon: MessageSquare, label: '学习提问', href: '/student', description: '围绕篇目提问', primary: true },
+      { icon: Swords, label: '挑战练习', href: '/student/challenge', description: '选择篇目开始练习', primary: true },
+      { icon: BarChart3, label: '学习记录', href: '/student/me', description: '查看提问与挑战记录', primary: true },
     ],
   },
 ];
@@ -55,9 +55,9 @@ const teacherNavGroups: RoleNavGroup[] = [
   {
     label: '教学',
     items: [
-      { icon: BarChart3, label: '教学总览', href: '/teacher', description: '全班学情与待核实任务', primary: true },
-      { icon: MessageSquare, label: '教师问答', href: '/teacher/chat', description: '备课提问，和 AI 讨论教学', primary: true },
-      { icon: FileSearch, label: '学习记录核实', href: '/teacher/audit', description: '逐条核实学生的 AI 对话', primary: true },
+      { icon: BarChart3, label: '教学总览', href: '/teacher', description: '班级学情与待办', primary: true },
+      { icon: MessageSquare, label: '备课问答', href: '/teacher/chat', description: '讨论讲解思路与课堂练习', primary: true },
+      { icon: FileSearch, label: '回答审核', href: '/teacher/audit', description: '核验 AI 回答与教学标签', primary: true },
     ],
   },
 ];
@@ -66,19 +66,19 @@ const adminNavGroups: RoleNavGroup[] = [
   {
     label: '学校管理',
     items: [
-      { icon: ShieldCheck, label: '管理看板', href: '/admin', description: '账号、班级与 AI 服务状态', primary: true },
+      { icon: ShieldCheck, label: '运行概览', href: '/admin', description: '账号规模与服务配置', primary: true },
       { icon: Users, label: '用户管理', href: '/admin/users', description: '创建和管理全校账号', primary: true },
-      { icon: School, label: '班级成员管理', href: '/admin/classes', description: '安排教师和学生的班级' },
+      { icon: School, label: '班级管理', href: '/admin/classes', description: '分配任课教师与学生' },
     ],
   },
   {
     label: 'AI 服务',
     items: [
-      { icon: Cpu, label: '模型接入', href: '/admin/providers', description: '配置 AI 模型与调用方式', primary: true },
-      { icon: Puzzle, label: '外部工具', href: '/admin/mcp', description: '管理 AI 可用的外部工具' },
-      { icon: FileText, label: '提示词预设', href: '/admin/presets', description: '维护教师问答的提示词模板' },
-      { icon: Download, label: '教学数据导出', href: '/admin/exports', description: '导出教师确认过的样本' },
-      { icon: Activity, label: '运行日志', href: '/admin/logs', description: '排查系统问题', primary: true },
+      { icon: Cpu, label: '模型供应商', href: '/admin/providers', description: 'Provider、Model ID 与角色路由', primary: true },
+      { icon: Puzzle, label: 'MCP Server', href: '/admin/mcp', description: '连接、授权与工具白名单' },
+      { icon: FileText, label: 'Prompt 预设', href: '/admin/presets', description: '系统提示词与教师模板' },
+      { icon: Download, label: 'SFT / DPO 导出', href: '/admin/exports', description: '导出已审核的训练样本' },
+      { icon: Activity, label: '运行日志', href: '/admin/logs', description: '请求追踪与故障诊断', primary: true },
     ],
   },
 ];
