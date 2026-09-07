@@ -81,6 +81,22 @@ test('redacts user and secret context while retaining request tracing in the dev
   assert.doesNotMatch(report, /private-message-token/);
 });
 
+test('redacts common credential forms embedded in free-text log messages', () => {
+  const event = presentLogEvent({
+    timestamp: '2026-09-07T08:17:30.000Z',
+    level: 'error',
+    area: 'render',
+    event: 'next_request_error',
+    message: 'password: correct-horse; Cookie: cwb_session=session-private; Authorization: Basic dXNlcjpwYXNz',
+  });
+
+  const report = buildDeveloperReport(event);
+
+  assert.doesNotMatch(report, /correct-horse/);
+  assert.doesNotMatch(report, /session-private/);
+  assert.doesNotMatch(report, /dXNlcjpwYXNz/);
+});
+
 test('filters only the returned sample by functional area', () => {
   // Given
   const sample = [

@@ -171,7 +171,9 @@ function traceIdFrom(context: Readonly<Record<string, unknown>> | undefined): st
 
 function redactReportText(value: string): string {
   return value
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]')
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [redacted]')
+    .replace(/\b(Cookie|Set-Cookie)\s*:\s*[^,\r\n]+/gi, '$1: [redacted]')
+    .replace(/\b(password|secret|token|authorization|api_?key)\s*[:=]\s*[^;\s,]+/gi, '$1: [redacted]')
     .replace(/([?&](?:password|secret|token|authorization|api_?key)=)[^&\s]+/gi, '$1[redacted]')
     .replace(/\bsk-[A-Za-z0-9_-]+/g, '[redacted]');
 }
