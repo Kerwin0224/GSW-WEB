@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 
+import { accountRpcProfilesSchema } from '@/lib/account-settings';
 import { validateSchoolLoginId } from '@/lib/school-login';
-import { attachSessionCookie } from '@/lib/session';
+import { attachSessionCookie, createDatabaseSessionSignature } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
 import type { AppRole } from '@/lib/supabase/database.types';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
@@ -14,7 +16,10 @@ const roleHome: Record<AppRole, string> = { student: '/student', teacher: '/teac
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
-
+const loginBodySchema = z.object({
+  loginId: z.string().optional(),
+  password: z.string().optional(),
+});
 function rateLimitKey(req: Request, loginId: string) {
   const forwarded = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
   const ip = forwarded || req.headers.get('x-real-ip') || 'unknown';
@@ -37,23 +42,19 @@ function clearLoginAttempt(key: string) {
   loginAttempts.delete(key);
 }
 
-type AuthenticatedSchoolAccount = {
-  id: string;
-  login_id: string;
-  role: AppRole;
-  display_name: string;
-};
-
 export async function POST(req: Request) {
   return withApiLogging(req, { area: 'auth', event: 'school_login', route: '/api/auth/login' }, async (requestId) => {
-    let body: { loginId?: string; password?: string };
+    let body: unknown;
     try {
-      body = (await req.json()) as { loginId?: string; password?: string };
-    } catch {
+      body = await req.json();
+    } catch { // no-excuse-ok: catch
       return NextResponse.json({ error: '请求格式无效', requestId }, { status: 400 });
     }
 
-    const { loginId: rawLoginId, password } = body;
+    const parsedBody = loginBodySchema.safeParse(body);
+    if (!parsedBody.success) return NextResponse.json({ error: '请求格式无效', requestId }, { status: 400 });
+
+    const { loginId: rawLoginId, password } = parsedBody.data;
     const loginIdResult = validateSchoolLoginId(rawLoginId ?? '');
     if (!loginIdResult.ok) return NextResponse.json({ error: loginIdResult.message, requestId }, { status: 400 });
     if (!password) return NextResponse.json({ error: '请输入密码。', requestId }, { status: 400 });
@@ -65,10 +66,11 @@ export async function POST(req: Request) {
     }
 
     const supabase = await createClient();
-    const { data, error } = await supabase.rpc('authenticate_school_account', {
+    const { data, error } = await supabase.rpc('authenticate_school_account_v2', {
       p_login_id: loginIdResult.loginId,
       p_password: password,
-    }) as { data: AuthenticatedSchoolAccount[] | null; error: { message: string } | null };
+      p_server_signature: createDatabaseSessionSignature(`login:${loginIdResult.loginId}`),
+    });
 
     if (error) {
       await writeLogEvent({
@@ -82,7 +84,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '账号认证服务不可用，请联系学校管理员。', requestId }, { status: 500 });
     }
 
-    const account = (data?.[0] ?? null) as AuthenticatedSchoolAccount | null;
+    const parsedAccounts = accountRpcProfilesSchema.safeParse(data);
+    if (!parsedAccounts.success) {
+      await writeLogEvent({
+        level: 'error',
+        area: 'auth',
+        event: 'school_login_rpc_invalid_response',
+        requestId,
+        route: '/api/auth/login',
+      });
+      return NextResponse.json({ error: '账号认证服务不可用，请联系学校管理员。', requestId }, { status: 500 });
+    }
+
+    const account = parsedAccounts.data[0] ?? null;
     if (!account) {
       await writeLogEvent({ level: 'warn', area: 'auth', event: 'school_login_rejected', requestId, route: '/api/auth/login', status: 401 });
       return NextResponse.json({ error: '账号或密码不正确。', requestId }, { status: 401 });
@@ -109,6 +123,7 @@ export async function POST(req: Request) {
       loginId: account.login_id,
       role: account.role,
       displayName: account.display_name,
+      sessionVersion: account.session_version,
     });
     return response;
   });
