@@ -41,24 +41,24 @@ function MemberList({ members, roleLabel }: { members: AdminClassListItem['teach
   );
 }
 
-function AddMemberForm({ klass, users, role }: { klass: AdminClassListItem; users: AdminUserListItem[]; role: 'teacher' | 'student' }) {
-  const roleLabel = role === 'teacher' ? '教师' : '学生';
+function AddMemberForm({ klass, users, memberRole }: { klass: AdminClassListItem; users: AdminUserListItem[]; memberRole: 'teacher' | 'student' }) {
+  const roleLabel = memberRole === 'teacher' ? '教师' : '学生';
   return (
     <form action={addClassMember} className="space-y-3 rounded-lg border bg-background/70 p-4">
       <input type="hidden" name="class_id" value={klass.id} />
-      <input type="hidden" name="role" value={role} />
+      <input type="hidden" name="role" value={memberRole} />
       <div className="space-y-2">
-        <Label htmlFor={`${klass.id}-${role}-profile`}>添加{roleLabel}账号</Label>
-        <Input id={`${klass.id}-${role}-profile`} name="profile_id" list={`${klass.id}-${role}-profiles`} placeholder="输入或选择 profile id" required />
-        <datalist id={`${klass.id}-${role}-profiles`}>
-          {users.filter((user) => user.role === role).map((user) => (
+        <Label htmlFor={`${klass.id}-${memberRole}-profile`}>添加{roleLabel}账号</Label>
+        <Input id={`${klass.id}-${memberRole}-profile`} name="profile_id" list={`${klass.id}-${memberRole}-profiles`} placeholder="输入或选择 profile id" required />
+        <datalist id={`${klass.id}-${memberRole}-profiles`}>
+          {users.filter((user) => user.role === memberRole).map((user) => (
             <option key={user.id} value={user.id}>{user.displayName} · {user.loginId ?? '未设置账号'} · {user.assignmentSummary}</option>
           ))}
         </datalist>
       </div>
-      {role === 'student' ? (
+      {memberRole === 'student' ? (
         <p className="rounded-lg border border-primary/20 bg-primary/5 p-2 text-xs text-primary">
-          学生将从原班级迁入当前班级；系统会自动移除该学生原有班级关系。
+          学生会从原班级迁入当前班级；其历史篇目和未删除的学习会话也会归入新班级，供新班教师审核。
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">教师可以负责多个班级；重复加入同一班级会被忽略。</p>
@@ -92,15 +92,15 @@ export function AdminClassMembersDialog({ klass, users }: AdminClassMembersDialo
         </TabsList>
         <TabsContent value="teachers" className="space-y-4">
           {klass.teachers.length === 1 ? (
-            <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">移除后该班级暂无负责教师，教师看板和教学正确性核实范围会受影响。</p>
+            <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">移除后该班级暂无负责教师，教学总览和回答审核范围会受影响。</p>
           ) : null}
-          <AddMemberForm klass={klass} users={users} role="teacher" />
+          <AddMemberForm klass={klass} users={users} memberRole="teacher" />
           <ScrollArea className="max-h-80 pr-3">
             <MemberList members={klass.teachers} roleLabel="教师" />
           </ScrollArea>
         </TabsContent>
         <TabsContent value="students" className="space-y-4">
-          <AddMemberForm klass={klass} users={users} role="student" />
+          <AddMemberForm klass={klass} users={users} memberRole="student" />
           <ScrollArea className="max-h-80 pr-3">
             <MemberList members={klass.students} roleLabel="学生" />
           </ScrollArea>

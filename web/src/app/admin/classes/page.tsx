@@ -1,7 +1,4 @@
-import { Upload } from 'lucide-react';
-
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { AdminClassCreateForm } from '@/components/workbench/admin-class-create-form';
@@ -14,7 +11,7 @@ export default async function AdminClassesPage() {
   if (!classResult.ok) {
     return (
       <div className="p-6">
-        <ErrorState title="班级成员管理加载失败" description={classResult.message} />
+        <ErrorState title="班级管理加载失败" description={classResult.message} />
       </div>
     );
   }
@@ -34,11 +31,10 @@ export default async function AdminClassesPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="班级成员管理"
-        title="把教师能看谁、学生属于哪个班级说清楚。"
-        description="班级成员管理是教师权限边界。教师看板、学习记录核实和班级分析都从这里收敛到真实班级范围。"
+        title="班级管理"
+        description="班级成员关系决定教师可查看和审核哪些学生记录。"
         metrics={[
-          { label: '班级', value: classes.length, hint: '真实 classes' },
+          { label: '班级', value: classes.length, hint: '当前班级数' },
           { label: '教师成员分配', value: teacherCount, hint: '教师可负责多个班级' },
           { label: '学生成员分配', value: studentCount, hint: '学生自动迁班保持单班级' },
         ]}
@@ -48,10 +44,8 @@ export default async function AdminClassesPage() {
         <SectionHeader
           title="创建班级"
           description="先建立真实班级，再通过成员分配弹窗添加教师和学生；学生加入新班级时自动迁班。"
-          action={<Button variant="outline" disabled><Upload className="mr-2 size-4" />批量班级导入暂未开放</Button>}
         />
         <Card>
-          <CardHeader><CardTitle>新建班级</CardTitle></CardHeader>
           <CardContent>
             <AdminClassCreateForm />
           </CardContent>
@@ -101,7 +95,7 @@ export default async function AdminClassesPage() {
                   </div>
                 </div>
                 {klass.teachers.length === 0 ? (
-                  <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">该班级暂无负责教师，教师看板和学习记录核实范围会受影响。</p>
+                  <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">该班级暂无负责教师，教学总览和回答审核范围会受影响。</p>
                 ) : null}
                 <AdminClassMembersDialog
                   klass={klass}
