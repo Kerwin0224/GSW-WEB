@@ -16,24 +16,24 @@ export default async function AdminPresetsPage() {
 
   const presets = result.data as Array<{ id: string; title: string; scenario: string; version: number; status: string }>;
   const publishedCount = presets.filter((preset) => preset.status === 'published').length;
+  const presetStatusLabel: Record<string, string> = { draft: '草稿', published: '已发布', disabled: '已停用' };
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="提示词预设"
-        title="教师端的 AI，要先被学校定义好。"
-        description="预设不是随手填 prompt。它定义课堂场景、变量和版本，教师只能使用 published 版本。"
+        title="Prompt 预设"
+        description="预设包含教学场景、变量、版本和发布状态；教师端只显示已发布版本。"
         metrics={[
-          { label: '全部预设', value: presets.length, hint: 'draft / published / disabled' },
+          { label: '全部预设', value: presets.length, hint: '包含草稿、已发布与已停用' },
           { label: '已发布', value: publishedCount, hint: '教师可用' },
-          { label: '生命周期', value: '3 态', hint: 'draft → published → disabled' },
+          { label: '状态', value: '3 种', hint: '草稿 / 已发布 / 已停用' },
         ]}
       />
 
       <section className="space-y-4">
         <SectionHeader
           title="预设列表"
-          description="发布真实预设前，教师问答保持阻塞。"
+          description="没有已发布预设时，教师仍可直接使用备课问答，但没有可选教学模板。"
           action={<AdminPromptPresetDialog />}
         />
         <div className="rounded-lg border bg-card">
@@ -50,7 +50,7 @@ export default async function AdminPresetsPage() {
               {presets.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4}>
-                    <EmptyState title="暂无 Prompt 预设" description="发布真实预设前，教师问答保持阻塞。" />
+                    <EmptyState title="暂无 Prompt 预设" description="创建并发布后，教师可在备课问答中选用；没有预设时仍可直接提问。" />
                   </TableCell>
                 </TableRow>
               ) : (
@@ -59,7 +59,7 @@ export default async function AdminPresetsPage() {
                     <TableCell>{preset.title}</TableCell>
                     <TableCell>{preset.scenario}</TableCell>
                     <TableCell>v{preset.version}</TableCell>
-                    <TableCell>{preset.status}</TableCell>
+                    <TableCell>{presetStatusLabel[preset.status] ?? preset.status}</TableCell>
                   </TableRow>
                 ))
               )}

@@ -42,15 +42,16 @@ export function AdminPromptPresetFormFields() {
         <div className="space-y-2">
           <Label htmlFor="variables">变量</Label>
           <Input id="variables" name="variables" placeholder="篇目, 年级, 学生误区" />
+          <p className="text-xs text-muted-foreground">多个变量请用半角逗号分隔。</p>
         </div>
         <div className="space-y-2">
           <Label>状态</Label>
           <Select name="status" defaultValue="draft">
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="draft">draft</SelectItem>
-              <SelectItem value="published">published</SelectItem>
-              <SelectItem value="disabled">disabled</SelectItem>
+              <SelectItem value="draft">草稿</SelectItem>
+              <SelectItem value="published">已发布</SelectItem>
+              <SelectItem value="disabled">已停用</SelectItem>
             </SelectContent>
           </Select>
           <FieldError message={state.errors?.status} />
