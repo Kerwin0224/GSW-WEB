@@ -211,7 +211,7 @@ export function McpServerDialog({
   async function handleSubmit() {
     setError(null);
     if (!connectionRef.trim()) {
-      setError('请先粘贴并解析 MCP JSON。');
+      setError('请先提供远程 MCP 地址。');
       return;
     }
 
@@ -261,7 +261,7 @@ export function McpServerDialog({
         onOpenChange={setOpen}
         trigger={trigger}
         title={mode === 'edit' ? '编辑 MCP Server' : '贴入 MCP JSON 接入'}
-        description="主流程就是贴 JSON、解析、测试、保存。只有遇到特殊情况时才需要展开高级选项。"
+        description="可以粘贴 JSON 自动填充，也可以在高级选项中手动填写远程地址；保存前建议测试连接。"
         icon={<Puzzle className="size-5" />}
         className="max-w-2xl"
         footer={(
@@ -294,7 +294,7 @@ export function McpServerDialog({
             </div>
             <div className="mt-3 space-y-1 text-sm text-muted-foreground">
               <p>正常接入只需要一段 MCP JSON。</p>
-              <p>系统会自动提取 URL、名称、token 与工具列表；测试成功后即可保存。</p>
+              <p>系统会提取 URL、名称、token 与工具白名单；未提供工具列表时，可通过连接测试发现工具。</p>
             </div>
           </div>
 
@@ -407,12 +407,15 @@ export function McpServerDialog({
                 <p className="text-xs text-muted-foreground">每行或逗号分隔一个工具名；如果测试成功且这里为空，会自动填入发现到的工具。</p>
               </div>
 
+            </div>
+          ) : null}
+
               <div className="space-y-2">
-                <Label>运行时授权角色</Label>
+                <p className="text-sm font-medium leading-none">运行时授权角色</p>
                 <div className="flex flex-wrap gap-3 rounded-md border p-3">
                   {(['teacher', 'student'] as RuntimeRole[]).map((role) => (
-                    <label key={role} className="flex cursor-pointer items-center gap-2 text-sm">
-                      <Checkbox checked={allowedRoles.has(role)} onCheckedChange={() => toggleRole(role)} />
+                    <label key={role} htmlFor={`mcp-role-${role}`} className="flex cursor-pointer items-center gap-2 text-sm">
+                      <Checkbox id={`mcp-role-${role}`} checked={allowedRoles.has(role)} onCheckedChange={() => toggleRole(role)} />
                       {role === 'teacher' ? '教师' : '学生'}
                     </label>
                   ))}
@@ -423,9 +426,6 @@ export function McpServerDialog({
                 <Checkbox checked={isEnabled} onCheckedChange={(value) => setIsEnabled(Boolean(value))} id="mcp-enabled" />
                 <Label htmlFor="mcp-enabled" className="cursor-pointer">保存后立即启用此 Server</Label>
               </div>
-            </div>
-          ) : null}
-
           {error ? (
             <Alert variant="destructive">
               <XCircle className="size-4" />

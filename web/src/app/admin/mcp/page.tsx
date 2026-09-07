@@ -41,9 +41,10 @@ function getTransportLabel(connectionRef: string | null) {
 
 function getRiskSummary(server: ServerRow, toolCount: number) {
   if (!server.is_enabled) return { label: '未启用', tone: 'secondary' as const, icon: XCircle, note: '已保存但不会向任何角色开放。' };
+  if (!server.connection_ref) return { label: '缺少地址', tone: 'destructive' as const, icon: Link2, note: '没有连接地址，运行时无法调用。' };
   if (server.allowed_roles.length === 0) return { label: '未授权', tone: 'destructive' as const, icon: ShieldAlert, note: '已启用但没有任何运行时角色可用。' };
   if (toolCount === 0) return { label: '零工具', tone: 'secondary' as const, icon: Wrench, note: '即使角色已授权，也不会暴露任何工具。' };
-  return { label: '可投放', tone: 'default' as const, icon: CheckCircle2, note: '角色、连接与工具白名单都已具备。' };
+  return { label: '配置完整', tone: 'default' as const, icon: CheckCircle2, note: '地址、角色和工具白名单已配置；连通性以最近一次连接测试为准。' };
 }
 
 function renderHealthBadge(server: ServerRow) {
@@ -89,24 +90,23 @@ export default async function AdminMcpPage() {
   const servers = result.data as ServerRow[];
   const enabledCount = servers.filter((server) => server.is_enabled).length;
   const roleReadyCount = servers.filter((server) => server.is_enabled && server.allowed_roles.length > 0).length;
-  const usableCount = servers.filter((server) => server.is_enabled && server.allowed_roles.length > 0 && getEnabledToolNames(server.enabled_tools).length > 0).length;
+  const completeCount = servers.filter((server) => server.is_enabled && server.connection_ref && server.allowed_roles.length > 0 && getEnabledToolNames(server.enabled_tools).length > 0).length;
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="外部工具"
-        title="把外部工具收敛成可审计、可投放的远程能力。"
-        description="这里优先回答三个问题：这个 Server 能不能连、会开放给谁、到底会暴露几个工具。管理员只需要维护远程 URL、角色与白名单。"
+        title="MCP Server"
+        description="查看远程地址、角色、工具白名单和最近一次连接测试；配置完整不等于已经连通。"
         metrics={[
           { label: 'Server', value: servers.length, hint: '已登记 MCP 能力' },
           { label: '已启用', value: enabledCount, hint: '显式 enabled' },
-          { label: '可投放', value: usableCount, hint: '角色和工具都已就绪' },
+          { label: '配置完整', value: completeCount, hint: '地址、角色和工具均已填写' },
         ]}
       />
 
       <section className="space-y-4">
         <SectionHeader
-          title="能力治理"
+          title="配置与授权"
           description="仅允许远程 https MCP；未知工具默认禁用，stdio 与隐式 fallback 都不会进入运行时。"
           action={<McpServerDialog />}
         />
@@ -217,7 +217,7 @@ export default async function AdminMcpPage() {
 
                         <div className="grid gap-4 sm:grid-cols-3">
                           <div className="rounded-lg border p-4">
-                            <p className="text-xs text-muted-foreground">运行时健康</p>
+                            <p className="text-xs text-muted-foreground">最近连接测试</p>
                             <div className="mt-2">
                               {renderHealthBadge(server)}
                             </div>
