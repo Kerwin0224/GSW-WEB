@@ -1,10 +1,7 @@
-import { Activity, FileJson, TerminalSquare } from 'lucide-react';
-
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AdminLogViewer } from '@/components/workbench/admin-log-viewer';
+import { AdminLogViewer, type AdminLogLoadState } from '@/components/workbench/admin-log-viewer';
 import { SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
-import { getLogFileStatus, readFilteredAppEvents, readRecentDevLogLines, type AppEventFilters } from '@/lib/observability/server-log-store';
+import { presentLogEvent } from '@/lib/observability/admin-log-presentation';
+import { readFilteredAppEvents, type AppEventFilters } from '@/lib/observability/server-log-store';
 
 export default async function AdminLogsPage({
   searchParams,
@@ -23,59 +20,41 @@ export default async function AdminLogsPage({
     userId: pick('user_id'),
     search: pick('q'),
   };
-  const [status, events, devLines] = await Promise.all([
-    getLogFileStatus(),
-    readFilteredAppEvents(filters, 120),
-    readRecentDevLogLines(120),
-  ]);
-  const errorCount = events.filter((event) => event.level === 'error').length;
-  const warnCount = events.filter((event) => event.level === 'warn').length;
+  const loadState: AdminLogLoadState = await readFilteredAppEvents(filters, 120).then(
+    (events) => ({ kind: 'loaded', events: events.map(presentLogEvent) }),
+    (error) => {
+      if (error instanceof Error) {
+        return {
+          kind: 'error',
+          message: '运行记录暂时无法读取。请稍后重试；如持续失败，请联系技术人员检查日志读取链路。',
+        };
+      }
+      throw error;
+    },
+  );
+  const hasLoadedEvents = loadState.kind === 'loaded';
+  const events = loadState.kind === 'loaded' ? loadState.events : [];
+  const followUpCount = events.filter((event) => event.result === 'failed' || event.result === 'not_completed' || event.result === 'attention').length;
+  const completedCount = events.filter((event) => event.result === 'succeeded').length;
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
-        eyebrow="运行日志"
-        title="出了问题，这里有迹可循。"
-        description="集中查看登录、API、渲染错误和开发日志。日志只记录摘要，密码、cookie、token、密钥等敏感字段会脱敏。"
+        title="运行日志"
+        description="查看登录、学习、备课、学校管理与 AI 服务的最近执行记录。页面数字只统计当前筛选返回的样本，不代表系统实时健康。"
         metrics={[
-          { label: '结构化事件', value: events.length, hint: status.appLogPath },
-          { label: '错误', value: errorCount, hint: '需要优先处理的错误' },
-          { label: '警告', value: warnCount, hint: '值得留意的警告' },
+          { label: '当前样本', value: hasLoadedEvents ? events.length : '不可用', hint: hasLoadedEvents ? '服务端筛选后返回，最多 120 条' : '运行记录读取失败' },
+          { label: '需要跟进', value: hasLoadedEvents ? followUpCount : '不可用', hint: '失败、未完成或需关注' },
+          { label: '明确完成', value: hasLoadedEvents ? completedCount : '不可用', hint: '仅表示对应操作已完成' },
         ]}
       />
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><FileJson className="size-5 text-primary" />结构化日志</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <Badge variant="outline">app_log_events 表</Badge>
-            <p>生产环境持久写入 Supabase；本地开发同时落盘 .logs。</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><TerminalSquare className="size-5 text-primary" />Dev 原始日志</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <Badge variant="outline">{status.devLogBytes} bytes</Badge>
-            <p>更新：{status.devLogUpdatedAt ?? '尚未创建'}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Activity className="size-5 text-primary" />运行建议</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm leading-6 text-muted-foreground">
-            本地开发用 <code className="rounded bg-muted px-1 py-0.5">npm run dev:logged</code>，同时写入 .logs/next-dev.log。
-          </CardContent>
-        </Card>
-      </section>
-
       <section className="space-y-4">
-        <SectionHeader title="最近日志" description="先看结构化事件定位 requestId，再看原始 dev 日志确认框架级 panic 或编译错误。" />
-        <AdminLogViewer events={events} devLines={devLines} filters={filters} />
+        <SectionHeader
+          title="功能执行记录"
+          description="先看功能、执行结果、影响对象和处理建议；请求标识与错误上下文只在“技术排查信息”中展示。"
+        />
+        <AdminLogViewer loadState={loadState} filters={filters} />
       </section>
     </div>
   );
