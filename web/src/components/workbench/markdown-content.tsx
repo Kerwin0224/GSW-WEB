@@ -170,7 +170,7 @@ function renderTextWithHighlights(text: string, keyPrefix: string, highlights: R
     cursor = match.end;
   }
 
-  if (cursor < text.length) nodes.push(...renderTextWithHighlights(text.slice(cursor), `${keyPrefix}-${key++}`, []));
+  if (cursor < text.length) nodes.push(...renderTextWithHighlights(text.slice(cursor), `${keyPrefix}-${key}`, []));
   return nodes;
 }
 
