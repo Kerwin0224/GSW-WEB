@@ -66,7 +66,7 @@ export async function POST(req: Request) {
     const startedAt = Date.now();
 
     let healthy = false;
-    let message = 'OK';
+    let message: string;
     let status = 0;
 
     try {

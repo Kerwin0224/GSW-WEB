@@ -184,7 +184,8 @@ function rowToStoredEvent(row: AppLogEventRow): StoredLogEvent {
  * 数据库不可用或非管理员会话（本地开发）时回落本地 .logs 文件。
  */
 export async function readRecentAppEvents(limit = 80): Promise<StoredLogEvent[]> {
-  let databaseCause: unknown = 'database returned no result';
+  // try 正常完成时在下方赋值、抛异常时由 catch 赋值，进入文件回落前必然已有值
+  let databaseCause: unknown;
   try {
     const supabase = await createClient();
     const { data, error } = await supabase

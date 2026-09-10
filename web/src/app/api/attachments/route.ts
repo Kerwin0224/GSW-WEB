@@ -116,7 +116,8 @@ async function ensureConversation({
     resolvedProjectId = project.id;
   }
 
-  const insert = workspace === 'student'
+  // zod 4.6 起 supabase insert 的泛型对异形联合不再放行，显式标注让两个分支共享同一插入类型
+  const insert: Database['public']['Tables']['conversations']['Insert'] = workspace === 'student'
     ? { owner_id: profileId, project_id: resolvedProjectId, source: 'student_chat' as const, title }
     : { owner_id: profileId, source: 'teacher_chat' as const, prompt_preset_id: presetId, title };
   // .is('deleted_at', null) 在 INSERT + returning 里作用于 returning 行过滤；
@@ -132,7 +133,8 @@ export async function POST(req: Request) {
   return withApiLogging(req, { area: 'api', event: 'conversation_attachment_upload', route: '/api/attachments' }, async () => {
     const form = await req.formData();
     const metadataValue = form.get('metadata');
-    let metadataJson: unknown = null;
+    // try/catch 的 catch 分支直接返回，走到后面时 metadataJson 必然已被赋值
+    let metadataJson: unknown;
     try {
       metadataJson = typeof metadataValue === 'string' ? JSON.parse(metadataValue) : null;
     } catch {

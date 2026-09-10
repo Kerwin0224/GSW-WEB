@@ -290,7 +290,8 @@ async function postJson(path, session, payload) {
     body: JSON.stringify(payload),
   });
   const text = await response.text();
-  let data = null;
+  // catch 分支直接抛错，走到 assert 时 data 必然已被赋值
+  let data;
   try {
     data = text ? JSON.parse(text) : null;
   } catch {

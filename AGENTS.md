@@ -1,6 +1,26 @@
 始终用中文回答我的问题！
 
+项目所用的技术栈，若技术栈发生偏移应该告知开发者详细情况与改进方案：
+前端 + 全栈框架：Next.js（App Router）+ TypeScript + Tailwind + shadcn/ui
+后端 + 数据库 + Auth：Supabase
+AI 能力层：Vercel AI SDK
+部署：Vercel
+
+使用 find-docs 这个 SKILL 来查询上述技术栈的官方文档，而不是凭借模型不可靠的知识库！
+
+## 技术栈治理
+
+**版本策略**：技术栈一律取"生态当前可用的最新版"。升级前先查目标版本与工具链的 peer 约束（`npm view <pkg> peerDependencies`），跨大版本升级后依次用 `npx tsc --noEmit`、`npm run lint`、`npm test` 验证，构建由 Vercel 预览部署兜底（前端禁止本地跑 build/dev）。
+
+**已知版本天花板**（环境里查不出的约束，防止被误"修复"）：
+
+- `typescript` 锁定 ^6.0 桥接线：typescript-eslint 要等 TS 7.1 的稳定程序化 API 才支持 TS 7（typescript-eslint#10940）。支持落地后升 `typescript@^7` 并重跑验证。
+- ESLint 采用组合式配置（见 `web/eslint.config.mjs` 头注释），不引入 `eslint-config-next`。
+
+**依赖审计**：每个依赖必须能在源码里找到真实引用（`rg -l "<包名>" src scripts`），零引用直接移除；shadcn 生成的模板组件无人使用时，连同其专属依赖一起删。
+
 <!-- gitnexus:start -->
+
 # GitNexus — Code Intelligence
 
 This project is indexed by GitNexus as **GSW-WEB** (3060 symbols, 7468 relationships, 263 execution flows).
