@@ -38,6 +38,17 @@ GitHub 是唯一 hub：代码和 schema 都从提交流出，Vercel 和 Supabase
 2. push 分支 → Vercel 自动出预览部署（链接见 PR 或 Vercel dashboard）。
 3. merge main → Vercel 自动更新生产，CI 自动推送迁移。迁移先于新代码生效（当前都是加列加表，向后兼容）。
 
+## Git 工作流（与 Vercel 配合）
+
+main = 生产分支，改动按风险分流：
+
+| 改动类型 | 流程 |
+|---|---|
+| 文档、注释、单文件小修 | 直接 commit 到 main 并 push；生产部署即构建验证，异常时 Vercel 控制台 Instant Rollback 回退 |
+| 依赖升级、schema 迁移、多文件重构 | 短命分支 + PR：Vercel 预览验证构建（预览 **仅由 PR 触发**，项目 Preview Deployments 设为 Only PRs，只推分支不触发），预览 READY 后 merge，生产自动更新 |
+
+注意：预览部署域有 Vercel SSO 保护，外部 curl 探活只能在生产域做；预览的 READY 状态即构建验证。
+
 ## 已固化的自动化（现状清单）
 
 | 项 | 值 |

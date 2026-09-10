@@ -26,3 +26,4 @@ output/
 *.tsbuildinfo
 output-*.png
 *-playwright-*.png
+.vercel
