@@ -2,6 +2,7 @@ import { convertToModelMessages, createUIMessageStream, createUIMessageStreamRes
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
+import { writeLogEvent } from '@/lib/observability/server-log-store';
 import { extractTextFromParts, getCapabilities, jsonForDatabase, requireRole, resolveEnvSecret, resolveLanguageModel } from '@/lib/data/common';
 import { isStudentConversationFinalized } from '@/lib/data/conversation-finalization';
 import { retrieveConversationDocumentChunks } from '@/lib/data/retrieval';
@@ -10,7 +11,6 @@ import { shouldClassifyProjectForStudentTurn } from '@/lib/student-chat-contract
 import {
   buildStudentSystemPrompt,
   normalizeConcreteProjectTitle,
-  normalizeProjectAuthor,
 } from '@/lib/student-chat-prompts';
 import {
   classifyBloomLevel,
@@ -137,18 +137,34 @@ async function resolveProjectAssignment({
   ownerId,
   userText,
   projectModel,
+  requestId,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
   ownerId: string;
   userText: string;
   projectModel: LanguageModel | null;
+  requestId: string;
 }): Promise<ProjectAssignment> {
-  const classified = projectModel ? await classifyProjectFromQuestion(projectModel, userText) : null;
-  const title = classified?.title ?? null;
+  const { data: ownedTitles } = await supabase.from('text_projects').select('title').eq('owner_id', ownerId);
+  const knownTitles = (ownedTitles ?? []).map((row) => row.title).filter((title): title is string => Boolean(title));
+  const classified = projectModel
+    ? await classifyProjectFromQuestion(projectModel, userText, knownTitles)
+    : { title: null, author: null, failure: 'model-error' as const };
+  const title = classified.title ?? null;
 
-  if (!title) return { kind: 'archive', projectId: null, title: null };
+  if (!title) {
+    await writeLogEvent({
+      level: 'warn',
+      area: 'api',
+      event: 'project_classification_fallback',
+      requestId,
+      route: '/api/student/chat',
+      context: { reason: classified.failure ?? 'unclassified' },
+    });
+    return { kind: 'archive', projectId: null, title: null };
+  }
 
-  const project = await ensureProject(supabase, ownerId, title, classified?.author ?? null);
+  const project = await ensureProject(supabase, ownerId, title, classified.author ?? null);
   return { kind: 'project', projectId: project.id, title: project.title };
 }
 
@@ -162,7 +178,7 @@ function assignmentHeaders(response: Response, assignment: ProjectAssignment | n
 }
 
 export async function POST(req: Request) {
-  return withApiLogging(req, { area: 'api', event: 'student_chat', route: '/api/student/chat' }, async () => {
+  return withApiLogging(req, { area: 'api', event: 'student_chat', route: '/api/student/chat' }, async (requestId) => {
     const role = await requireRole('student');
     if (!role.ok) return Response.json({ error: role.message }, { status: role.reason === 'forbidden' ? 403 : 401 });
     let body: unknown;
@@ -262,8 +278,18 @@ export async function POST(req: Request) {
     }
 
     if (shouldClassifyProject) {
-      projectAssignmentPromise = resolveProjectAssignment({ supabase, ownerId: role.data.id, userText, projectModel })
-        .catch(() => ({ kind: 'archive', projectId: null, title: null }));
+      projectAssignmentPromise = resolveProjectAssignment({ supabase, ownerId: role.data.id, userText, projectModel, requestId })
+        .catch(async (error) => {
+          await writeLogEvent({
+            level: 'error',
+            area: 'api',
+            event: 'project_classification_fallback',
+            requestId,
+            route: '/api/student/chat',
+            message: error instanceof Error ? error.message : 'project assignment failed',
+          });
+          return { kind: 'archive', projectId: null, title: null };
+        });
     }
 
     projectId = conversation.project_id ?? projectId;
@@ -321,7 +347,7 @@ export async function POST(req: Request) {
       : '';
     const modelId = caps.student_chat.modelId;
     if (!modelId) return Response.json({ error: 'Model id missing', resolution: 'Provider capability 缺少 model_id；不能选择默认模型。' }, { status: 503 });
-    let mcp;
+    let mcp: Awaited<ReturnType<typeof getRoleMcpTools>>;
     try {
       mcp = await getRoleMcpTools(supabase, 'student');
     } catch (error) {

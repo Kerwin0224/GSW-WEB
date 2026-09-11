@@ -10,7 +10,7 @@
  * StudentChatClient 只消费这个小接口，不再自己解析协议细节。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { toast } from 'sonner';
 
 import type { ProjectSummary, StudentConversationInitial } from '@/lib/data/student';
@@ -26,6 +26,7 @@ export function useStudentAssignment({
   conversationId,
   refreshRoute,
   initialProjectId = '',
+  isStreamingRef,
 }: {
   projects: ProjectSummary[];
   conversationId: string;
@@ -33,6 +34,11 @@ export function useStudentAssignment({
   refreshRoute: (routeConversationId?: string) => void;
   /** 服务端首帧已知的初始项目（URL 参数或载入的会话），避免首帧闪回空白态。 */
   initialProjectId?: string;
+  /**
+   * 流式进行中时只给回执、不刷新路由：refresh 会让服务端 initialConversation
+   * 从无到有、翻转整机 key 导致流中 remount（白屏）。流结束的 onFinish 会补刷。
+   */
+  isStreamingRef?: RefObject<boolean>;
 }) {
   const [activeProjectId, setActiveProjectId] = useState(initialProjectId);
   const [expandedProjectId, setExpandedProjectId] = useState(initialProjectId);
@@ -79,13 +85,13 @@ export function useStudentAssignment({
       const alreadyInProjectContext = Boolean(nextProjectId) && activeProjectIdRef.current === nextProjectId;
       if (!alreadyInProjectContext) {
         setAssignmentNotice({ kind: 'project', title: assignment.title });
-        toast.success(`已归档到《${assignment.title}》`, {
+        toast.success(`已归入《${assignment.title}》`, {
           description: '本次提问已进入左侧项目，可随时回看。',
           duration: 5000,
         });
         if (nextProjectId) setJustArchivedProjectId(nextProjectId);
       }
-      refreshRoute(routeConversationId);
+      if (!isStreamingRef?.current) refreshRoute(routeConversationId);
       return;
     }
 
@@ -94,8 +100,8 @@ export function useStudentAssignment({
       description: '没有识别到明确篇目；这条会话会保留在左侧归档里，可回看续问。',
       duration: 5000,
     });
-    refreshRoute(routeConversationId);
-  }, [conversationId, projects, refreshRoute]);
+    if (!isStreamingRef?.current) refreshRoute(routeConversationId);
+  }, [conversationId, isStreamingRef, projects, refreshRoute]);
 
   /** 通路一：首问即知归属，从 HTTP 响应 header 读取。 */
   const acceptResponseHeaders = useCallback((headers: AssignmentHeaderReader, routeConversationId?: string) => {

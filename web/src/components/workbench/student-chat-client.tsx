@@ -75,6 +75,7 @@ export function StudentChatClient({
   const { collapsed: sidebarCollapsed, toggle: toggleSidebar } = useSidebarCollapse();
   const { bloomStatus, applyBloomStatus, markQueued: markBloomQueued, markPending: markBloomPending, reset: resetBloomStatus } = useBloomStatus();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messageCountRef = useRef(0);
   const initialConversationSignatureRef = useRef('');
   const conversationIdRef = useRef(conversationId);
 
@@ -102,11 +103,15 @@ export function StudentChatClient({
   }, [syncConversationRoute]);
 
   // 会话归属接缝：项目状态、两条到达通路的汇合、归档回执与动效都在 hook 内。
+  // busyRef 让归属回执与后台同步在流式期间只做前者：任何 router.refresh 都会让
+  // 服务端 initialConversation 从无到有、翻转整机 key，流中 remount 即白屏。
+  const busyRef = useRef(false);
   const assignment = useStudentAssignment({
     projects,
     conversationId,
     refreshRoute: refreshStudentRoute,
     initialProjectId: initialActiveProjectId ?? initialConversation?.projectId ?? '',
+    isStreamingRef: busyRef,
   });
   const {
     activeProjectId,
@@ -170,7 +175,10 @@ export function StudentChatClient({
       }
     },
     onFinish: () => {
-      refreshStudentRoute(conversationId);
+      refreshStudentRoute(conversationIdRef.current || conversationId);
+    },
+    onError: () => {
+      refreshStudentRoute(conversationIdRef.current || conversationId);
     },
     transport: chatTransport,
   });
@@ -192,15 +200,29 @@ export function StudentChatClient({
   const composerValue = error && !input.trim() && lastSubmittedInput ? lastSubmittedInput : input;
 
   useEffect(() => {
-    if (messages.length === 0) return;
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    if (messages.length === 0) {
+      messageCountRef.current = 0;
+      return;
+    }
+    const grew = messages.length !== messageCountRef.current;
+    messageCountRef.current = messages.length;
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: grew ? 'smooth' : 'auto' });
   }, [messages]);
+
+  useEffect(() => {
+    busyRef.current = busy;
+  }, [busy]);
 
   useEffect(() => {
     conversationIdRef.current = conversationId;
   }, [conversationId]);
 
-  useConversationSync(conversationId, useCallback(() => refreshStudentRoute(conversationId), [conversationId, refreshStudentRoute]));
+  const gatedSync = useCallback(() => {
+    if (busyRef.current) return;
+    refreshStudentRoute(conversationIdRef.current || conversationId);
+  }, [conversationId, refreshStudentRoute]);
+
+  useConversationSync(conversationId, gatedSync);
 
   const buildRequestBody = useCallback((fallback?: Record<string, unknown>) => buildStudentChatRequestBody({
     conversationId: conversationIdRef.current || conversationId,
@@ -437,7 +459,7 @@ export function StudentChatClient({
                   const expanded = project.id === expandedProjectId;
                   const justArchived = project.id === justArchivedProjectId;
                   return (
-                    <div key={project.id} className={cn('overflow-hidden rounded-xl border border-border/65 bg-background/76 shadow-soft transition-[border-color,background-color,box-shadow] duration-200', active && 'border-primary/55 bg-primary/7 shadow-ink ring-1 ring-primary/15', justArchived && 'animate-in fade-in zoom-in-[1.02] duration-500 ring-2 ring-primary/45')}>
+                    <div key={project.id} className={cn('overflow-hidden rounded-xl border border-border/65 bg-background/76 shadow-soft transition-[border-color,background-color,box-shadow] duration-200', active && 'border-primary/55 bg-primary/7 shadow-ink ring-1 ring-primary/15', justArchived && 'border-primary/60 bg-primary/8 shadow-ink')}>
                       <button
                         type="button"
                         onClick={() => openProjectContext(project.id)}
@@ -607,7 +629,7 @@ export function StudentChatClient({
               <AIMessageList messages={displayMessages} userBloomStatus={bloomStatus} />
             )}
             {messages.length > 0 && assignmentNotice ? (
-              <div className={cn('animate-in fade-in slide-in-from-bottom-2 rounded-lg border px-4 py-3 text-sm duration-300', assignmentNotice.kind === 'project' ? 'border-primary/20 bg-primary/5' : 'bg-muted/50 text-muted-foreground')} aria-live="polite">
+              <div className={cn('animate-in fade-in rounded-lg border px-4 py-3 text-sm duration-200', assignmentNotice.kind === 'project' ? 'border-primary/20 bg-primary/5' : 'bg-muted/50 text-muted-foreground')} aria-live="polite">
                 <BookOpen className={cn('mr-2 inline size-4', assignmentNotice.kind === 'project' ? 'text-primary' : 'text-muted-foreground')} aria-hidden="true" />
                 {assignmentNotice.kind === 'project'
                   ? `已归入《${assignmentNotice.title}》。`
