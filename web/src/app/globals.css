@@ -300,19 +300,30 @@
   * {
     @apply border-border outline-ring/50;
   }
-  /* ── 宣纸底：只保留黛蓝 + 紫金两处浸色，朱砂留给真正的警示态。 ── */
+  /* ── 宣纸底：只保留黛蓝 + 紫金两处浸色，朱砂留给真正的警示态。 ──
+     装饰一律钉在视口（position: fixed），不画在 body 上：
+     body 上的渐变按文档总高定位、随内容滚动，长页面会中途"换底色"，
+     和固定层错位成拼接感。滚动时整页色调必须恒定。 */
   body {
     @apply min-h-svh bg-background text-foreground font-sans;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  /* 浸色 + 顶部微光 + 四角晕影，合成一层固定底。 */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: -1;
     background:
       radial-gradient(ellipse 42rem 28rem at 6% -4%, rgb(74 111 165 / 0.10), transparent 70%),
       radial-gradient(ellipse 36rem 24rem at 96% 10%, rgb(183 165 122 / 0.12), transparent 70%),
       linear-gradient(180deg, rgb(255 255 255 / 0.32), transparent 20rem),
-      var(--background);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+      radial-gradient(ellipse 90% 70% at 50% 50%, transparent 40%, rgb(45 45 45 / 0.05) 100%);
   }
-  /* 细网格：压暗到 0.22，只在顶部淡出，让内容区有呼吸感。 */
-  body::before {
+  /* 细网格：压暗到 0.22，只在首屏淡出，让内容区有呼吸感。 */
+  body::after {
     content: "";
     position: fixed;
     inset: 0;
@@ -324,18 +335,6 @@
       linear-gradient(0deg, rgb(183 165 122 / 0.05) 1px, transparent 1px);
     background-size: 56px 56px;
     mask-image: linear-gradient(to bottom, black, transparent 60%);
-  }
-  /* 宣纸韵：四角柔边 + 中央透光，替代之前的斜纹装饰。 */
-  body::after {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: -1;
-    opacity: 0.5;
-    background:
-      radial-gradient(ellipse 90% 70% at 50% 50%, transparent 40%, rgb(45 45 45 / 0.05) 100%);
-    mix-blend-mode: multiply;
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-heading text-balance;
