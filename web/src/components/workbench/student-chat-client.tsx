@@ -120,7 +120,7 @@ export function StudentChatClient({
     activeProjectId,
     activeProjectIdRef,
     activeProjectTitleRef,
-    expandedProjectId,
+    expandedProjectIds,
     assignmentNotice,
     justArchivedProjectId,
     setNotice: setAssignmentNotice,
@@ -131,7 +131,6 @@ export function StudentChatClient({
     resetToBlank,
     syncFromConversation,
   } = assignment;
-
   const chatFetch = useCallback(async (input: RequestInfo | URL, init?: RequestInit) => {
     const response = await fetch(input, init);
     const nextConversationId = response.headers.get('x-conversation-id');
@@ -499,42 +498,41 @@ export function StudentChatClient({
               <div className="space-y-2">
                 {projects.map((project) => {
                   const active = project.id === activeProjectId;
-                  const expanded = project.id === expandedProjectId;
+                  const expanded = expandedProjectIds.includes(project.id);
                   const justArchived = project.id === justArchivedProjectId;
                   return (
                     <div key={project.id} className={cn('overflow-hidden rounded-xl border border-border/65 bg-background/76 shadow-soft transition-[border-color,background-color,box-shadow] duration-200', active && 'border-primary/55 bg-primary/7 shadow-ink ring-1 ring-primary/15', justArchived && 'border-primary/60 bg-primary/8 shadow-ink')}>
-                      <div className="flex min-h-16 items-stretch">
-                        <button
-                          type="button"
-                          onClick={() => openProjectContext(project.id)}
-                          className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 py-3 pl-3 pr-1 text-left transition-colors duration-200 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          <span className="flex min-w-0 items-start gap-3">
-                            <span className={cn('mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border transition-colors duration-200', active ? 'border-primary/25 bg-primary text-primary-foreground' : 'border-border/70 bg-card text-muted-foreground')}>
-                              <FolderOpen className="size-4" aria-hidden="true" />
-                            </span>
-                            <span className="min-w-0">
-                              <span className="block truncate font-heading text-base">《{project.title}》</span>
-                              <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs leading-5 text-muted-foreground">
-                                <span>{project.questionCount} 条提问</span>
-                                <span>{project.challengeProgress.statusLabel}</span>
-                              </span>
+                      {/* 点击整行 = 展开/收起（多项目可同时展开）；进入篇目是展开面板里的显式动作。 */}
+                      <button
+                        type="button"
+                        onClick={() => toggleExpandedProject(project.id)}
+                        aria-expanded={expanded}
+                        className="flex min-h-16 w-full cursor-pointer items-center justify-between gap-3 px-3 py-3 text-left transition-colors duration-200 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <span className="flex min-w-0 items-start gap-3">
+                          <span className={cn('mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border transition-colors duration-200', active ? 'border-primary/25 bg-primary text-primary-foreground' : 'border-border/70 bg-card text-muted-foreground')}>
+                            <FolderOpen className="size-4" aria-hidden="true" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate font-heading text-base">《{project.title}》</span>
+                            <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs leading-5 text-muted-foreground">
+                              <span>{project.questionCount} 条提问</span>
+                              <span>{project.challengeProgress.statusLabel}</span>
                             </span>
                           </span>
-                        </button>
-                        {/* 箭头是独立的展开/收起开关：点行=进入篇目并展开，点箭头=只收起，二者不再互相覆盖。 */}
-                        <button
-                          type="button"
-                          onClick={() => toggleExpandedProject(project.id)}
-                          aria-expanded={expanded}
-                          aria-label={expanded ? `收起《${project.title}》的会话列表` : `展开《${project.title}》的会话列表`}
-                          className="flex w-10 shrink-0 cursor-pointer items-center justify-center text-muted-foreground transition-colors duration-200 hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          <ChevronDown className={cn('size-4 transition-transform duration-200', expanded && 'rotate-180')} aria-hidden="true" />
-                        </button>
-                      </div>
+                        </span>
+                        <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform duration-200', expanded && 'rotate-180')} aria-hidden="true" />
+                      </button>
                       {expanded ? (
                         <div className="space-y-1 border-t border-border/55 bg-card/45 px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => openProjectContext(project.id)}
+                            className="flex min-h-10 w-full cursor-pointer items-center gap-2 rounded-lg border border-primary/25 bg-primary/8 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <Plus className="size-3.5 shrink-0" aria-hidden="true" />
+                            在《{project.title}》下提问
+                          </button>
                           {project.sessions.length === 0 ? <p className="rounded-lg border border-dashed bg-background/55 px-3 py-2 text-xs text-muted-foreground">暂无会话，可继续提问。</p> : null}
                           {project.sessions.map((session) => {
                             const current = session.id === conversationId;
@@ -617,21 +615,20 @@ export function StudentChatClient({
       </aside>
 
       <section className="order-1 flex min-h-0 min-w-0 flex-col lg:order-2 lg:h-full" aria-label="学生学习提问空间">
-        <div className="shrink-0 border-b border-border/60 bg-card/92 px-4 py-3 shadow-soft backdrop-blur">
-          <div className="mx-auto flex max-w-3xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">当前会话空间</p>
-              <p className="font-heading text-2xl tracking-tight">{inProjectContext ? projectDisplayName : conversationId ? '其他会话' : '从一个古诗文问题开始'}</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                {conversationLocked
-                  ? '这条会话已完成教师核实，只能回看，不能继续追问。'
-                  : inProjectContext ? '新问题会直接归入当前篇目。' : conversationId ? '继续追问会保留在这条会话中；也可以从篇目或空白入口另开会话。' : '直接提问即可；问题中明确出现篇目时，系统会自动归入对应篇目。'}
-              </p>
+        <div className="shrink-0 border-b border-border/60 bg-card/92 px-4 py-4 shadow-soft backdrop-blur sm:px-6 sm:py-5">
+          <div className="mx-auto max-w-3xl space-y-1.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <h2 className="font-heading text-xl tracking-tight sm:text-2xl">{inProjectContext ? projectDisplayName : conversationId ? '其他会话' : '从一个古诗文问题开始'}</h2>
+              <Badge className="border-primary/25 bg-primary/8 text-primary" variant="outline"><Sparkles className="mr-1 size-3" />{conversationLocked ? '教师已审核' : '学习提问'}</Badge>
             </div>
-            <Badge className="w-fit border-primary/25 bg-primary/8 text-primary" variant="outline"><Sparkles className="mr-1 size-3" />{conversationLocked ? '教师已审核' : '学习提问'}</Badge>
+            <p className="text-sm leading-6 text-muted-foreground">
+              {conversationLocked
+                ? '这条会话已完成教师核实，只能回看，不能继续追问。'
+                : inProjectContext ? '新问题会直接归入当前篇目。' : conversationId ? '继续追问会保留在这条会话中；也可以从篇目或空白入口另开会话。' : '直接提问即可；问题中明确出现篇目时，系统会自动归入对应篇目。'}
+            </p>
           </div>
         </div>
-        <div className="order-2 border-t border-border/60 bg-card/92 p-4 shadow-[0_-18px_48px_-42px_rgba(26,26,46,0.55)] backdrop-blur lg:order-3">
+        <div className="order-2 border-t border-border/60 bg-card/92 p-4 shadow-[0_-18px_48px_-42px_rgba(26,26,46,0.55)] backdrop-blur sm:px-6 sm:py-5 lg:order-3">
           <div className="mx-auto max-w-3xl">
             <ChatComposer
               value={composerValue}
