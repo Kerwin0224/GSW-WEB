@@ -149,7 +149,7 @@ async function resolveProjectAssignment({
   const knownTitles = (ownedTitles ?? []).map((row) => row.title).filter((title): title is string => Boolean(title));
   const classified = projectModel
     ? await classifyProjectFromQuestion(projectModel, userText, knownTitles)
-    : { title: null, author: null, failure: 'model-error' as const };
+    : { title: null, author: null, failure: 'model-unavailable' as const };
   const title = classified.title ?? null;
 
   if (!title) {
@@ -159,7 +159,10 @@ async function resolveProjectAssignment({
       event: 'project_classification_fallback',
       requestId,
       route: '/api/student/chat',
-      context: { reason: classified.failure ?? 'unclassified' },
+      context: {
+        reason: classified.failure ?? 'unclassified',
+        ...('detail' in classified && classified.detail ? { detail: classified.detail } : {}),
+      },
     });
     return { kind: 'archive', projectId: null, title: null };
   }

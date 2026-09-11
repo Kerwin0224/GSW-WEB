@@ -21,8 +21,8 @@ import { matchKnownProjectTitle, parseClassificationAnswer } from './student-cha
 // ─── 篇目归属裁决 ────────────────────────────────────────────────────────────
 
 export type ProjectClassificationOutcome =
-  | { title: string; author: string | null; failure?: undefined }
-  | { title: null; author: null; failure: 'model-error' | 'unclassified' };
+  | { title: string; author: string | null; failure?: undefined; detail?: undefined }
+  | { title: null; author: null; failure: 'model-error' | 'model-unavailable' | 'unclassified'; detail?: string };
 
 /**
  * 篇目归属裁决：仅在全局空白入口首问时调用。
@@ -48,8 +48,9 @@ export async function classifyProjectFromQuestion(
     const parsed = parseClassificationAnswer(result.text);
     if (!parsed.title) return { title: null, author: null, failure: 'unclassified' };
     return { title: parsed.title, author: parsed.author };
-  } catch {
-    return { title: null, author: null, failure: 'model-error' };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message.slice(0, 200) : 'unknown classification error';
+    return { title: null, author: null, failure: 'model-error', detail };
   }
 }
 // ─── 布鲁姆认知路径判定 ──────────────────────────────────────────────────────
