@@ -49,6 +49,28 @@ main = 生产分支，改动按风险分流：
 
 注意：预览部署域有 Vercel SSO 保护，外部 curl 探活只能在生产域做；预览的 READY 状态即构建验证。
 
+## 上线流程（固定三段，按顺序执行）
+
+**第一段：提交前自动门禁（agent 在本地完成，不过全不提交）**
+
+| 门禁 | 命令 |
+|---|---|
+| 测试 | `npm test` |
+| 类型 | `npx tsc --noEmit` |
+| lint | `npm run lint`（0 error，历史 warning 不新增） |
+| 迁移重放 | `supabase db reset`（有迁移时必跑） |
+| 变更图 | GitNexus `detect_changes({scope:"all"})`，不是 clean 不提交 |
+
+**第二段：预览人工验证（PR READY 后，验证清单给到用户）**
+
+预览连生产库且有 SSO，AI 网关真实链路与交互手感无法自动化，必须登录用户照清单点一遍。清单要求具体到动作和期望结果（例：空白入口问 X → 应归入《Y》）。注意：同一分支反复推送时预览 URL 不变，需强制刷新。
+
+**第三段：merge 后生产观察（容易漏，固定三件事）**
+
+1. 确认 `gh run list --workflow=supabase-db-push.yml` 结论 success（迁移先于代码生效）。
+2. 在生产域按同一份清单抽验关键路径。
+3. 查 `app_log_events`（Supabase）有无新增 error / 关键 fallback 事件；异常时 Vercel Instant Rollback 秒回代码，schema 变更保持向后兼容（加列加表），无需回滚库。
+
 ## 已固化的自动化（现状清单）
 
 | 项 | 值 |
