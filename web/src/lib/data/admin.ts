@@ -8,7 +8,6 @@ import { assertStdioMcpDisabled, requireAllowedMcpRemoteUrl } from '@/lib/mcp-ru
 import { createClient } from '@/lib/supabase/server';
 import type { AppRole, Database, Json, ModelTier, ProviderCapability } from '@/lib/supabase/database.types';
 import { fail, getModelTiers, ok, requireRole, scenarioModelTiers, type DataResult, type ModelTierStatus } from './common';
-import { exportDataset } from '@/lib/dataset-export';
 
 export type AdminActionState = { ok: boolean; message: string; errors?: Record<string, string> };
 export type ProviderActionResult = { ok: true; message?: string } | { ok: false; message: string };
@@ -928,33 +927,3 @@ export async function getAdminExports() {
   return ok({ approved: exportable, history: history ?? [] });
 }
 
-export async function createExportBatch(formData: FormData): Promise<void> {
-  const role = await requireRole('admin');
-  if (!role.ok) return;
-
-  const exportType = String(formData.get('export_type') ?? 'sft') === 'dpo' ? 'dpo' : 'sft';
-  const result = await exportDataset(exportType);
-  if (!result.success) return;
-
-  const supabase = await createClient();
-  const { data: batch, error: insertError } = await supabase.from('export_batches').insert({
-    export_type: exportType,
-    record_count: result.recordCount,
-    jsonl: result.jsonl,
-    created_by: role.data.id,
-  }).select('id').single();
-  if (insertError || !batch) return;
-
-  const { error: exportMarkError } = await supabase
-    .from('audit_records')
-    .update({ status: 'exported', exported_at: result.exportedAt })
-    .in('id', result.recordIds);
-
-  if (exportMarkError) {
-    await supabase.from('export_batches').delete().eq('id', batch.id);
-    return;
-  }
-
-  revalidatePath('/admin/exports');
-  revalidatePath('/admin');
-}

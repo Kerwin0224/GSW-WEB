@@ -32,6 +32,21 @@ GitHub 是唯一 hub：代码和 schema 都从提交流出，Vercel 和 Supabase
 
 生产库只允许插数据；schema 变更走迁移。
 
+### SFT/DPO 导出链路 e2e（scripts/sft-dpo-pipeline-e2e.mjs）
+
+自起 dev server（端口 3210）+ 真实数据库全链验证：seed 交互轨迹 → 教师审核 → 双端预览 → 管理员导出/下载 → 越权 403 → 清理。**只对本地库跑**（预览/生产禁止）。前置条件（seed 已内置）：
+
+- e2e 夹具账号/班级由 `supabase/seed.sql` 供给（`a0000000-…-001/002/012`、`c0000000-…-01`）
+- `private.runtime_secrets.cwb_auth_secret` 由 seed 写入本地固定值 `dev-only-cwb-auth-secret-gsw-local`；本地 `.env.local` 的 `CWB_AUTH_SECRET` 应设为同值
+
+```bash
+supabase db reset
+CWB_AUTH_SECRET=dev-only-cwb-auth-secret-gsw-local \
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 \
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$(supabase status -o env | grep -oP 'PUBLISHABLE_KEY=\K.*') \
+npm run test:sft-dpo-pipeline
+```
+
 ### 新功能
 
 1. 开分支 → 写迁移 + 代码 → `db reset` 本地验证。

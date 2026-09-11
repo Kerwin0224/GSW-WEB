@@ -30,7 +30,11 @@ FROM (VALUES
   ('00000000-0000-0000-0000-000000000009'::uuid, '20240106'),
   ('00000000-0000-0000-0000-00000000000a'::uuid, '20240201'),
   ('00000000-0000-0000-0000-00000000000b'::uuid, '20240202'),
-  ('00000000-0000-0000-0000-00000000000c'::uuid, '20240203')
+  ('00000000-0000-0000-0000-00000000000c'::uuid, '20240203'),
+  -- e2e 夹具（scripts/sft-dpo-pipeline-e2e.mjs 默认引用的固定 UUID）
+  ('a0000000-0000-0000-0000-000000000001'::uuid, '20990001'),
+  ('a0000000-0000-0000-0000-000000000002'::uuid, '20990002'),
+  ('a0000000-0000-0000-0000-000000000012'::uuid, '20990101')
 ) AS p(id, login_id);
 
 -- 账号一览（密码均为 demo1234）：管理员 20000101 周慧明；
@@ -50,11 +54,17 @@ INSERT INTO public.profiles (id, login_id, display_name, role, status, password_
   -- 高一（2）班学生（2024 级，02 开头流水）
   ('00000000-0000-0000-0000-00000000000a', '20240201', '孟繁星', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
   ('00000000-0000-0000-0000-00000000000b', '20240202', '秦子衿', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
-  ('00000000-0000-0000-0000-00000000000c', '20240203', '柳闻莺', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')));
+  ('00000000-0000-0000-0000-00000000000c', '20240203', '柳闻莺', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
+  -- e2e 夹具账号（仅供 scripts/sft-dpo-pipeline-e2e.mjs 使用，登录名走 2099 测试段）
+  ('a0000000-0000-0000-0000-000000000001', '20990001', 'e2e管理员', 'admin',   'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
+  ('a0000000-0000-0000-0000-000000000002', '20990002', 'e2e教师',   'teacher', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
+  ('a0000000-0000-0000-0000-000000000012', '20990101', 'e2e学生',   'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')));
 
 INSERT INTO public.classes (id, name, grade, status, created_by) VALUES
   ('00000000-0000-0000-0000-0000000000aa', '高一（1）班', '高一', 'active', '00000000-0000-0000-0000-000000000002'),
-  ('00000000-0000-0000-0000-0000000000ab', '高一（2）班', '高一', 'active', '00000000-0000-0000-0000-000000000005');
+  ('00000000-0000-0000-0000-0000000000ab', '高一（2）班', '高一', 'active', '00000000-0000-0000-0000-000000000005'),
+  -- e2e 夹具班级（scripts/sft-dpo-pipeline-e2e.mjs 默认 classId）
+  ('c0000000-0000-0000-0000-000000000001', 'e2e 测试班', '高一', 'active', 'a0000000-0000-0000-0000-000000000001');
 
 INSERT INTO public.class_memberships (class_id, profile_id, role) VALUES
   -- 高一（1）班：沈立行任教
@@ -69,6 +79,18 @@ INSERT INTO public.class_memberships (class_id, profile_id, role) VALUES
   ('00000000-0000-0000-0000-0000000000ab', '00000000-0000-0000-0000-000000000005', 'teacher'),
   ('00000000-0000-0000-0000-0000000000ab', '00000000-0000-0000-0000-00000000000a', 'student'),
   ('00000000-0000-0000-0000-0000000000ab', '00000000-0000-0000-0000-00000000000b', 'student'),
-  ('00000000-0000-0000-0000-0000000000ab', '00000000-0000-0000-0000-00000000000c', 'student');
+  ('00000000-0000-0000-0000-0000000000ab', '00000000-0000-0000-0000-00000000000c', 'student'),
+  -- e2e 夹具班级（scripts/sft-dpo-pipeline-e2e.mjs 默认 classId）
+  ('c0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002', 'teacher'),
+  ('c0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000012', 'student');
+
+-- 本地会话签名密钥：current_app_user_id() / write_app_log_event 的 header 验签
+-- 依赖 private.runtime_secrets.cwb_auth_secret（生产值由 Vercel 环境变量对应，
+-- 此处为本地固定演示值），不供给则 RLS 身份头路径全部退化为匿名，
+-- e2e 夹具查询会得到空集。本地 .env.local 与 e2e 运行时的 CWB_AUTH_SECRET
+-- 必须等于此值。
+INSERT INTO private.runtime_secrets (name, value)
+VALUES ('cwb_auth_secret', 'dev-only-cwb-auth-secret-gsw-local')
+ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value;
 
 COMMIT;

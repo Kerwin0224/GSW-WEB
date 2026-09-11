@@ -71,6 +71,11 @@ export default function DatasetExportClient() {
         body: JSON.stringify({ type, filters, preview: previewOnly }),
       });
       const data = await response.json();
+      // 空结果不是故障：服务端返回 200 + empty，按中性提示呈现。
+      if (data.empty) {
+        setSuccess(data.error || '当前筛选条件下没有可导出的记录');
+        return;
+      }
       if (!response.ok || 'error' in data) {
         setError(data.error || '请求失败');
         return;
@@ -138,16 +143,20 @@ export default function DatasetExportClient() {
                   <SelectItem value="all">全部历史样本</SelectItem>
                 </SelectContent>
               </Select>
+              {type === 'metadata' ? <p className="text-xs text-muted-foreground">审阅元数据始终包含全部历史样本，不受导出范围影响。</p> : null}
             </div>
             <div className="space-y-2">
-              <Label>质量等级</Label>
+              <Label>核实质量</Label>
               <Select value={filters.quality || 'all'} disabled={loading || exporting} onValueChange={(value) => changeFilters({ ...filters, quality: value === 'all' ? null : value })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部</SelectItem>
-                  <SelectItem value="high">高质量</SelectItem>
-                  <SelectItem value="medium">中等质量</SelectItem>
-                  <SelectItem value="low">低质量</SelectItem>
+                  {/* 选项与 audit_records.quality 的真实枚举一致（teacher-actions 写入端）：
+                      accurate/needs_correction/conversation_finalized。曾经的 high/medium/low
+                      在库里不存在，选了永远筛出 0 条。 */}
+                  <SelectItem value="accurate">确认无误</SelectItem>
+                  <SelectItem value="needs_correction">修订后采纳</SelectItem>
+                  <SelectItem value="conversation_finalized">会话整体确认</SelectItem>
                 </SelectContent>
               </Select>
             </div>
