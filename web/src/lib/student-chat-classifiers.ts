@@ -13,7 +13,7 @@
  * 两个函数的类型签名和行为与原来完全一致，只是换了文件位置。
  */
 
-import { generateObject, generateText, type LanguageModel } from 'ai';
+import { generateObject, streamText, type LanguageModel } from 'ai';
 import { z } from 'zod';
 
 import { matchKnownProjectTitle, parseClassificationAnswer } from './student-chat-prompts';
@@ -26,9 +26,10 @@ export type ProjectClassificationOutcome =
 
 /**
  * 篇目归属裁决：仅在全局空白入口首问时调用。
- * 已知篇目直查（学生已有项目，零模型调用）→ 模型直判（纯文本输出，不依赖
- * 结构化输出能力，弱模型也能判）→ 无法裁决进日常会话归档。
- * 模型异常不抛出（failure: 'model-error'），由调用方记日志并降级。
+ * 已知篇目直查（学生已有项目，零模型调用）→ 模型直判 → 无法裁决进日常会话归档。
+ * 直判走流式累积：所接模型网关只正常服务 SSE，非流式 JSON 会直接抛错；
+ * 问答本身走的就是流式，分类与它共用同一条活路。
+ * 模型异常不抛出（failure: 'model-error'，附 provider 原文截断），由调用方记日志并降级。
  */
 export async function classifyProjectFromQuestion(
   model: LanguageModel,
@@ -38,14 +39,15 @@ export async function classifyProjectFromQuestion(
   const knownTitle = matchKnownProjectTitle(question, knownTitles);
   if (knownTitle) return { title: knownTitle, author: null };
   try {
-    const result = await generateText({
+    const result = streamText({
       model,
       maxOutputTokens: 100,
       system:
         '你是文韵智途的篇目归属裁决器。只为全局空白入口首问判断会话沉淀容器，不决定 AI 回答范围。只能返回真实古诗文篇目标题。学生是否加书名号只是书写习惯，与能否归属无关："赤壁赋的背景是什么"归赤壁赋，"登高这首诗讲什么"归登高，"静夜思里疑是什么意思"归静夜思，"念奴娇上阕怎么理解"归念奴娇·赤壁怀古。首问提到多个篇目时，以学生本轮真正要学习的主旨裁决一个主篇目，不要直接判无法归属。只有无法确定主篇目、候选只是例子、问题泛泛而谈，或你没有把握时，才判无法归属。禁止输出占位标题。只输出以下两行，不要多余文字：第一行是篇目标题（不加书名号），第二行是作者（能确定才填，否则空着）；无法归属时只输出一行 NULL。',
       prompt: `学生首问：${question}`,
     });
-    const parsed = parseClassificationAnswer(result.text);
+    const text = await result.text;
+    const parsed = parseClassificationAnswer(text);
     if (!parsed.title) return { title: null, author: null, failure: 'unclassified' };
     return { title: parsed.title, author: parsed.author };
   } catch (error) {
