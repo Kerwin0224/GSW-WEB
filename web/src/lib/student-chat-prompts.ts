@@ -50,6 +50,17 @@ export function parseClassificationAnswer(text: string): { title: string; author
   return { title, author: normalizeProjectAuthor(rawAuthor) };
 }
 
+export type BloomClassificationAnswer = { level: 1 | 2 | 3 | 4 | 5 | 6; reason: string };
+
+// 解析布鲁姆判定的输出：第一行是 1-6 的单个数字，第二行是理由（可空，超长截断）。
+// 行首允许少量非数字前缀（如"第4层"）；数字后紧跟数字视为编号序列而非层级，判解析失败。
+export function parseBloomClassificationAnswer(text: string): BloomClassificationAnswer | null {
+  const [rawLevel = '', ...rest] = text.trim().split('\n');
+  const match = rawLevel.match(/^\D*([1-6])(?!\d)/);
+  if (!match) return null;
+  return { level: Number(match[1]) as BloomClassificationAnswer['level'], reason: rest.join('\n').trim().slice(0, 120) };
+}
+
 // ─── 系统提示词构建 ───────────────────────────────────────────────────────────
 
 export type StudentSystemPromptContext =

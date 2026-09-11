@@ -7,6 +7,7 @@ import {
   normalizeConcreteProjectTitle,
   normalizeProjectAuthor,
   parseClassificationAnswer,
+  parseBloomClassificationAnswer,
 } from '../student-chat-prompts.ts';
 
 // ─── normalizeConcreteProjectTitle ────────────────────────────────────────────
@@ -158,4 +159,40 @@ test('matchKnownProjectTitle returns null without a hit', () => {
 
 test('matchKnownProjectTitle ignores placeholder titles', () => {
   assert.equal(matchKnownProjectTitle('日常会话归档在哪里', ['日常会话归档', '静夜思']), null);
+});
+
+// ─── parseBloomClassificationAnswer ──────────────────────────────────────────
+
+test('parseBloomClassificationAnswer reads level and reason from two lines', () => {
+  assert.deepEqual(parseBloomClassificationAnswer('4\n需要比较叙事诗与抒情诗的特征'), {
+    level: 4,
+    reason: '需要比较叙事诗与抒情诗的特征',
+  });
+});
+
+test('parseBloomClassificationAnswer allows a level-only answer', () => {
+  assert.deepEqual(parseBloomClassificationAnswer('2'), { level: 2, reason: '' });
+});
+
+test('parseBloomClassificationAnswer tolerates a non-digit prefix', () => {
+  assert.deepEqual(parseBloomClassificationAnswer('第4层\n拆解结构'), { level: 4, reason: '拆解结构' });
+  assert.deepEqual(parseBloomClassificationAnswer('层级：6\n生成仿写'), { level: 6, reason: '生成仿写' });
+});
+
+test('parseBloomClassificationAnswer rejects multi-digit sequences', () => {
+  assert.equal(parseBloomClassificationAnswer('2026\n年度总结'), null);
+  assert.equal(parseBloomClassificationAnswer('12\n两个层级'), null);
+});
+
+test('parseBloomClassificationAnswer rejects out-of-range and non-numeric levels', () => {
+  assert.equal(parseBloomClassificationAnswer('7\n超出范围'), null);
+  assert.equal(parseBloomClassificationAnswer('0\n低于范围'), null);
+  assert.equal(parseBloomClassificationAnswer('层级未知\n无法判断'), null);
+  assert.equal(parseBloomClassificationAnswer(''), null);
+});
+
+test('parseBloomClassificationAnswer truncates a long reason to 120 chars', () => {
+  const parsed = parseBloomClassificationAnswer(`3\n${'理'.repeat(200)}`);
+  assert.ok(parsed);
+  assert.equal(parsed.reason.length, 120);
 });
