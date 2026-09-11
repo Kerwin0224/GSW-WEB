@@ -628,8 +628,8 @@ export function StudentChatClient({
             </p>
           </div>
         </div>
-        <div className="order-2 border-t border-border/60 bg-card/92 p-4 shadow-[0_-18px_48px_-42px_rgba(26,26,46,0.55)] backdrop-blur sm:px-6 sm:py-5 lg:order-3">
-          <div className="mx-auto max-w-3xl">
+        <div className="order-2 border-t border-border/60 bg-card/92 p-4 backdrop-blur sm:px-6 lg:order-3">
+          <div className="mx-auto max-w-2xl">
             <ChatComposer
               value={composerValue}
               onChange={setInput}
