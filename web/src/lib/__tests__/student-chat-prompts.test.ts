@@ -196,3 +196,23 @@ test('parseBloomClassificationAnswer truncates a long reason to 120 chars', () =
   assert.ok(parsed);
   assert.equal(parsed.reason.length, 120);
 });
+
+test('parseClassificationAnswer salvages the main title from book marks in prose', () => {
+  // 小模型不守两行协议、把整段回答当首行输出时的生产失败形态（秦时明月汉时关案）。
+  const prose = '这句诗运用了互文的修辞手法。它出自王昌龄的《出塞》，前两句是秦时明月汉时关。';
+  assert.deepEqual(parseClassificationAnswer(prose), { title: '出塞', author: null });
+});
+
+test('parseClassificationAnswer still refuses prose without any book-marked title', () => {
+  assert.deepEqual(parseClassificationAnswer('这句诗运用了比喻和夸张的修辞手法，表达了戍边将士的思乡之情。'), { title: null, author: null });
+});
+
+test('parseClassificationAnswer refuses prose-only first lines instead of building a garbage project', () => {
+  const prose = '这句诗运用了互文的修辞手法。它出自王昌龄的《出塞》，前两句是秦时明月汉时关。';
+  assert.deepEqual(parseClassificationAnswer(prose), { title: '出塞', author: null });
+  assert.deepEqual(parseClassificationAnswer('这句诗运用了比喻的修辞手法。'), { title: null, author: null });
+});
+
+test('parseClassificationAnswer accepts a title line with a label prefix', () => {
+  assert.deepEqual(parseClassificationAnswer('篇目：出塞\n王昌龄'), { title: '出塞', author: '王昌龄' });
+});

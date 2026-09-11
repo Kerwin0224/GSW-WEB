@@ -452,10 +452,12 @@ export function TeacherChatClient({
             ) : (
               <AIMessageList messages={messages} assistantCardClassName="max-h-[28rem] overflow-y-auto overscroll-contain pr-2" />
             )}
-            {busy ? (
-              <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-card/92 px-4 py-3 text-sm text-muted-foreground shadow-soft backdrop-blur" aria-live="polite">
-                <Loader2 className="size-4 animate-spin text-primary" />
-                {status === 'submitted' ? '已提交，等待模型首个响应…' : 'AI 正在生成教学支持…'}
+            {status === 'submitted' ? (
+              // 与学生端一致：等待首字只显示呼吸圆点，流式期间不叠状态卡片。
+              <div className="flex items-center gap-1.5 py-2 pl-12" role="status" aria-label="正在思考">
+                {[0, 1, 2].map((dot) => (
+                  <span key={dot} className="size-1.5 animate-bounce rounded-full bg-muted-foreground/50" style={{ animationDelay: `${dot * 150}ms` }} />
+                ))}
               </div>
             ) : null}
             {error ? <ErrorState title="备课问答响应失败" description={error.message} /> : null}

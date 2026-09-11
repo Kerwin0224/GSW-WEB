@@ -17,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { AIMessageList } from '@/components/workbench/ai-message-list';
+import { AIMessageList, type MessageEditState } from '@/components/workbench/ai-message-list';
 import { ChatComposer } from '@/components/workbench/chat-composer';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import type { BloomStatus } from '@/components/workbench/bloom-status-badge';
@@ -30,7 +30,9 @@ import {
   type StudentAssignmentData,
 } from '@/lib/student-chat-contract';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import { useSidebarCollapse } from '@/hooks/use-sidebar-collapse';
+import { useSidebarScroll } from '@/hooks/use-sidebar-scroll';
 import { useBloomStatus, type StudentBloomData } from '@/hooks/use-bloom-status';
 import { useMessageQueue, type QueuedStudentMessage } from '@/hooks/use-message-queue';
 import { useConversationSync } from '@/hooks/use-conversation-sync';
@@ -73,6 +75,7 @@ export function StudentChatClient({
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const { collapsed: sidebarCollapsed, toggle: toggleSidebar } = useSidebarCollapse();
+  const sidebarScrollRef = useSidebarScroll();
   const { bloomStatus, applyBloomStatus, markQueued: markBloomQueued, markPending: markBloomPending, reset: resetBloomStatus } = useBloomStatus();
   const scrollRef = useRef<HTMLDivElement>(null);
   const messageCountRef = useRef(0);
@@ -124,6 +127,7 @@ export function StudentChatClient({
     acceptResponseHeaders,
     acceptAssignmentData,
     enterProject,
+    toggleExpandedProject,
     resetToBlank,
     syncFromConversation,
   } = assignment;
@@ -378,6 +382,45 @@ export function StudentChatClient({
     void regenerate({ body: buildRequestBody() });
   };
 
+  // ── 会话中间节点编辑/回滚 ────────────────────────────────────────────────
+  // 语义：以某条用户消息为节点，删除该节点及其后的全部消息（PATCH 端点），
+  // 再以编辑后的文本重发。等价于"回到某节点改写上下文"，不做分支分叉。
+  const [edit, setEdit] = useState<MessageEditState | null>(null);
+  const [rollbackInFlight, setRollbackInFlight] = useState(false);
+
+  const startEditUserMessage = (messageId: string, currentText: string) => {
+    if (busyRef.current || conversationLocked || rollbackInFlight) return;
+    setEdit({ messageId, value: currentText });
+  };
+
+  const cancelEdit = () => setEdit(null);
+
+  const submitEdit = async () => {
+    if (!edit || busyRef.current || rollbackInFlight) return;
+    const text = edit.value.trim();
+    if (!text) return;
+    setRollbackInFlight(true);
+    try {
+      const response = await fetch('/api/student/conversations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: conversationIdRef.current || conversationId, messageId: edit.messageId }),
+      });
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? '会话回滚失败。');
+      const nodeIndex = messages.findIndex((message) => message.id === edit.messageId);
+      setEdit(null);
+      clearError();
+      setMessages(nodeIndex === -1 ? [] : messages.slice(0, nodeIndex));
+      // 会话已存在，服务端走普通追问路径；布鲁姆与归属在 onFinish 通路照常更新。
+      void sendMessage({ id: crypto.randomUUID(), parts: [{ type: 'text', text }] }, { body: buildRequestBody() });
+    } catch (editError) {
+      toast.error(editError instanceof Error ? editError.message : '会话回滚失败。');
+    } finally {
+      setRollbackInFlight(false);
+    }
+  };
+
   const confirmDeleteSession = async () => {
     if (!deleteTarget || deleting) return;
     setDeleting(true);
@@ -415,7 +458,7 @@ export function StudentChatClient({
 
   return (
     <div className={cn("grid min-h-0 w-full flex-1 bg-background/35 transition-all duration-300", sidebarCollapsed ? "lg:grid-cols-[3.5rem_minmax(0,1fr)]" : "lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[22rem_minmax(0,1fr)]")}>
-      <aside className={cn("order-2 border-t border-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--primary)_8%,transparent),transparent_18%),color-mix(in_oklch,var(--card)_92%,transparent)] shadow-soft backdrop-blur-xl lg:order-1 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-t-0 transition-all duration-300", sidebarCollapsed ? "lg:w-[3.5rem] lg:p-1.5" : "lg:w-auto lg:p-3")} aria-label="当前会话空间">
+      <aside ref={sidebarScrollRef} className={cn("order-2 border-t border-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--primary)_8%,transparent),transparent_18%),color-mix(in_oklch,var(--card)_92%,transparent)] shadow-soft backdrop-blur-xl lg:order-1 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-t-0 transition-all duration-300", sidebarCollapsed ? "lg:w-[3.5rem] lg:p-1.5" : "lg:w-auto lg:p-3")} aria-label="当前会话空间">
         {/* 收起态：窄图标栏（新会话 + 展开钮），悬停有 title 提示；展开态：新会话置顶。 */}
         <div className={cn('flex gap-2', sidebarCollapsed ? 'flex-col items-center' : 'flex-row items-stretch')}>
           <button
@@ -460,26 +503,36 @@ export function StudentChatClient({
                   const justArchived = project.id === justArchivedProjectId;
                   return (
                     <div key={project.id} className={cn('overflow-hidden rounded-xl border border-border/65 bg-background/76 shadow-soft transition-[border-color,background-color,box-shadow] duration-200', active && 'border-primary/55 bg-primary/7 shadow-ink ring-1 ring-primary/15', justArchived && 'border-primary/60 bg-primary/8 shadow-ink')}>
-                      <button
-                        type="button"
-                        onClick={() => openProjectContext(project.id)}
-                        aria-expanded={expanded}
-                        className="flex min-h-16 w-full cursor-pointer items-center justify-between gap-3 px-3 py-3 text-left transition-colors duration-200 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <span className="flex min-w-0 items-start gap-3">
-                          <span className={cn('mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border transition-colors duration-200', active ? 'border-primary/25 bg-primary text-primary-foreground' : 'border-border/70 bg-card text-muted-foreground')}>
-                            <FolderOpen className="size-4" aria-hidden="true" />
-                          </span>
-                          <span className="min-w-0">
-                            <span className="block truncate font-heading text-base">《{project.title}》</span>
-                            <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs leading-5 text-muted-foreground">
-                              <span>{project.questionCount} 条提问</span>
-                              <span>{project.challengeProgress.statusLabel}</span>
+                      <div className="flex min-h-16 items-stretch">
+                        <button
+                          type="button"
+                          onClick={() => openProjectContext(project.id)}
+                          className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 py-3 pl-3 pr-1 text-left transition-colors duration-200 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <span className="flex min-w-0 items-start gap-3">
+                            <span className={cn('mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border transition-colors duration-200', active ? 'border-primary/25 bg-primary text-primary-foreground' : 'border-border/70 bg-card text-muted-foreground')}>
+                              <FolderOpen className="size-4" aria-hidden="true" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block truncate font-heading text-base">《{project.title}》</span>
+                              <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs leading-5 text-muted-foreground">
+                                <span>{project.questionCount} 条提问</span>
+                                <span>{project.challengeProgress.statusLabel}</span>
+                              </span>
                             </span>
                           </span>
-                        </span>
-                        <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform duration-200', expanded && 'rotate-180')} aria-hidden="true" />
-                      </button>
+                        </button>
+                        {/* 箭头是独立的展开/收起开关：点行=进入篇目并展开，点箭头=只收起，二者不再互相覆盖。 */}
+                        <button
+                          type="button"
+                          onClick={() => toggleExpandedProject(project.id)}
+                          aria-expanded={expanded}
+                          aria-label={expanded ? `收起《${project.title}》的会话列表` : `展开《${project.title}》的会话列表`}
+                          className="flex w-10 shrink-0 cursor-pointer items-center justify-center text-muted-foreground transition-colors duration-200 hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <ChevronDown className={cn('size-4 transition-transform duration-200', expanded && 'rotate-180')} aria-hidden="true" />
+                        </button>
+                      </div>
                       {expanded ? (
                         <div className="space-y-1 border-t border-border/55 bg-card/45 px-3 py-2">
                           {project.sessions.length === 0 ? <p className="rounded-lg border border-dashed bg-background/55 px-3 py-2 text-xs text-muted-foreground">暂无会话，可继续提问。</p> : null}
@@ -626,7 +679,16 @@ export function StudentChatClient({
                 )}
               />
             ) : (
-              <AIMessageList messages={displayMessages} userBloomStatus={bloomStatus} />
+              <AIMessageList
+                messages={displayMessages}
+                userBloomStatus={bloomStatus}
+                edit={edit}
+                canEditUserMessage={!conversationLocked && !busy && queueCount === 0 && !rollbackInFlight && Boolean(conversationId)}
+                onEditStart={startEditUserMessage}
+                onEditChange={(value) => setEdit((current) => (current ? { ...current, value } : current))}
+                onEditSubmit={submitEdit}
+                onEditCancel={cancelEdit}
+              />
             )}
             {messages.length > 0 && assignmentNotice ? (
               <div className={cn('animate-in fade-in rounded-lg border px-4 py-3 text-sm duration-200', assignmentNotice.kind === 'project' ? 'border-primary/20 bg-primary/5' : 'bg-muted/50 text-muted-foreground')} aria-live="polite">
@@ -636,11 +698,17 @@ export function StudentChatClient({
                   : '暂未识别到具体篇目，已保存到其他会话。'}
               </div>
             ) : null}
-            {busy ? (
-              <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground" aria-live="polite">
-                <Loader2 className="size-4 animate-spin" />
-                {status === 'submitted' ? '已提交，等待模型首个响应…' : queueCount > 0 ? `AI 正在回答，后续 ${queueCount} 条已排队。` : 'AI 正在流式回答…'}
+            {status === 'submitted' ? (
+              // 等待首字：只有一串呼吸圆点，贴近主流 AI chatbot 的极简反馈；
+              // 流式开始后正文本身在推进，不再叠状态卡片。
+              <div className="flex items-center gap-1.5 py-2 pl-12" role="status" aria-label="正在思考">
+                {[0, 1, 2].map((dot) => (
+                  <span key={dot} className="size-1.5 animate-bounce rounded-full bg-muted-foreground/50" style={{ animationDelay: `${dot * 150}ms` }} />
+                ))}
               </div>
+            ) : null}
+            {queueCount > 0 ? (
+              <p className="text-xs text-muted-foreground" aria-live="polite">已排队 {queueCount} 条，将依次回答。</p>
             ) : null}
             {error ? (
               <ErrorState

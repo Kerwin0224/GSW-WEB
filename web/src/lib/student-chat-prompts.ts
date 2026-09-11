@@ -41,13 +41,27 @@ export function matchKnownProjectTitle(question: string, knownTitles: readonly s
   return null;
 }
 
+// 首行是否可信为一行标题：小模型不守协议时会把整段回答当首行输出，
+// 散文特征（句读）或超长都不可信，必须拒绝，否则会把整句话建成垃圾项目。
+function looksLikeTitleLine(value: string): boolean {
+  return value.length <= 40 && !/[。！？；，、…]/.test(value);
+}
+
 // 解析模型直判的输出：第一行篇目标题（或 NULL），第二行作者（可空）。
-// 标题走归一化（去书名号、拒占位词），任一环节不通过即判无法归属。
+// 标题走归一化（去书名号、拒占位词）。首行不像标题时，从全文的书名号里捞主篇目
+// （如"这句出自王昌龄的《出塞》，……"→ 出塞）；全文无书名号则判无法归属。
 export function parseClassificationAnswer(text: string): { title: string; author: string | null } | { title: null; author: null } {
-  const [rawTitle, rawAuthor] = text.split('\n');
+  const [rawFirst = '', rawAuthor] = text.trim().split('\n');
+  const rawTitle = rawFirst.replace(/^(?:篇目|标题)\s*[:：]\s*/u, '');
   const title = normalizeConcreteProjectTitle(rawTitle);
-  if (!title || title.toUpperCase() === 'NULL') return { title: null, author: null };
-  return { title, author: normalizeProjectAuthor(rawAuthor) };
+  if (title && title.toUpperCase() !== 'NULL' && looksLikeTitleLine(rawTitle)) {
+    return { title, author: normalizeProjectAuthor(rawAuthor) };
+  }
+  for (const match of text.matchAll(/《([^《》]{1,40})》/g)) {
+    const salvaged = normalizeConcreteProjectTitle(match[1]);
+    if (salvaged) return { title: salvaged, author: null };
+  }
+  return { title: null, author: null };
 }
 
 export type BloomClassificationAnswer = { level: 1 | 2 | 3 | 4 | 5 | 6; reason: string };

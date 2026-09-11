@@ -43,12 +43,15 @@ export async function classifyProjectFromQuestion(
       model,
       maxOutputTokens: 100,
       system:
-        '你是文韵智途的篇目归属裁决器。只为全局空白入口首问判断会话沉淀容器，不决定 AI 回答范围。只能返回真实古诗文篇目标题。学生是否加书名号只是书写习惯，与能否归属无关："赤壁赋的背景是什么"归赤壁赋，"登高这首诗讲什么"归登高，"静夜思里疑是什么意思"归静夜思，"念奴娇上阕怎么理解"归念奴娇·赤壁怀古。首问提到多个篇目时，以学生本轮真正要学习的主旨裁决一个主篇目，不要直接判无法归属。只有无法确定主篇目、候选只是例子、问题泛泛而谈，或你没有把握时，才判无法归属。禁止输出占位标题。只输出以下两行，不要多余文字：第一行是篇目标题（不加书名号），第二行是作者（能确定才填，否则空着）；无法归属时只输出一行 NULL。',
+        '你是文韵智途的篇目归属裁决器。只为全局空白入口首问判断会话沉淀容器，不决定 AI 回答范围。只能返回真实古诗文篇目标题。学生是否加书名号只是书写习惯，与能否归属无关："赤壁赋的背景是什么"归赤壁赋，"登高这首诗讲什么"归登高，"静夜思里疑是什么意思"归静夜思，"念奴娇上阕怎么理解"归念奴娇·赤壁怀古。首问提到多个篇目时，以学生本轮真正要学习的主旨裁决一个主篇目，不要直接判无法归属。只要问题聚焦于某个具体篇目或某位作者的作品，就给出对应标题；只有问题与古诗文学习完全无关时才判无法归属。禁止输出占位标题。输出格式必须严格遵守：只输出两行，第一行只写篇目标题本身（不加书名号、不写出处说明、不写完整句子），第二行是作者（能确定才填，否则空着）；无法归属时只输出一行 NULL。',
       prompt: `学生首问：${question}`,
     });
     const text = await result.text;
     const parsed = parseClassificationAnswer(text);
-    if (!parsed.title) return { title: null, author: null, failure: 'unclassified' };
+    if (!parsed.title) {
+      // 原文进 detail，生产日志（project_classification_fallback）可回查模型到底吐了什么。
+      return { title: null, author: null, failure: 'unclassified', detail: text.slice(0, 200) };
+    }
     return { title: parsed.title, author: parsed.author };
   } catch (error) {
     const detail = error instanceof Error ? error.message.slice(0, 200) : 'unknown classification error';

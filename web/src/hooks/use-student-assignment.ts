@@ -123,6 +123,11 @@ export function useStudentAssignment({
     setAssignmentNotice(null);
   }, [projects]);
 
+  /** 点击项目行右侧箭头：仅展开/收起会话列表，不切换会话上下文。 */
+  const toggleExpandedProject = useCallback((projectId: string) => {
+    setExpandedProjectId((current) => (current === projectId ? '' : projectId));
+  }, []);
+
   /** 回到全局空白入口。 */
   const resetToBlank = useCallback(() => {
     setActiveProjectId('');
@@ -153,6 +158,7 @@ export function useStudentAssignment({
     acceptResponseHeaders,
     acceptAssignmentData,
     enterProject,
+    toggleExpandedProject,
     resetToBlank,
     syncFromConversation,
   } as const;
