@@ -114,7 +114,8 @@ export async function POST(req: Request) {
     const response = NextResponse.json({
       role: account.role,
       displayName: account.display_name,
-      redirectTo: roleHome[account.role],
+      mustChangePassword: account.must_change_password,
+      redirectTo: account.must_change_password ? '/settings?required=1' : roleHome[account.role],
       requestId,
     });
     clearLoginAttempt(attemptKey);
@@ -124,6 +125,7 @@ export async function POST(req: Request) {
       role: account.role,
       displayName: account.display_name,
       sessionVersion: account.session_version,
+      mustChangePassword: account.must_change_password,
     });
     return response;
   });

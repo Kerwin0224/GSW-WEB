@@ -31,8 +31,8 @@ export interface Database {
   public: {
     Tables: {
       profiles: {
-        Row: { id: string; login_id: string | null; display_name: string; role: AppRole; status: 'active' | 'disabled'; avatar_key: AvatarKey; session_version: number; created_at: string; updated_at: string };
-        Insert: { id: string; login_id?: string | null; display_name: string; role: AppRole; status?: 'active' | 'disabled'; avatar_key?: AvatarKey };
+        Row: { id: string; login_id: string | null; display_name: string; role: AppRole; status: 'active' | 'disabled'; avatar_key: AvatarKey; session_version: number; must_change_password: boolean; created_at: string; updated_at: string };
+        Insert: { id: string; login_id?: string | null; display_name: string; role: AppRole; status?: 'active' | 'disabled'; avatar_key?: AvatarKey; must_change_password?: boolean };
         Update: Partial<Database['public']['Tables']['profiles']['Insert']>;
       };
       classes: {

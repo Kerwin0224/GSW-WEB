@@ -11,6 +11,7 @@ const sessionTokenPayloadSchema = z.object({
   role: z.enum(['admin', 'teacher', 'student']),
   displayName: z.string().min(1),
   sessionVersion: z.number().int().nonnegative().default(0),
+  mustChangePassword: z.boolean().default(false),
   exp: z.number().int().positive(),
 });
 
@@ -20,6 +21,8 @@ export type SessionPayload = {
   role: AppRole;
   displayName: string;
   sessionVersion: number;
+  /** 初始密码=学号/工号的账号在首登改密前为 true，proxy 据此全站拦截到 /settings。 */
+  mustChangePassword: boolean;
   exp: number;
 };
 

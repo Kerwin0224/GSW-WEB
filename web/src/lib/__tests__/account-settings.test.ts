@@ -99,6 +99,7 @@ test('accepts a PostgreSQL UUID without an RFC version nibble in an account RPC 
     display_name: '管理员',
     avatar_key: 'ink',
     session_version: 2,
+    must_change_password: false,
   }];
 
   // When
@@ -117,6 +118,7 @@ test('rejects a malformed identifier in an account RPC response', () => {
     display_name: '管理员',
     avatar_key: 'ink',
     session_version: 2,
+    must_change_password: false,
   }];
 
   // When
@@ -157,6 +159,7 @@ test('parses a successful password RPC response into a typed account', () => {
     display_name: '管理员',
     avatar_key: 'ink',
     session_version: 2,
+    must_change_password: false,
   }];
 
   // When

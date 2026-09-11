@@ -3,7 +3,10 @@
 -- 只造"用户与班级场景"数据，不造会话/提问等 Agent 交互数据（那些应由真实使用产生）。
 -- profiles.id 外键指向 auth.users，所以先插 auth.users（应用本身不用 Supabase Auth，
 -- 这层只为满足约束；真正的登录校验走 profiles.password_hash + authenticate_school_account）。
--- 密码统一为 demo1234（bcrypt 由 pgcrypto 的 crypt 生成，该扩展在 extensions schema 下），
+-- 密码策略（2026-09-12 裁定）：管理员导入/建号的账号初始密码 = 学号/工号（8 位），
+-- 且 must_change_password=true 强制首登改密（自助改密 ≥10 位，见
+-- 20260912110000_initial_password_login_id.sql）。seed 里的账号是"已完成首登"的
+-- 演示账号，故密码统一 demo1234（bcrypt 由 pgcrypto 的 crypt 生成）且不强制改密；
 -- 账号与密码一一对应：登录名见下表，密码均为 demo1234。
 -- 固定 UUID 便于本地脚本/前端联调时硬编码引用。
 --
@@ -39,26 +42,26 @@ FROM (VALUES
 
 -- 账号一览（密码均为 demo1234）：管理员 20000101 周慧明；
 -- 教师 20150101 沈立行（高一1班）、20180001 顾清晏（高一2班）；学生见 profiles 插入段。
-INSERT INTO public.profiles (id, login_id, display_name, role, status, password_hash) VALUES
+INSERT INTO public.profiles (id, login_id, display_name, role, status, password_hash, must_change_password) VALUES
   -- 管理员与教师（工号 = 入职年 + 流水）
-  ('00000000-0000-0000-0000-000000000001', '20000101', '周慧明', 'admin',   'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
-  ('00000000-0000-0000-0000-000000000002', '20150101', '沈立行', 'teacher', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
-  ('00000000-0000-0000-0000-000000000005', '20180001', '顾清晏', 'teacher', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
+  ('00000000-0000-0000-0000-000000000001', '20000101', '周慧明', 'admin',   'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
+  ('00000000-0000-0000-0000-000000000002', '20150101', '沈立行', 'teacher', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
+  ('00000000-0000-0000-0000-000000000005', '20180001', '顾清晏', 'teacher', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
   -- 高一（1）班学生（2024 级，01 开头流水）
-  ('00000000-0000-0000-0000-000000000003', '20240101', '陈砚秋', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
-  ('00000000-0000-0000-0000-000000000004', '20240102', '林望舒', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
-  ('00000000-0000-0000-0000-000000000006', '20240103', '苏晏清', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
-  ('00000000-0000-0000-0000-000000000007', '20240104', '江晚吟', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
-  ('00000000-0000-0000-0000-000000000008', '20240105', '赵启铭', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
-  ('00000000-0000-0000-0000-000000000009', '20240106', '何雨眠', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
+  ('00000000-0000-0000-0000-000000000003', '20240101', '陈砚秋', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
+  ('00000000-0000-0000-0000-000000000004', '20240102', '林望舒', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
+  ('00000000-0000-0000-0000-000000000006', '20240103', '苏晏清', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
+  ('00000000-0000-0000-0000-000000000007', '20240104', '江晚吟', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
+  ('00000000-0000-0000-0000-000000000008', '20240105', '赵启铭', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
+  ('00000000-0000-0000-0000-000000000009', '20240106', '何雨眠', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
   -- 高一（2）班学生（2024 级，02 开头流水）
-  ('00000000-0000-0000-0000-00000000000a', '20240201', '孟繁星', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
-  ('00000000-0000-0000-0000-00000000000b', '20240202', '秦子衿', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
-  ('00000000-0000-0000-0000-00000000000c', '20240203', '柳闻莺', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
+  ('00000000-0000-0000-0000-00000000000a', '20240201', '孟繁星', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
+  ('00000000-0000-0000-0000-00000000000b', '20240202', '秦子衿', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
+  ('00000000-0000-0000-0000-00000000000c', '20240203', '柳闻莺', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
   -- e2e 夹具账号（仅供 scripts/sft-dpo-pipeline-e2e.mjs 使用，登录名走 2099 测试段）
-  ('a0000000-0000-0000-0000-000000000001', '20990001', 'e2e管理员', 'admin',   'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
-  ('a0000000-0000-0000-0000-000000000002', '20990002', 'e2e教师',   'teacher', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf'))),
-  ('a0000000-0000-0000-0000-000000000012', '20990101', 'e2e学生',   'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')));
+  ('a0000000-0000-0000-0000-000000000001', '20990001', 'e2e管理员', 'admin',   'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
+  ('a0000000-0000-0000-0000-000000000002', '20990002', 'e2e教师',   'teacher', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
+  ('a0000000-0000-0000-0000-000000000012', '20990101', 'e2e学生',   'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false);
 
 INSERT INTO public.classes (id, name, grade, status, created_by) VALUES
   ('00000000-0000-0000-0000-0000000000aa', '高一（1）班', '高一', 'active', '00000000-0000-0000-0000-000000000002'),

@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { encryptSecret } from '@/lib/crypto/secret-cipher';
 import { transportForConnectionRef } from '@/lib/mcp-runtime';
 import { assertStdioMcpDisabled, requireAllowedMcpRemoteUrl } from '@/lib/mcp-runtime-policy';
+import { createDatabaseSessionSignature } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
 import type { AppRole, Database, Json, ModelTier, ProviderCapability } from '@/lib/supabase/database.types';
 import { fail, getModelTiers, ok, requireRole, scenarioModelTiers, type DataResult, type ModelTierStatus } from './common';
@@ -860,6 +861,12 @@ export async function importUsersFromCsv(csvText: string): Promise<{ ok: true; i
       status: 'active',
     }, { onConflict: 'login_id' }).select('id').single();
     if (profileError) return { ok: false, message: `第 ${row.rowNumber} 行账号导入失败：${profileError.message}`, preview };
+    // 初始密码 = 学号/工号 + 强制首登改密（2026-09-12 产品裁定）。幂等：重复导入不改变已改密的账号。
+    const { error: initialPasswordError } = await supabase.rpc('set_initial_password_by_login', {
+      p_login_id: row.loginId,
+      p_server_signature: createDatabaseSessionSignature(`login:${row.loginId}`),
+    });
+    if (initialPasswordError) return { ok: false, message: `第 ${row.rowNumber} 行初始密码设置失败：${initialPasswordError.message}`, preview };
     if (row.className && row.role !== 'admin') {
       const { data: classRow, error: classError } = await supabase.from('classes').upsert({ name: row.className, created_by: role.data.id }, { onConflict: 'name' }).select('id').single();
       if (classError) return { ok: false, message: `第 ${row.rowNumber} 行班级导入失败：${classError.message}`, preview };

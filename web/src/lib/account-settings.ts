@@ -51,6 +51,7 @@ export const accountRpcProfileSchema = z.object({
   display_name: z.string(),
   avatar_key: avatarKeySchema,
   session_version: z.number().int().nonnegative(),
+  must_change_password: z.boolean(),
 });
 
 export const accountRpcProfilesSchema = z.array(accountRpcProfileSchema);
