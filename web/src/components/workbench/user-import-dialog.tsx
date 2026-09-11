@@ -16,8 +16,8 @@ import type { CsvUserPreview } from '@/lib/data/admin';
 type ImportResponse = CsvUserPreview | { error: string; preview?: CsvUserPreview };
 
 const SAMPLE = `display_name,login_id,role,class_name
-王同学,20260001,student,高一(3)班
-李老师,T2026001,teacher,高一(3)班`;
+陈砚秋,20260101,student,高一(1)班
+沈立行,20180001,teacher,高一(1)班`;
 
 export function UserImportDialog() {
   const router = useRouter();
