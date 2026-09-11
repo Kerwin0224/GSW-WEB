@@ -28,12 +28,26 @@ export function normalizeProjectAuthor(value?: string | null): string | null {
   return author ? author : null;
 }
 
-// 书名号是"学生明确提到篇目"的确定性信号，不需要模型裁决：
-// 命中即零延迟归档（首问当轮就进项目），模型分类只兜底没有书名号的泛问。
-const explicitBookTitlePattern = /《([^《》\n]{1,40})》/;
+export function matchKnownProjectTitle(question: string, knownTitles: readonly string[]): string | null {
+  const haystack = question.replace(/[《》\s]/g, '');
+  if (!haystack) return null;
+  const candidates = knownTitles
+    .map((title) => normalizeConcreteProjectTitle(title))
+    .filter((title): title is string => Boolean(title))
+    .sort((a, b) => b.length - a.length);
+  for (const title of candidates) {
+    if (title.length >= 2 && haystack.includes(title)) return title;
+  }
+  return null;
+}
 
-export function extractExplicitProjectTitle(question: string): string | null {
-  return normalizeConcreteProjectTitle(explicitBookTitlePattern.exec(question)?.[1] ?? null);
+// 解析模型直判的输出：第一行篇目标题（或 NULL），第二行作者（可空）。
+// 标题走归一化（去书名号、拒占位词），任一环节不通过即判无法归属。
+export function parseClassificationAnswer(text: string): { title: string; author: string | null } | { title: null; author: null } {
+  const [rawTitle, rawAuthor] = text.split('\n');
+  const title = normalizeConcreteProjectTitle(rawTitle);
+  if (!title || title.toUpperCase() === 'NULL') return { title: null, author: null };
+  return { title, author: normalizeProjectAuthor(rawAuthor) };
 }
 
 // ─── 系统提示词构建 ───────────────────────────────────────────────────────────

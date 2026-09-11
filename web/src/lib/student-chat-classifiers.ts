@@ -3,7 +3,8 @@
  *
  * 学生会话的 AI 分类调用：篇目归属裁决 + 布鲁姆认知路径判定。
  *
- * 这两个函数都调用 `generateObject`，是副作用性操作（网络请求 + token 消耗）。
+ * 篇目归属裁决走纯文本输出（不依赖结构化输出能力），布鲁姆判定走结构化输出；
+ * 两个都是副作用性操作（网络请求 + token 消耗）。
  * 它们从 student-chat-prompts.ts 分离出来，使后者只保留纯函数（提示词构建 + 规范化），
  * 让接缝更清晰：
  *   - student-chat-prompts.ts → 纯函数，可直接单元测试，无 import 'ai'
@@ -12,50 +13,45 @@
  * 两个函数的类型签名和行为与原来完全一致，只是换了文件位置。
  */
 
-import { generateObject, type LanguageModel } from 'ai';
+import { generateObject, generateText, type LanguageModel } from 'ai';
 import { z } from 'zod';
 
-import { extractExplicitProjectTitle, normalizeConcreteProjectTitle, normalizeProjectAuthor } from './student-chat-prompts';
+import { matchKnownProjectTitle, parseClassificationAnswer } from './student-chat-prompts';
 
 // ─── 篇目归属裁决 ────────────────────────────────────────────────────────────
 
-const projectSchema = z.object({
-  title: z.string().trim().max(80).nullable(),
-  author: z.string().trim().max(40).nullable().optional(),
-  confidence: z.number().min(0).max(1),
-});
+export type ProjectClassificationOutcome =
+  | { title: string; author: string | null; failure?: undefined }
+  | { title: null; author: null; failure: 'model-error' | 'unclassified' };
 
 /**
  * 篇目归属裁决：仅在全局空白入口首问时调用。
- * 置信度 < 0.8 或无法裁决时返回 null，会话进入日常会话归档。
- * 失败时静默返回 null（不抛出），由调用方决定降级策略。
+ * 已知篇目直查（学生已有项目，零模型调用）→ 模型直判（纯文本输出，不依赖
+ * 结构化输出能力，弱模型也能判）→ 无法裁决进日常会话归档。
+ * 模型异常不抛出（failure: 'model-error'），由调用方记日志并降级。
  */
 export async function classifyProjectFromQuestion(
   model: LanguageModel,
   question: string,
-): Promise<{ title: string | null; author: string | null }> {
-  // 快路径：首问自带《书名号》时直接归档，不等模型裁决——
-  // 消除"发起提问后长时间不归档"的最常见原因（模型慢/裁决保守/调用失败）。
-  const explicitTitle = extractExplicitProjectTitle(question);
-  if (explicitTitle) return { title: explicitTitle, author: null };
+  knownTitles: readonly string[] = [],
+): Promise<ProjectClassificationOutcome> {
+  const knownTitle = matchKnownProjectTitle(question, knownTitles);
+  if (knownTitle) return { title: knownTitle, author: null };
   try {
-    const result = await generateObject({
+    const result = await generateText({
       model,
-      schema: projectSchema,
+      maxOutputTokens: 100,
       system:
-        '你是文韵智途的篇目归属裁决器。只为全局空白入口首问判断会话沉淀容器，不决定 AI 回答范围。只能返回真实古诗文篇目标题；title 去掉书名号，不要返回作者、主题、体裁、年级、题型、泛泛学习意图或占位标题。首问提到多个篇目时，不要直接归入日常会话归档；请根据学生本轮真正要学习或追问的主旨裁决一个主篇目。只有无法确定主篇目、候选篇目只是例子、问题泛泛谈古诗文学习，或置信度不足时，才返回 title=null、confidence=0。禁止返回"自动识别中的篇目""未定篇目""待自动归属""篇目项目""日常会话归档"等占位标题。',
-      prompt: `学生首问：${question}\n\n输出具体篇目标题、作者（能确定才填）和置信度。若不能可靠裁决一个主篇目，title 必须为 null。`,
+        '你是文韵智途的篇目归属裁决器。只为全局空白入口首问判断会话沉淀容器，不决定 AI 回答范围。只能返回真实古诗文篇目标题。学生是否加书名号只是书写习惯，与能否归属无关："赤壁赋的背景是什么"归赤壁赋，"登高这首诗讲什么"归登高，"静夜思里疑是什么意思"归静夜思，"念奴娇上阕怎么理解"归念奴娇·赤壁怀古。首问提到多个篇目时，以学生本轮真正要学习的主旨裁决一个主篇目，不要直接判无法归属。只有无法确定主篇目、候选只是例子、问题泛泛而谈，或你没有把握时，才判无法归属。禁止输出占位标题。只输出以下两行，不要多余文字：第一行是篇目标题（不加书名号），第二行是作者（能确定才填，否则空着）；无法归属时只输出一行 NULL。',
+      prompt: `学生首问：${question}`,
     });
-    if (result.object.confidence < 0.8) return { title: null, author: null };
-    return {
-      title: normalizeConcreteProjectTitle(result.object.title),
-      author: normalizeProjectAuthor(result.object.author),
-    };
+    const parsed = parseClassificationAnswer(result.text);
+    if (!parsed.title) return { title: null, author: null, failure: 'unclassified' };
+    return { title: parsed.title, author: parsed.author };
   } catch {
-    return { title: null, author: null };
+    return { title: null, author: null, failure: 'model-error' };
   }
 }
-
 // ─── 布鲁姆认知路径判定 ──────────────────────────────────────────────────────
 
 const bloomLevelSchema = z.union([

@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 
 import {
   buildStudentSystemPrompt,
-  extractExplicitProjectTitle,
+  matchKnownProjectTitle,
   normalizeConcreteProjectTitle,
   normalizeProjectAuthor,
+  parseClassificationAnswer,
 } from '../student-chat-prompts.ts';
 
 // ─── normalizeConcreteProjectTitle ────────────────────────────────────────────
@@ -118,16 +119,43 @@ test('all ctx kinds accept empty attachmentPrompt without trailing noise', () =>
   }
 });
 
-// ─── explicit book-title fast path ───────────────────────────────────────────
+// ─── model verdict parsing (plain-text contract, no book-mark rule) ──────────
 
-test('extractExplicitProjectTitle returns the first book-marked title', () => {
-  assert.equal(extractExplicitProjectTitle('《静夜思》的"疑"是什么意思？'), '静夜思');
-  assert.equal(extractExplicitProjectTitle('帮我理解《念奴娇·赤壁怀古》上阕'), '念奴娇·赤壁怀古');
-  assert.equal(extractExplicitProjectTitle('《出师表》和《桃花源记》哪篇更难？'), '出师表');
+test('parseClassificationAnswer reads title and author lines', () => {
+  assert.deepEqual(parseClassificationAnswer('赤壁赋\n苏轼'), { title: '赤壁赋', author: '苏轼' });
+  assert.deepEqual(parseClassificationAnswer('登高\n'), { title: '登高', author: null });
+  assert.deepEqual(parseClassificationAnswer('念奴娇·赤壁怀古\n苏轼\n多余行忽略'), { title: '念奴娇·赤壁怀古', author: '苏轼' });
 });
 
-test('extractExplicitProjectTitle rejects non-titles and empty marks', () => {
-  assert.equal(extractExplicitProjectTitle('没有书名号的泛泛之问'), null);
-  assert.equal(extractExplicitProjectTitle('《》里什么都没有'), null);
-  assert.equal(extractExplicitProjectTitle('《日常会话归档》这种占位词不算篇目'), null);
+test('parseClassificationAnswer treats NULL and placeholders as unclassified', () => {
+  assert.deepEqual(parseClassificationAnswer('NULL'), { title: null, author: null });
+  assert.deepEqual(parseClassificationAnswer('null'), { title: null, author: null });
+  assert.deepEqual(parseClassificationAnswer('日常会话归档'), { title: null, author: null });
+  assert.deepEqual(parseClassificationAnswer(''), { title: null, author: null });
+  assert.deepEqual(parseClassificationAnswer('《登高》\n杜甫'), { title: '登高', author: '杜甫' });
+});
+
+// ─── known-title fast path (no book marks required) ──────────────────────────
+
+test('matchKnownProjectTitle hits owner titles without book marks', () => {
+  const titles = ['静夜思', '登鹳雀楼', '送东阳马生序', '出师表'];
+  assert.equal(matchKnownProjectTitle('出师表的作者是谁', titles), '出师表');
+  assert.equal(matchKnownProjectTitle('登高这首诗讲什么', ['登高', '静夜思']), '登高');
+  assert.equal(matchKnownProjectTitle('《静夜思》的疑是什么意思', titles), '静夜思');
+});
+
+test('matchKnownProjectTitle prefers the longest title', () => {
+  assert.equal(matchKnownProjectTitle('送东阳马生序怎么背', ['送东阳马生序', '马生']), '送东阳马生序');
+});
+
+test('matchKnownProjectTitle returns null without a hit', () => {
+  const titles = ['静夜思', '出师表'];
+  assert.equal(matchKnownProjectTitle('赤壁赋的背景是什么', titles), null);
+  assert.equal(matchKnownProjectTitle('古诗文怎么学', titles), null);
+  assert.equal(matchKnownProjectTitle('', titles), null);
+  assert.equal(matchKnownProjectTitle('静夜思写得真好', []), null);
+});
+
+test('matchKnownProjectTitle ignores placeholder titles', () => {
+  assert.equal(matchKnownProjectTitle('日常会话归档在哪里', ['日常会话归档', '静夜思']), null);
 });
