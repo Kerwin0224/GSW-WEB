@@ -31,7 +31,7 @@ function parseStatus(value: string | undefined): AdminProfileStatus | 'all' {
 }
 
 function roleLabel(role: AppRole) {
-  return { admin: '管理员', teacher: '教师', student: '学生' }[role];
+  return { org_admin: '公司管理员', admin: '管理员', teacher: '教师', student: '学生' }[role];
 }
 
 function statusLabel(status: AdminProfileStatus) {

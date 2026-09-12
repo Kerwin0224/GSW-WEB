@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 
 import { getUser } from '@/lib/auth';
 
-const roleHome = { student: '/student', teacher: '/teacher', admin: '/admin' } as const;
+const roleHome = { student: '/student', teacher: '/teacher', admin: '/admin', org_admin: '/org' } as const;
 
 export default async function Home() {
   const user = await getUser();

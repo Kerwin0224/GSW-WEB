@@ -13,6 +13,15 @@ const roleHome: Record<string, string> = {
   student: '/student',
   teacher: '/teacher',
   admin: '/admin',
+  org_admin: '/org',
+};
+
+type LoginCandidate = {
+  schoolId: string | null;
+  schoolName: string | null;
+  organizationName: string | null;
+  role: string;
+  displayName: string;
 };
 
 export default function LoginPage() {
@@ -20,9 +29,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [candidates, setCandidates] = useState<LoginCandidate[] | null>(null);
 
-  const handleLogin = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const handleLogin = async (schoolId?: string) => {
     setError('');
     setLoading(true);
 
@@ -30,10 +39,23 @@ export default function LoginPage() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ loginId, password }),
+        body: JSON.stringify({ loginId, password, ...(schoolId ? { schoolId } : {}) }),
       });
 
-      const data = (await response.json()) as { error?: string; role?: string; redirectTo?: string };
+      const data = (await response.json()) as {
+        error?: string;
+        role?: string;
+        redirectTo?: string;
+        ambiguous?: boolean;
+        candidates?: LoginCandidate[];
+      };
+
+      // 学号在多校重名：内部消歧，由用户点选所在学校（无需输入学校码）。
+      if (data.ambiguous && data.candidates?.length) {
+        setCandidates(data.candidates);
+        setLoading(false);
+        return;
+      }
 
       if (!response.ok) {
         setError(data.error || '登录失败，请检查账号或联系管理员。');
@@ -48,11 +70,16 @@ export default function LoginPage() {
       }
 
       // 初始密码=学号/工号的账号首登会被引导到 /settings?required=1 强制改密。
-      window.location.href = data.redirectTo ?? roleHome[data.role];
+      window.location.assign(data.redirectTo ?? roleHome[data.role]);
     } catch {
       setError('当前服务暂不可用，请稍后再试。');
       setLoading(false);
     }
+  };
+
+  const submitForm = (event: React.FormEvent) => {
+    event.preventDefault();
+    void handleLogin();
   };
 
   return (
@@ -94,11 +121,32 @@ export default function LoginPage() {
             </div>
 
             <CardContent className="space-y-6 p-6 sm:p-8">
-              <form onSubmit={handleLogin} className="space-y-5" aria-busy={loading}>
+              <form onSubmit={submitForm} className="space-y-5" aria-busy={loading}>
                 {error ? (
                   <Alert variant="destructive" className="rounded-lg border-destructive/30 bg-destructive/10" role="alert">
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
+                ) : null}
+
+                {candidates ? (
+                  <div className="space-y-2 rounded-lg border border-primary/25 bg-primary/5 p-3" role="radiogroup" aria-label="选择你所在的学校">
+                    <p className="text-sm font-medium text-foreground">该学号在多个学校存在，请选择你所在的学校：</p>
+                    {candidates.map((candidate) => (
+                      <button
+                        key={candidate.schoolId ?? 'none'}
+                        type="button"
+                        disabled={loading}
+                        onClick={() => { if (candidate.schoolId) void handleLogin(candidate.schoolId); }}
+                        className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-border/70 bg-background/85 px-3 text-left text-sm transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{candidate.schoolName ?? '未归属学校'}</span>
+                          <span className="text-xs text-muted-foreground">{candidate.organizationName ?? ''} · {candidate.displayName}</span>
+                        </span>
+                        <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      </button>
+                    ))}
+                  </div>
                 ) : null}
 
                 <div className="space-y-2.5">

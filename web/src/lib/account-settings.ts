@@ -47,7 +47,7 @@ const postgresUuidSchema = z.string().regex(
 export const accountRpcProfileSchema = z.object({
   id: postgresUuidSchema,
   login_id: z.string(),
-  role: z.enum(['admin', 'teacher', 'student']),
+  role: z.enum(['org_admin', 'admin', 'teacher', 'student']),
   display_name: z.string(),
   avatar_key: avatarKeySchema,
   session_version: z.number().int().nonnegative(),
@@ -55,6 +55,16 @@ export const accountRpcProfileSchema = z.object({
 });
 
 export const accountRpcProfilesSchema = z.array(accountRpcProfileSchema);
+
+/** authenticate_school_account_v3 的行：附加跨校消歧所需的学校/公司上下文（均可空）。 */
+export const loginRpcProfileSchema = accountRpcProfileSchema.extend({
+  school_id: z.string().uuid().nullable(),
+  school_name: z.string().nullable(),
+  organization_id: z.string().uuid().nullable(),
+  organization_name: z.string().nullable(),
+});
+
+export const loginRpcProfilesSchema = z.array(loginRpcProfileSchema);
 
 const rpcErrorSchema = z.object({
   code: z.string().optional(),

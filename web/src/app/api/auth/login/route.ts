@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { accountRpcProfilesSchema } from '@/lib/account-settings';
+import { loginRpcProfilesSchema } from '@/lib/account-settings';
 import { validateSchoolLoginId } from '@/lib/school-login';
 import { attachSessionCookie, createDatabaseSessionSignature } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
@@ -12,13 +12,15 @@ import { writeLogEvent } from '@/lib/observability/server-log-store';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const roleHome: Record<AppRole, string> = { student: '/student', teacher: '/teacher', admin: '/admin' };
+const roleHome: Record<AppRole, string> = { student: '/student', teacher: '/teacher', admin: '/admin', org_admin: '/org' };
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
 const loginBodySchema = z.object({
   loginId: z.string().optional(),
   password: z.string().optional(),
+  // 跨校重名学号的二次提交消歧参数；首轮登录无需学校信息（产品裁定：内部处理）。
+  schoolId: z.string().uuid().optional(),
 });
 function rateLimitKey(req: Request, loginId: string) {
   const forwarded = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
@@ -66,10 +68,11 @@ export async function POST(req: Request) {
     }
 
     const supabase = await createClient();
-    const { data, error } = await supabase.rpc('authenticate_school_account_v2', {
+    const { data, error } = await supabase.rpc('authenticate_school_account_v3', {
       p_login_id: loginIdResult.loginId,
       p_password: password,
       p_server_signature: createDatabaseSessionSignature(`login:${loginIdResult.loginId}`),
+      p_school_id: parsedBody.data.schoolId ?? null,
     });
 
     if (error) {
@@ -84,7 +87,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '账号认证服务不可用，请联系学校管理员。', requestId }, { status: 500 });
     }
 
-    const parsedAccounts = accountRpcProfilesSchema.safeParse(data);
+    const parsedAccounts = loginRpcProfilesSchema.safeParse(data);
     if (!parsedAccounts.success) {
       await writeLogEvent({
         level: 'error',
@@ -96,11 +99,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '账号认证服务不可用，请联系学校管理员。', requestId }, { status: 500 });
     }
 
-    const account = parsedAccounts.data[0] ?? null;
-    if (!account) {
+    const accounts = parsedAccounts.data;
+    if (accounts.length === 0) {
       await writeLogEvent({ level: 'warn', area: 'auth', event: 'school_login_rejected', requestId, route: '/api/auth/login', status: 401 });
       return NextResponse.json({ error: '账号或密码不正确。', requestId }, { status: 401 });
     }
+
+    // 学号跨校重名且未消歧：让登录页在选择列表里内部处理，用户不输入学校码。
+    if (accounts.length > 1 && !parsedBody.data.schoolId) {
+      await writeLogEvent({ level: 'info', area: 'auth', event: 'school_login_ambiguous', requestId, route: '/api/auth/login', status: 300, context: { matched: accounts.length } });
+      return NextResponse.json({
+        ambiguous: true,
+        candidates: accounts.map((row) => ({
+          schoolId: row.school_id,
+          schoolName: row.school_name,
+          organizationName: row.organization_name,
+          role: row.role,
+          displayName: row.display_name,
+        })),
+        requestId,
+      });
+    }
+
+    const account = accounts[0];
 
     await writeLogEvent({
       level: 'info',

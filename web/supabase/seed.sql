@@ -37,37 +37,49 @@ FROM (VALUES
   -- e2e 夹具（scripts/sft-dpo-pipeline-e2e.mjs 默认引用的固定 UUID）
   ('a0000000-0000-0000-0000-000000000001'::uuid, '20990001'),
   ('a0000000-0000-0000-0000-000000000002'::uuid, '20990002'),
-  ('a0000000-0000-0000-0000-000000000012'::uuid, '20990101')
+  ('a0000000-0000-0000-0000-000000000012'::uuid, '20990101'),
+  -- 公司级大账号（org_admin，工号走 10 开头的总部段）
+  ('00000000-0000-0000-0000-00000000f001'::uuid, '10000001')
 ) AS p(id, login_id);
 
 -- 账号一览（密码均为 demo1234）：管理员 20000101 周慧明；
 -- 教师 20150101 沈立行（高一1班）、20180001 顾清晏（高一2班）；学生见 profiles 插入段。
-INSERT INTO public.profiles (id, login_id, display_name, role, status, password_hash, must_change_password) VALUES
-  -- 管理员与教师（工号 = 入职年 + 流水）
-  ('00000000-0000-0000-0000-000000000001', '20000101', '周慧明', 'admin',   'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
-  ('00000000-0000-0000-0000-000000000002', '20150101', '沈立行', 'teacher', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
-  ('00000000-0000-0000-0000-000000000005', '20180001', '顾清晏', 'teacher', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
-  -- 高一（1）班学生（2024 级，01 开头流水）
-  ('00000000-0000-0000-0000-000000000003', '20240101', '陈砚秋', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
-  ('00000000-0000-0000-0000-000000000004', '20240102', '林望舒', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
-  ('00000000-0000-0000-0000-000000000006', '20240103', '苏晏清', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
-  ('00000000-0000-0000-0000-000000000007', '20240104', '江晚吟', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
-  ('00000000-0000-0000-0000-000000000008', '20240105', '赵启铭', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
-  ('00000000-0000-0000-0000-000000000009', '20240106', '何雨眠', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
-  -- 高一（2）班学生（2024 级，02 开头流水）
-  ('00000000-0000-0000-0000-00000000000a', '20240201', '孟繁星', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
-  ('00000000-0000-0000-0000-00000000000b', '20240202', '秦子衿', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
-  ('00000000-0000-0000-0000-00000000000c', '20240203', '柳闻莺', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
-  -- e2e 夹具账号（仅供 scripts/sft-dpo-pipeline-e2e.mjs 使用，登录名走 2099 测试段）
-  ('a0000000-0000-0000-0000-000000000001', '20990001', 'e2e管理员', 'admin',   'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
-  ('a0000000-0000-0000-0000-000000000002', '20990002', 'e2e教师',   'teacher', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false),
-  ('a0000000-0000-0000-0000-000000000012', '20990101', 'e2e学生',   'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false);
+-- 默认公司（organizations）与学校（schools）
+INSERT INTO public.organizations (id, name, status) VALUES
+  ('00000000-0000-0000-0000-00000000f001', '文韵智途', 'active');
 
-INSERT INTO public.classes (id, name, grade, status, created_by) VALUES
-  ('00000000-0000-0000-0000-0000000000aa', '高一（1）班', '高一', 'active', '00000000-0000-0000-0000-000000000002'),
-  ('00000000-0000-0000-0000-0000000000ab', '高一（2）班', '高一', 'active', '00000000-0000-0000-0000-000000000005'),
+INSERT INTO public.schools (id, org_id, name, status) VALUES
+  ('00000000-0000-0000-0000-00000000f101', '00000000-0000-0000-0000-00000000f001', '示范一中', 'active'),
+  ('00000000-0000-0000-0000-00000000f102', '00000000-0000-0000-0000-00000000f001', '示范二中', 'active');
+
+INSERT INTO public.profiles (id, login_id, display_name, role, status, password_hash, must_change_password, organization_id, school_id) VALUES
+  -- 管理员与教师（工号 = 入职年 + 流水）
+  ('00000000-0000-0000-0000-000000000001', '20000101', '周慧明', 'admin',   'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false, '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000f101'),
+  ('00000000-0000-0000-0000-000000000002', '20150101', '沈立行', 'teacher', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false, '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000f101'),
+  ('00000000-0000-0000-0000-000000000005', '20180001', '顾清晏', 'teacher', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false, '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000f102'),
+  -- 高一（1）班学生（2024 级，01 开头流水）
+  ('00000000-0000-0000-0000-000000000003', '20240101', '陈砚秋', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false, '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000f101'),
+  ('00000000-0000-0000-0000-000000000004', '20240102', '林望舒', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false, '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000f101'),
+  ('00000000-0000-0000-0000-000000000006', '20240103', '苏晏清', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false, '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000f101'),
+  ('00000000-0000-0000-0000-000000000007', '20240104', '江晚吟', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false, '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000f101'),
+  ('00000000-0000-0000-0000-000000000008', '20240105', '赵启铭', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false, '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000f101'),
+  ('00000000-0000-0000-0000-000000000009', '20240106', '何雨眠', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false, '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000f101'),
+  -- 高一（2）班学生（2024 级，02 开头流水）
+  ('00000000-0000-0000-0000-00000000000a', '20240201', '孟繁星', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false, '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000f102'),
+  ('00000000-0000-0000-0000-00000000000b', '20240202', '秦子衿', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false, '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000f102'),
+  ('00000000-0000-0000-0000-00000000000c', '20240203', '柳闻莺', 'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false, '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000f102'),
+  -- e2e 夹具账号（仅供 scripts/sft-dpo-pipeline-e2e.mjs 使用，登录名走 2099 测试段）
+  ('a0000000-0000-0000-0000-000000000001', '20990001', 'e2e管理员', 'admin',   'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false, '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000f101'),
+  ('a0000000-0000-0000-0000-000000000002', '20990002', 'e2e教师',   'teacher', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false, '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000f101'),
+  ('a0000000-0000-0000-0000-000000000012', '20990101', 'e2e学生',   'student', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false, '00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000f101'),
+  -- 公司级大账号
+  ('00000000-0000-0000-0000-00000000f001', '10000001', '文韵总部', 'org_admin', 'active', extensions.crypt('demo1234', extensions.gen_salt('bf')), false, '00000000-0000-0000-0000-00000000f001', NULL);
+
+INSERT INTO public.classes (id, name, grade, status, school_id, created_by) VALUES
+  ('00000000-0000-0000-0000-0000000000aa', '高一（1）班', '高一', 'active', '00000000-0000-0000-0000-00000000f101', '00000000-0000-0000-0000-000000000002'),
+  ('00000000-0000-0000-0000-0000000000ab', '高一（2）班', '高一', 'active', '00000000-0000-0000-0000-00000000f102', '00000000-0000-0000-0000-000000000005'),
   -- e2e 夹具班级（scripts/sft-dpo-pipeline-e2e.mjs 默认 classId）
-  ('c0000000-0000-0000-0000-000000000001', 'e2e 测试班', '高一', 'active', 'a0000000-0000-0000-0000-000000000001');
+  ('c0000000-0000-0000-0000-000000000001', 'e2e 测试班', '高一', 'active', '00000000-0000-0000-0000-00000000f101', 'a0000000-0000-0000-0000-000000000001');
 
 INSERT INTO public.class_memberships (class_id, profile_id, role) VALUES
   -- 高一（1）班：沈立行任教

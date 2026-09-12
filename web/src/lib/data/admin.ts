@@ -70,7 +70,7 @@ const providerCapabilities = [
 
 const configurableScenarios = providerCapabilities.filter((capability) => capability !== 'embedding');
 
-const appRoles = ['admin', 'teacher', 'student'] as const satisfies readonly AppRole[];
+const appRoles = ['org_admin', 'admin', 'teacher', 'student'] as const satisfies readonly AppRole[];
 
 type ProviderConfigRow = Database['public']['Tables']['provider_configs']['Row'];
 type ProviderCapabilityRow = Database['public']['Tables']['provider_capabilities']['Row'];
@@ -848,37 +848,37 @@ export async function previewUserCsv(csvText: string): Promise<CsvUserPreview> {
 export async function importUsersFromCsv(csvText: string): Promise<{ ok: true; imported: number } | { ok: false; message: string; preview: CsvUserPreview }> {
   const role = await requireRole('admin');
   if (!role.ok) return { ok: false, message: role.message, preview: await previewUserCsv(csvText) };
+  // 校 admin 导入本校名册；班级与账号都挂到调用者的学校（org_admin 的学校归属后续版本放开）。
+  const caller = role.data;
   const preview = await previewUserCsv(csvText);
   if (preview.invalidCount > 0) return { ok: false, message: 'CSV 存在无效行。', preview };
   const supabase = await createClient();
   let imported = 0;
   for (const row of preview.rows) {
-    const { data: profile, error: profileError } = await supabase.from('profiles').upsert({
-      id: crypto.randomUUID(),
-      display_name: row.displayName,
-      login_id: row.loginId,
-      role: row.role ?? 'student',
-      status: 'active',
-    }, { onConflict: 'login_id' }).select('id').single();
-    if (profileError) return { ok: false, message: `第 ${row.rowNumber} 行账号导入失败：${profileError.message}`, preview };
-    // 初始密码 = 学号/工号 + 强制首登改密（2026-09-12 产品裁定）。幂等：重复导入不改变已改密的账号。
-    const { error: initialPasswordError } = await supabase.rpc('set_initial_password_by_login', {
+    // 校 admin 导入本校名册；账号/班级挂到调用者的学校。
+    // provision RPC 一次完成 auth.users 镜像 + profile + 初始密码（学号）+ 强制改密；
+    // 重导入（同校同号已存在）仅更新姓名角色，不动密码。
+    const { data: profileId, error: provisionError } = await supabase.rpc('provision_school_account', {
       p_login_id: row.loginId,
-      p_server_signature: createDatabaseSessionSignature(`login:${row.loginId}`),
+      p_display_name: row.displayName,
+      p_role: row.role ?? 'student',
+      p_school_id: caller.school_id,
+      p_server_signature: createDatabaseSessionSignature('provision_school_account'),
     });
-    if (initialPasswordError) return { ok: false, message: `第 ${row.rowNumber} 行初始密码设置失败：${initialPasswordError.message}`, preview };
+    if (provisionError || !profileId) return { ok: false, message: `第 ${row.rowNumber} 行账号导入失败：${provisionError?.message ?? 'unknown'}`, preview };
+    const profileIdText = String(profileId);
     if (row.className && row.role !== 'admin') {
-      const { data: classRow, error: classError } = await supabase.from('classes').upsert({ name: row.className, created_by: role.data.id }, { onConflict: 'name' }).select('id').single();
+      const { data: classRow, error: classError } = await supabase.from('classes').upsert({ name: row.className, school_id: caller.school_id, created_by: caller.id }, { onConflict: 'name' }).select('id').single();
       if (classError) return { ok: false, message: `第 ${row.rowNumber} 行班级导入失败：${classError.message}`, preview };
       if (row.role === 'student') {
-        const { error: transferError } = await supabase.from('class_memberships').delete().eq('profile_id', profile.id).eq('role', 'student');
+        const { error: transferError } = await supabase.from('class_memberships').delete().eq('profile_id', profileIdText).eq('role', 'student');
         if (transferError) return { ok: false, message: `第 ${row.rowNumber} 行自动迁班失败：${transferError.message}`, preview };
       } else if (row.role === 'teacher') {
         const { data: existingTeacher, error: existingTeacherError } = await supabase
           .from('class_memberships')
           .select('id')
           .eq('class_id', classRow.id)
-          .eq('profile_id', profile.id)
+          .eq('profile_id', profileIdText)
           .eq('role', 'teacher')
           .limit(1)
           .maybeSingle();
@@ -888,12 +888,12 @@ export async function importUsersFromCsv(csvText: string): Promise<{ ok: true; i
           continue;
         }
       }
-      const { error: membershipError } = await supabase.from('class_memberships').upsert({ class_id: classRow.id, profile_id: profile.id, role: row.role }, { onConflict: 'class_id,profile_id' });
+      const { error: membershipError } = await supabase.from('class_memberships').upsert({ class_id: classRow.id, profile_id: profileIdText, role: row.role }, { onConflict: 'class_id,profile_id' });
       if (membershipError) return { ok: false, message: `第 ${row.rowNumber} 行班级关系导入失败：${membershipError.message}`, preview };
       // 迁班后同步历史项目和会话的 class_id，使新班教师可见所有历史核实记录。
       if (row.role === 'student') {
-        await supabase.from('text_projects').update({ class_id: classRow.id }).eq('owner_id', profile.id);
-        await supabase.from('conversations').update({ class_id: classRow.id }).eq('owner_id', profile.id).eq('source', 'student_chat').is('deleted_at', null);
+        await supabase.from('text_projects').update({ class_id: classRow.id }).eq('owner_id', profileIdText);
+        await supabase.from('conversations').update({ class_id: classRow.id }).eq('owner_id', profileIdText).eq('source', 'student_chat').is('deleted_at', null);
       }
     }
     imported += 1;

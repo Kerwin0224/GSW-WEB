@@ -7,6 +7,7 @@ const roleHome = {
   student: '/student',
   teacher: '/teacher',
   admin: '/admin',
+  org_admin: '/org',
 } as const;
 
 type AppRole = keyof typeof roleHome;

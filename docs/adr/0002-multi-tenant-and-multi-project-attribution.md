@@ -1,6 +1,19 @@
 # 0002: 多租户（SaaS）与群文阅读多篇归属的数据模型
 
-日期：2026-09-11 · 状态：proposed（待产品确认后实施）
+日期：2026-09-11 · 状态：accepted（2026-09-12 产品裁定后分阶段实施）
+
+实施记录（v1，迁移 20260912130000_multi_tenant_foundations.sql）：
+- 公司管校、校管人；org_admin 角色 + /org 控制台（学校生命周期 + 校管理员供给）。
+- 各校学号独立编制：login_id 全局唯一约束降级为 (school_id, login_id)；
+  登录不输学校码——authenticate_school_account_v3 返回全部密码匹配行，
+  跨校重名时登录页内部消歧（点选学校）。
+- RLS：is_admin() 收敛为 can_admin_class/can_admin_profile 按校隔离；
+  teacher_can_access_class 追加学校边界；导出批次挂 school_id。
+- 建号收口 provision_school_account RPC（修复 CSV 导入对全新账号的
+  auth.users FK 潜在缺陷）；初始密码=学号/工号 + 强制首登改密。
+- v1 已知边界：provider/model_tier/presets/mcp/data_quality_events 仍为
+  全 admin 共享（公司统一配置口径，未按校隔离）；org_admin 无独立控制台
+  侧边栏外壳（/org 自带头部）；export_batches 历史行 school_id 为 NULL 过渡。
 
 本文覆盖两个互相独立的数据模型变更：多租户隔离（SaaS 化前提）与群文阅读场景下会话归属多个篇目。两者都动核心表，先立设计再动迁移。
 

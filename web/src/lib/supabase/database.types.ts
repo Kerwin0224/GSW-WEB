@@ -1,6 +1,6 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
-export type AppRole = 'admin' | 'teacher' | 'student';
+export type AppRole = 'org_admin' | 'admin' | 'teacher' | 'student';
 export type AvatarKey = 'ink' | 'pine' | 'cinnabar' | 'moon' | 'bamboo' | 'plum';
 export type ModelTier = 'flash' | 'advanced';
 export type ProviderCapability =
@@ -31,13 +31,23 @@ export interface Database {
   public: {
     Tables: {
       profiles: {
-        Row: { id: string; login_id: string | null; display_name: string; role: AppRole; status: 'active' | 'disabled'; avatar_key: AvatarKey; session_version: number; must_change_password: boolean; created_at: string; updated_at: string };
-        Insert: { id: string; login_id?: string | null; display_name: string; role: AppRole; status?: 'active' | 'disabled'; avatar_key?: AvatarKey; must_change_password?: boolean };
+        Row: { id: string; login_id: string | null; display_name: string; role: AppRole; status: 'active' | 'disabled'; avatar_key: AvatarKey; session_version: number; must_change_password: boolean; organization_id: string | null; school_id: string | null; created_at: string; updated_at: string };
+        Insert: { id: string; login_id?: string | null; display_name: string; role: AppRole; status?: 'active' | 'disabled'; avatar_key?: AvatarKey; must_change_password?: boolean; organization_id?: string | null; school_id?: string | null };
         Update: Partial<Database['public']['Tables']['profiles']['Insert']>;
       };
+      organizations: {
+        Row: { id: string; name: string; status: 'active' | 'disabled'; created_at: string; updated_at: string };
+        Insert: { id?: string; name: string; status?: 'active' | 'disabled' };
+        Update: Partial<Database['public']['Tables']['organizations']['Insert']>;
+      };
+      schools: {
+        Row: { id: string; org_id: string; name: string; status: 'active' | 'disabled'; created_at: string; updated_at: string };
+        Insert: { id?: string; org_id: string; name: string; status?: 'active' | 'disabled' };
+        Update: Partial<Database['public']['Tables']['schools']['Insert']>;
+      };
       classes: {
-        Row: { id: string; name: string; grade: string | null; status: 'active' | 'archived'; created_by: string | null; created_at: string; updated_at: string };
-        Insert: { id?: string; name: string; grade?: string | null; status?: 'active' | 'archived'; created_by?: string | null };
+        Row: { id: string; name: string; grade: string | null; status: 'active' | 'archived'; school_id: string | null; created_by: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; name: string; grade?: string | null; status?: 'active' | 'archived'; school_id?: string | null; created_by?: string | null };
         Update: Partial<Database['public']['Tables']['classes']['Insert']>;
       };
       class_memberships: {
@@ -116,8 +126,8 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['audit_records']['Insert']>;
       };
       export_batches: {
-        Row: { id: string; export_type: AuditKind; status: 'queued' | 'ready' | 'failed'; record_count: number; jsonl: string; created_by: string | null; created_at: string };
-        Insert: { id?: string; export_type: AuditKind; status?: 'queued' | 'ready' | 'failed'; record_count?: number; jsonl: string; created_by?: string | null };
+        Row: { id: string; export_type: AuditKind; status: 'queued' | 'ready' | 'failed'; record_count: number; jsonl: string; school_id: string | null; created_by: string | null; created_at: string };
+        Insert: { id?: string; export_type: AuditKind; status?: 'queued' | 'ready' | 'failed'; record_count?: number; jsonl: string; school_id?: string | null; created_by?: string | null };
         Update: Partial<Database['public']['Tables']['export_batches']['Insert']>;
       };
       data_quality_events: {

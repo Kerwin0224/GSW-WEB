@@ -10,6 +10,7 @@
 import {
   Activity,
   BarChart3,
+  Building2,
   Cpu,
   Download,
   FileSearch,
@@ -23,7 +24,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-export type Role = 'admin' | 'teacher' | 'student';
+export type Role = 'org_admin' | 'admin' | 'teacher' | 'student';
 
 export type RoleNavItem = {
   label: string;
@@ -83,7 +84,17 @@ const adminNavGroups: RoleNavGroup[] = [
   },
 ];
 
+const orgAdminNavGroups: RoleNavGroup[] = [
+  {
+    label: '公司管理',
+    items: [
+      { icon: Building2, label: '学校总览', href: '/org', description: '旗下学校与规模', primary: true },
+    ],
+  },
+];
+
 export const roleNavGroups: Record<Role, RoleNavGroup[]> = {
+  org_admin: orgAdminNavGroups,
   student: studentNavGroups,
   teacher: teacherNavGroups,
   admin: adminNavGroups,
@@ -91,6 +102,7 @@ export const roleNavGroups: Record<Role, RoleNavGroup[]> = {
 
 /** 侧边栏品牌区副标题 */
 export const roleSubtitle: Record<Role, string> = {
+  org_admin: '公司台',
   student: '学习台',
   teacher: '教学台',
   admin: '管理后台',

@@ -203,7 +203,7 @@ export async function POST(req: Request) {
       const supabase = await createClient();
       const { data: batch, error: batchError } = await supabase
         .from('export_batches')
-        .insert({ export_type: type, record_count: result.recordCount, jsonl: result.jsonl, created_by: role.data.id })
+        .insert({ export_type: type, record_count: result.recordCount, jsonl: result.jsonl, school_id: role.data.school_id, created_by: role.data.id })
         .select('id')
         .single();
       if (batchError || !batch) {
