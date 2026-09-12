@@ -5,6 +5,7 @@ import {
   accountPasswordSchema,
   accountRpcProfilesSchema,
   avatarKeySchema,
+  loginRpcProfilesSchema,
   resolvePasswordChangeResult,
 } from '../account-settings.ts';
 
@@ -167,4 +168,29 @@ test('parses a successful password RPC response into a typed account', () => {
 
   // Then
   assert.equal(result.kind, 'success');
+});
+
+test('login RPC row with non-RFC production UUIDs parses (school/org ids lack version nibbles)', () => {
+  // 生产回归（2026-09-12）：school_id/organization_id 曾用 z.string().uuid() 严格校验，
+  // 固定 UUID a0000000-…-f001 不带 RFC 版本位导致全员登录 500。
+  const data: unknown = [{
+    id: 'a0000000-0000-0000-0000-00000000f002',
+    login_id: '10000001',
+    role: 'org_admin',
+    display_name: '文韵总部',
+    avatar_key: 'ink',
+    session_version: 0,
+    must_change_password: true,
+    school_id: null,
+    school_name: null,
+    organization_id: 'a0000000-0000-0000-0000-00000000f001',
+    organization_name: '文韵智途',
+  }];
+
+  const result = loginRpcProfilesSchema.safeParse(data);
+  assert.equal(result.success, true);
+  if (result.success) {
+    assert.equal(result.data[0].organization_name, '文韵智途');
+    assert.equal(result.data[0].must_change_password, true);
+  }
 });

@@ -56,11 +56,13 @@ export const accountRpcProfileSchema = z.object({
 
 export const accountRpcProfilesSchema = z.array(accountRpcProfileSchema);
 
-/** authenticate_school_account_v3 的行：附加跨校消歧所需的学校/公司上下文（均可空）。 */
+/** authenticate_school_account_v3 的行：附加跨校消歧所需的学校/公司上下文（均可空）。
+ *  id 字段用宽容版 UUID 校验：生产数据的固定 UUID（如 a0000000-…-f001）不带 RFC
+ *  版本位，z.string().uuid() 的严格校验会让所有登录 500。 */
 export const loginRpcProfileSchema = accountRpcProfileSchema.extend({
-  school_id: z.string().uuid().nullable(),
+  school_id: postgresUuidSchema.nullable(),
   school_name: z.string().nullable(),
-  organization_id: z.string().uuid().nullable(),
+  organization_id: postgresUuidSchema.nullable(),
   organization_name: z.string().nullable(),
 });
 
