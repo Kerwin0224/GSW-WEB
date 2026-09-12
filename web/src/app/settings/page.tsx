@@ -25,6 +25,7 @@ export default async function SettingsPage() {
         avatarKey={profile.avatar_key}
         displayName={profile.display_name}
         loginId={profile.login_id ?? ''}
+        mustChangePassword={profile.must_change_password}
       />
     </AppShell>
   );

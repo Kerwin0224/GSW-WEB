@@ -19,6 +19,7 @@ test('round-trips a versioned school account session', () => {
     role: 'admin' as const,
     displayName: '管理员',
     sessionVersion: 3,
+    mustChangePassword: false,
   };
 
   // When
@@ -55,6 +56,7 @@ test('rejects a tampered school account session', () => {
     role: 'admin',
     displayName: '管理员',
     sessionVersion: 1,
+    mustChangePassword: false,
   }, SECRET, NOW_SECONDS);
 
   // When

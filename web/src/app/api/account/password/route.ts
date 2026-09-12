@@ -42,6 +42,7 @@ export async function PATCH(req: Request) {
           role: result.account.role,
           displayName: result.account.display_name,
           sessionVersion: result.account.session_version,
+          mustChangePassword: result.account.must_change_password,
         });
         return response;
       }

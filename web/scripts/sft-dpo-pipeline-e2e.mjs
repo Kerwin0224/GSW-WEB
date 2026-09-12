@@ -341,8 +341,9 @@ async function main() {
       sftTrace.prompt,
       sftTrace.answer,
       sftTrace.title,
-      '学习记录核实',
-      '确认无误或修订回答',
+      // 7be6e13 重构后的现行文案（原 '学习记录核实'/'确认无误或修订回答' 已不存在）
+      // '修订回答' 按钮仅在选中会话后的右侧面板渲染，页面直达断言不适用
+      '回答审核',
     ]);
 
     await postJson('/api/teacher/audit/sft', teacherSession, {

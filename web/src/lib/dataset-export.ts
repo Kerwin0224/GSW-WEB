@@ -1,303 +1,138 @@
 import 'server-only';
 
+import {
+  DEFAULT_EXPORT_SCOPE,
+  keepLatestApprovedExports,
+  toDpoRecord,
+  toMetadataRecord,
+  toSftRecord,
+  type ConversationLike,
+  type DatasetFilters,
+  type DatasetExportScope,
+  type DatasetType,
+  type DpoRecord,
+  type ExportableAuditRow,
+  type ExportResult,
+  type MetadataRecord,
+  type PreviewResult,
+  type SftRecord,
+  type TranscriptMessageLike,
+} from '@/lib/dataset-export-record';
 import { createClient } from '@/lib/supabase/server';
-import type { Database } from '@/lib/supabase/database.types';
 
-export type DatasetType = 'sft' | 'dpo' | 'metadata';
-export type DatasetExportScope = 'unexported' | 'all';
+export type {
+  DatasetType,
+  DatasetExportScope,
+  DatasetFilters,
+  SftRecord,
+  MetadataRecord,
+  DpoRecord,
+  ExportResult,
+  PreviewResult,
+} from '@/lib/dataset-export-record';
+export type { DatasetError } from '@/lib/dataset-export-record';
 
-export type DatasetFilters = {
-  startDate?: string;
-  endDate?: string;
-  projectIds?: string[];
-  auditorIds?: string[];
-  classId?: string | null;
-  quality?: string | null;
-  scope?: DatasetExportScope;
-};
+// 托管版 PostgREST 默认 max-rows=1000：任何一次全量查询不翻页都会静默截断，
+// 曾导致导出totalCount失真、transcript 缺失后样本静默退化为单条 prompt。
+const PAGE_SIZE = 500;
+// .in() 条件以 URL 传递，几千个 id 会超长；按块拆分。
+const IN_CLAUSE_CHUNK = 100;
 
-export type SftMessage = {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-};
-
-export type ExportSampleMetadata = {
-  sampleId: string;
-  sourceRecordId: string;
-  sourceMessageId: string | null;
-  sourceConversationId: string | null;
-  classId: string | null;
-  projectId: string | null;
-  projectTitle: string | null;
-  studentAnonId: string | null;
-  teacherId: string | null;
-  reviewStatus: string;
-  reviewedAt: string;
-  includesSft: boolean;
-  includesDpo: boolean;
-};
-
-export type SftRecord = {
-  messages: SftMessage[];
-  metadata: ExportSampleMetadata;
-};
-
-export type MetadataRecord = ExportSampleMetadata;
-
-export type DpoRecord = {
-  prompt: string;
-  messages: SftMessage[];
-  chosen: string;
-  rejected: string;
-  metadata: ExportSampleMetadata & {
-    chosenAnswerId: string;
-    rejectedAnswerId: string;
-  };
-};
-
-export type DatasetError = {
-  error: string;
-  resolution?: string;
-};
-
-export type ExportResult =
-  | {
-      success: true;
-      recordCount: number;
-      recordIds: string[];
-      jsonl: string;
-      exportedAt: string;
-    }
-  | {
-      success: false;
-      error: string;
-      resolution?: string;
-    };
-
-export type PreviewResult =
-  | {
-      type: DatasetType;
-      totalCount: number;
-      sampleRecords: Array<SftRecord | DpoRecord | MetadataRecord>;
-    }
-  | DatasetError;
-
-type AuditRecordRow = {
-  id: string;
-  source_message_id: string | null;
-  kind: Database['public']['Tables']['audit_records']['Row']['kind'];
-  status: Database['public']['Tables']['audit_records']['Row']['status'];
-  prompt: string;
-  original_answer: string | null;
-  corrected_answer: string | null;
-  chosen_answer: string | null;
-  rejected_answer: string | null;
-  quality: string | null;
-  class_id: string | null;
-  auditor_id: string | null;
-  source_conversation_id: string | null;
-  metadata: unknown;
-  created_at: string;
-  updated_at: string;
-};
-
-type ConversationRow = {
-  id: string;
-  owner_id: string;
-  project_id: string | null;
-  title: string | null;
-  text_projects?: { title: string | null } | Array<{ title: string | null }> | null;
-};
-
-type TranscriptMessageRow = {
-  id: string;
-  conversation_id: string;
-  role: Database['public']['Tables']['conversation_messages']['Row']['role'];
-  content: string;
-  created_at: string;
-};
-
-type DatasetContext = {
-  record: AuditRecordRow;
-  conversation: ConversationRow | null;
-  transcript: TranscriptMessageRow[];
-};
-
-const EXPORTABLE_AUDIT_STATUSES: Array<AuditRecordRow['status']> = ['approved', 'exported'];
-const DEFAULT_EXPORT_SCOPE: DatasetExportScope = 'unexported';
-
-function firstJoined<T>(value: T | T[] | null | undefined): T | null {
-  if (Array.isArray(value)) return value[0] ?? null;
-  return value ?? null;
-}
-
-function getRecordTimestamp(record: Pick<AuditRecordRow, 'updated_at' | 'created_at'>) {
-  return record.updated_at || record.created_at;
-}
-
-function asMetadataObject(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-function isFinalizedExportRecord(record: AuditRecordRow) {
-  return asMetadataObject(record.metadata).conversation_action === 'conversation_finalized';
-}
-
-function keepLatestBySourceMessage(records: AuditRecordRow[]) {
-  const latest = new Map<string, AuditRecordRow>();
-
-  for (const record of records) {
-    if (!record.source_message_id) continue;
-    const previous = latest.get(record.source_message_id);
-    if (!previous || getRecordTimestamp(record) >= getRecordTimestamp(previous)) {
-      latest.set(record.source_message_id, record);
-    }
+/**
+ * 翻页取尽一个查询：每页 PAGE_SIZE 行，直到返回不足一页。
+ * buildPage 必须每次构造全新查询（supabase builder 是可变对象，不能复用已执行过的实例）。
+ */
+export async function fetchAllPagedRows<T>(
+  buildPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  label: string,
+): Promise<{ rows: T[]; error?: string }> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await buildPage(from, from + PAGE_SIZE - 1);
+    if (error) return { rows, error: `${label}：${error.message}` };
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) break;
   }
-
-  return [...latest.values()].sort((left, right) => right.created_at.localeCompare(left.created_at));
+  return { rows };
 }
 
-function keepLatestApprovedExports(records: AuditRecordRow[], scope: DatasetExportScope = DEFAULT_EXPORT_SCOPE) {
-  const latestRecords = keepLatestBySourceMessage(
-    records.filter((record) => EXPORTABLE_AUDIT_STATUSES.includes(record.status) && isFinalizedExportRecord(record)),
-  );
-  return scope === 'all'
-    ? latestRecords
-    : latestRecords.filter((record) => record.status === 'approved');
+function chunk<T>(values: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size));
+  return chunks;
 }
 
-function anonymizeStudentId(ownerId: string | null | undefined) {
-  return ownerId ? `student_${ownerId.slice(0, 8)}` : null;
-}
-
-function toDatasetMessage(message: TranscriptMessageRow): SftMessage | null {
-  if (message.role !== 'system' && message.role !== 'user' && message.role !== 'assistant') return null;
-  const content = message.content.trim();
-  if (!content) return null;
-  return { role: message.role, content };
-}
-
-function buildPromptMessages(context: DatasetContext): SftMessage[] {
-  const sourceIndex = context.record.source_message_id
-    ? context.transcript.findIndex((message) => message.id === context.record.source_message_id)
-    : -1;
-  const promptTranscript = sourceIndex >= 0 ? context.transcript.slice(0, sourceIndex) : [];
-  const promptMessages = promptTranscript.map(toDatasetMessage).filter((message): message is SftMessage => Boolean(message));
-  if (promptMessages.length > 0) return promptMessages;
-
-  const fallbackPrompt = context.record.prompt.trim();
-  return fallbackPrompt ? [{ role: 'user', content: fallbackPrompt }] : [];
-}
-
-function getPromptText(messages: SftMessage[], fallback: string) {
-  return [...messages].reverse().find((message) => message.role === 'user')?.content ?? fallback.trim();
-}
-
-function getSampleId(record: AuditRecordRow) {
-  return record.source_message_id ?? record.id;
-}
-
-function includesDpo(record: AuditRecordRow) {
-  return record.kind === 'dpo' || Boolean(record.chosen_answer?.trim() && record.rejected_answer?.trim());
-}
-
-function buildMetadata(context: DatasetContext): ExportSampleMetadata {
-  const project = firstJoined(context.conversation?.text_projects);
-  return {
-    sampleId: getSampleId(context.record),
-    sourceRecordId: context.record.id,
-    sourceMessageId: context.record.source_message_id,
-    sourceConversationId: context.record.source_conversation_id,
-    classId: context.record.class_id,
-    projectId: context.conversation?.project_id ?? null,
-    projectTitle: project?.title?.trim() || context.conversation?.title?.trim() || null,
-    studentAnonId: anonymizeStudentId(context.conversation?.owner_id),
-    teacherId: context.record.auditor_id,
-    reviewStatus: context.record.status,
-    reviewedAt: getRecordTimestamp(context.record),
-    includesSft: true,
-    includesDpo: includesDpo(context.record),
-  };
-}
-
-function toSftRecord(context: DatasetContext): SftRecord | null {
-  const assistantContent = (context.record.corrected_answer ?? context.record.original_answer)?.trim();
-  if (!assistantContent) return null;
-
-  return {
-    messages: [...buildPromptMessages(context), { role: 'assistant', content: assistantContent }],
-    metadata: buildMetadata(context),
-  };
-}
-
-function toDpoRecord(context: DatasetContext): DpoRecord | null {
-  const chosen = (context.record.chosen_answer ?? context.record.corrected_answer)?.trim();
-  const rejected = (context.record.rejected_answer ?? context.record.original_answer)?.trim();
-  if (!chosen || !rejected) return null;
-
-  const messages = buildPromptMessages(context);
-  return {
-    prompt: getPromptText(messages, context.record.prompt),
-    messages,
-    chosen,
-    rejected,
-    metadata: {
-      ...buildMetadata(context),
-      chosenAnswerId: `${getSampleId(context.record)}:chosen`,
-      rejectedAnswerId: `${getSampleId(context.record)}:rejected`,
-    },
-  };
-}
-
-function toMetadataRecord(context: DatasetContext): MetadataRecord {
-  return buildMetadata(context);
-}
-
-async function fetchAuditRecords(
+function applySharedFilters(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query: any,
   type: DatasetType,
   filters: DatasetFilters,
-  limit?: number,
-): Promise<{ records: DatasetContext[]; totalCount: number; error?: string }> {
-  const supabase = await createClient();
-
-  let conversationIdFilter: string[] | undefined;
-  if (filters.projectIds && filters.projectIds.length > 0) {
-    const { data: conversations, error: convError } = await supabase
-      .from('conversations')
-      .select('id')
-      .in('project_id', filters.projectIds);
-
-    if (convError) {
-      return { records: [], totalCount: 0, error: `查询关联会话失败：${convError.message}` };
-    }
-
-    conversationIdFilter = (conversations ?? []).map((conversation) => conversation.id);
-    if (conversationIdFilter.length === 0) return { records: [], totalCount: 0 };
-  }
-
-  let query = supabase
-    .from('audit_records')
-    .select(
-      'id, source_message_id, kind, status, prompt, original_answer, corrected_answer, chosen_answer, rejected_answer, quality, class_id, auditor_id, source_conversation_id, metadata, created_at, updated_at',
-    )
-    .not('source_message_id', 'is', null);
-
+) {
+  // metadata 是审阅台账：SFT 导出后记录会被标 exported，若按 unexported 过滤，
+  // 台账里的历史样本会立即消失，与台账直觉相悖，因此 metadata 强制 scope='all'。
+  const scope: DatasetExportScope = type === 'metadata' ? 'all' : (filters.scope ?? DEFAULT_EXPORT_SCOPE);
   query = type === 'metadata'
-    ? query.in('kind', ['sft', 'dpo']).in('status', EXPORTABLE_AUDIT_STATUSES)
-    : query.eq('kind', type).in('status', EXPORTABLE_AUDIT_STATUSES);
+    ? query.in('kind', ['sft', 'dpo']).in('status', ['approved', 'exported'])
+    : query.eq('kind', type).in('status', ['approved', 'exported']);
 
   if (filters.startDate) query = query.gte('created_at', filters.startDate);
   if (filters.endDate) query = query.lte('created_at', filters.endDate);
   if (filters.classId) query = query.eq('class_id', filters.classId);
   if (filters.quality) query = query.eq('quality', filters.quality);
   if (filters.auditorIds && filters.auditorIds.length > 0) query = query.in('auditor_id', filters.auditorIds);
-  if (conversationIdFilter) query = query.in('source_conversation_id', conversationIdFilter);
+  return { query, scope };
+}
 
-  const { data, error } = await query.order('created_at', { ascending: false });
-  if (error) return { records: [], totalCount: 0, error: error.message };
+type DatasetRecordContext = {
+  record: ExportableAuditRow;
+  conversation: ConversationLike | null;
+  transcript: TranscriptMessageLike[];
+};
 
-  const scope = filters.scope ?? DEFAULT_EXPORT_SCOPE;
-  const latestRecords = keepLatestApprovedExports((data ?? []) as AuditRecordRow[], scope);
+async function fetchAuditRecords(
+  type: DatasetType,
+  filters: DatasetFilters,
+  limit?: number,
+): Promise<{ records: DatasetRecordContext[]; totalCount: number; error?: string }> {
+  const supabase = await createClient();
+
+  let conversationIdFilter: string[] | undefined;
+  if (filters.projectIds && filters.projectIds.length > 0) {
+    const { rows: conversations, error: convError } = await fetchAllPagedRows(
+      (from, to) => supabase.from('conversations').select('id').in('project_id', filters.projectIds!).range(from, to),
+      '查询关联会话失败',
+    );
+    if (convError) return { records: [], totalCount: 0, error: convError };
+
+    conversationIdFilter = conversations.map((conversation) => conversation.id);
+    if (conversationIdFilter.length === 0) return { records: [], totalCount: 0 };
+  }
+
+  // 项目筛选命中大量会话时，.in() 按 URL 上限分块；各块结果合并后再去重取 latest。
+  const conversationChunks = conversationIdFilter ? chunk(conversationIdFilter, IN_CLAUSE_CHUNK) : [undefined];
+  const auditRows: ExportableAuditRow[] = [];
+  for (const chunkIds of conversationChunks) {
+    const { rows, error } = await fetchAllPagedRows<ExportableAuditRow>(
+      (from, to) => {
+        const { query, scope: _scope } = applySharedFilters(
+          supabase.from('audit_records').select(
+            'id, source_message_id, kind, status, prompt, original_answer, corrected_answer, chosen_answer, rejected_answer, quality, class_id, auditor_id, source_conversation_id, metadata, created_at, updated_at',
+          ),
+          type,
+          filters,
+        );
+        const scoped = chunkIds ? query.in('source_conversation_id', chunkIds) : query;
+        return scoped.not('source_message_id', 'is', null).order('created_at', { ascending: false }).range(from, to);
+      },
+      '查询审计记录失败',
+    );
+    if (error) return { records: [], totalCount: 0, error };
+    auditRows.push(...rows);
+  }
+
+  const scope = type === 'metadata' ? 'all' : (filters.scope ?? DEFAULT_EXPORT_SCOPE);
+  const latestRecords = keepLatestApprovedExports(auditRows, scope);
   const slicedRecords = limit === undefined ? latestRecords : latestRecords.slice(0, limit);
   const conversationIds = [...new Set(slicedRecords.map((record) => record.source_conversation_id).filter((value): value is string => Boolean(value)))];
 
@@ -308,29 +143,32 @@ async function fetchAuditRecords(
     };
   }
 
-  const [{ data: conversations, error: conversationsError }, { data: transcriptRows, error: transcriptError }] = await Promise.all([
-    supabase
-      .from('conversations')
-      .select('id, owner_id, project_id, title, text_projects(title)')
-      .in('id', conversationIds),
-    supabase
-      .from('conversation_messages')
-      .select('id, conversation_id, role, content, created_at')
-      .in('conversation_id', conversationIds)
-      .order('created_at', { ascending: true }),
-  ]);
+  const conversationResults = await Promise.all(chunk(conversationIds, IN_CLAUSE_CHUNK).map(async (chunkIds) => {
+    const { rows, error } = await fetchAllPagedRows<ConversationLike>(
+      (from, to) => supabase.from('conversations').select('id, owner_id, project_id, title, text_projects(title)').in('id', chunkIds).range(from, to),
+      '查询会话上下文失败',
+    );
+    return { rows, error };
+  }));
+  const conversationsError = conversationResults.find((result) => result.error)?.error;
+  if (conversationsError) return { records: [], totalCount: 0, error: conversationsError };
+  const conversationsById = new Map(conversationResults.flatMap((result) => result.rows).map((conversation) => [conversation.id, conversation]));
 
-  if (conversationsError) {
-    return { records: [], totalCount: 0, error: `查询会话上下文失败：${conversationsError.message}` };
-  }
+  // transcript 按会话分块翻页取尽：任何一页截断都会让 buildPromptMessages
+  // 静默回退成单条 prompt，样本退化不能发生。
+  const transcriptResults = await Promise.all(chunk(conversationIds, IN_CLAUSE_CHUNK).map(async (chunkIds) => {
+    const { rows, error } = await fetchAllPagedRows<TranscriptMessageLike>(
+      (from, to) => supabase.from('conversation_messages').select('id, conversation_id, role, content, created_at')
+        .in('conversation_id', chunkIds).order('created_at', { ascending: true }).range(from, to),
+      '查询会话消息失败',
+    );
+    return { rows, error };
+  }));
+  const transcriptError = transcriptResults.find((result) => result.error)?.error;
+  if (transcriptError) return { records: [], totalCount: 0, error: transcriptError };
 
-  if (transcriptError) {
-    return { records: [], totalCount: 0, error: `查询会话消息失败：${transcriptError.message}` };
-  }
-
-  const conversationsById = new Map(((conversations ?? []) as ConversationRow[]).map((conversation) => [conversation.id, conversation]));
-  const transcriptByConversationId = new Map<string, TranscriptMessageRow[]>();
-  for (const row of (transcriptRows ?? []) as TranscriptMessageRow[]) {
+  const transcriptByConversationId = new Map<string, TranscriptMessageLike[]>();
+  for (const row of transcriptResults.flatMap((result) => result.rows)) {
     const current = transcriptByConversationId.get(row.conversation_id) ?? [];
     current.push(row);
     transcriptByConversationId.set(row.conversation_id, current);
@@ -349,7 +187,7 @@ async function fetchAuditRecords(
 export async function exportDataset(
   type: DatasetType,
   filters: DatasetFilters = {},
-): Promise<ExportResult> {
+): Promise<ExportResult & { empty?: boolean }> {
   try {
     const { records, error } = await fetchAuditRecords(type, filters);
     if (error) {
@@ -361,8 +199,10 @@ export async function exportDataset(
     }
 
     if (records.length === 0) {
+      // 纯空结果是正常业务状态而非服务故障：route 层据此返回 200 + empty。
       return {
         success: false,
+        empty: true,
         error: '没有符合条件的审计记录可导出',
         resolution: '请放宽筛选条件，或确认存在尚未导出的最新可导出样本。',
       };
@@ -425,7 +265,7 @@ export async function previewDataset(
       };
     }
 
-    const sampleRecords: Array<SftRecord | DpoRecord | MetadataRecord> = [];
+    const sampleRecords: Array<SftRecord | MetadataRecord | DpoRecord> = [];
 
     for (const record of records) {
       const converted = type === 'sft'

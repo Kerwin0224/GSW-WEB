@@ -9,7 +9,7 @@ import type { AppRole, Database, ModelTier, ProviderCapability } from '@/lib/sup
 import { getProfile, type Profile } from '@/lib/auth';
 import { decryptSecret, isEncryptedSecret } from '@/lib/crypto/secret-cipher';
 
-export type DataResult<T> = { ok: true; data: T } | { ok: false; reason: 'unauthenticated' | 'forbidden' | 'missing_profile' | 'blocked' | 'error'; message: string };
+export type DataResult<T> = { ok: true; data: T } | { ok: false; reason: 'unauthenticated' | 'forbidden' | 'missing_profile' | 'blocked' | 'password_change_required' | 'error'; message: string };
 export type CapabilityStatus = { capability: ProviderCapability; ready: boolean; modelId?: string; providerName?: string; providerType?: string; baseUrl?: string | null; secretRef?: string | null; blockedReason?: string };
 export type ModelTierStatus = { tier: ModelTier; ready: boolean; modelId?: string; providerId?: string; providerName?: string; providerType?: string; baseUrl?: string | null; secretRef?: string | null; healthStatus?: string; blockedReason?: string };
 
@@ -65,6 +65,8 @@ export async function requireRole(role: AppRole): Promise<DataResult<Profile>> {
     const profile = await getProfile();
     if (!profile) return fail('missing_profile', '当前账号缺少 Supabase profile，无法猜测角色。');
     if (profile.status !== 'active') return fail('forbidden', '当前账号已停用。');
+    // 强制首登改密：除改密接口（不走 requireRole）外，所有 API 一律拒绝。
+    if (profile.must_change_password) return fail('password_change_required', '请先在账号设置中修改初始密码。');
     if (profile.role !== role) return fail('forbidden', `当前账号不是 ${role} 角色。`);
     return ok(profile);
   } catch (error) {

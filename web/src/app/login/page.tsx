@@ -33,7 +33,7 @@ export default function LoginPage() {
         body: JSON.stringify({ loginId, password }),
       });
 
-      const data = (await response.json()) as { error?: string; role?: string };
+      const data = (await response.json()) as { error?: string; role?: string; redirectTo?: string };
 
       if (!response.ok) {
         setError(data.error || '登录失败，请检查账号或联系管理员。');
@@ -47,7 +47,8 @@ export default function LoginPage() {
         return;
       }
 
-      window.location.href = roleHome[data.role];
+      // 初始密码=学号/工号的账号首登会被引导到 /settings?required=1 强制改密。
+      window.location.href = data.redirectTo ?? roleHome[data.role];
     } catch {
       setError('当前服务暂不可用，请稍后再试。');
       setLoading(false);

@@ -32,6 +32,21 @@ GitHub 是唯一 hub：代码和 schema 都从提交流出，Vercel 和 Supabase
 
 生产库只允许插数据；schema 变更走迁移。
 
+### SFT/DPO 导出链路 e2e（scripts/sft-dpo-pipeline-e2e.mjs）
+
+自起 dev server（端口 3210）+ 真实数据库全链验证：seed 交互轨迹 → 教师审核 → 双端预览 → 管理员导出/下载 → 越权 403 → 清理。**只对本地库跑**（预览/生产禁止）。前置条件（seed 已内置）：
+
+- e2e 夹具账号/班级由 `supabase/seed.sql` 供给（`a0000000-…-001/002/012`、`c0000000-…-01`）
+- `private.runtime_secrets.cwb_auth_secret` 由 seed 写入本地固定值 `dev-only-cwb-auth-secret-gsw-local`；本地 `.env.local` 的 `CWB_AUTH_SECRET` 应设为同值
+
+```bash
+supabase db reset
+CWB_AUTH_SECRET=dev-only-cwb-auth-secret-gsw-local \
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 \
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$(supabase status -o env | grep -oP 'PUBLISHABLE_KEY=\K.*') \
+npm run test:sft-dpo-pipeline
+```
+
 ### 新功能
 
 1. 开分支 → 写迁移 + 代码 → `db reset` 本地验证。
@@ -48,6 +63,28 @@ main = 生产分支，改动按风险分流：
 | 依赖升级、schema 迁移、多文件重构 | 短命分支 + PR：Vercel 预览验证构建（预览 **仅由 PR 触发**，项目 Preview Deployments 设为 Only PRs，只推分支不触发），预览 READY 后 merge，生产自动更新 |
 
 注意：预览部署域有 Vercel SSO 保护，外部 curl 探活只能在生产域做；预览的 READY 状态即构建验证。
+
+## 上线流程（固定三段，按顺序执行）
+
+**第一段：提交前自动门禁（agent 在本地完成，不过全不提交）**
+
+| 门禁 | 命令 |
+|---|---|
+| 测试 | `npm test` |
+| 类型 | `npx tsc --noEmit` |
+| lint | `npm run lint`（0 error，历史 warning 不新增） |
+| 迁移重放 | `supabase db reset`（有迁移时必跑） |
+| 变更图 | GitNexus `detect_changes({scope:"all"})`，不是 clean 不提交 |
+
+**第二段：预览人工验证（PR READY 后，验证清单给到用户）**
+
+预览连生产库且有 SSO，AI 网关真实链路与交互手感无法自动化，必须登录用户照清单点一遍。清单要求具体到动作和期望结果（例：空白入口问 X → 应归入《Y》）。注意：同一分支反复推送时预览 URL 不变，需强制刷新。
+
+**第三段：merge 后生产观察（容易漏，固定三件事）**
+
+1. 确认 `gh run list --workflow=supabase-db-push.yml` 结论 success（迁移先于代码生效）。
+2. 在生产域按同一份清单抽验关键路径。
+3. 查 `app_log_events`（Supabase）有无新增 error / 关键 fallback 事件；异常时 Vercel Instant Rollback 秒回代码，schema 变更保持向后兼容（加列加表），无需回滚库。
 
 ## 已固化的自动化（现状清单）
 

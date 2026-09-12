@@ -362,6 +362,26 @@ export async function POST(req: Request) {
       mcpClosed = true;
       await mcp.close();
     };
+    // bloom_state 落库的统一出口：RLS/网络失败必须记日志，不能静默吞掉，
+    // 否则前端永远停在"正在判断提问类型"（messages_owner_update 策略曾缺失导致的事故形态）。
+    const setBloomState = async (state: 'pending' | 'classified' | 'failed' | 'unclassified', extra?: { bloom_level?: number }) => {
+      if (!userMessage) return;
+      const { error } = await supabase
+        .from('conversation_messages')
+        .update({ bloom_state: state, bloom_level: extra?.bloom_level ?? null })
+        .eq('id', userMessage.id)
+        .eq('bloom_state', 'pending');
+      if (error) {
+        await writeLogEvent({
+          level: 'warn',
+          area: 'api',
+          event: 'bloom_state_update_failed',
+          requestId,
+          route: '/api/student/chat',
+          context: { messageId: userMessage.id, target: state, detail: error.message },
+        });
+      }
+    };
     const systemPrompt = buildStudentSystemPrompt(
       classifiedProjectTitle
         ? { kind: 'project', projectTitle: classifiedProjectTitle, attachmentPrompt }
@@ -431,7 +451,7 @@ export async function POST(req: Request) {
             if (assignedProjectId && userMessage && bloomModel) {
               try {
                 const bloom = await classifyBloomLevel(bloomModel, userText);
-                await supabase.from('conversation_messages').update({ bloom_level: bloom.level, bloom_state: 'classified' }).eq('id', userMessage.id);
+                await setBloomState('classified', { bloom_level: bloom.level });
                 writer.write({
                   type: 'data-student-bloom',
                   id: userMessage.id,
@@ -440,7 +460,7 @@ export async function POST(req: Request) {
                 });
               } catch (error) {
                 const reason = error instanceof Error ? error.message : '布鲁姆路径判断失败';
-                await supabase.from('conversation_messages').update({ bloom_state: 'failed' }).eq('id', userMessage.id);
+                await setBloomState('failed');
                 writer.write({
                   type: 'data-student-bloom',
                   id: userMessage.id,
@@ -453,9 +473,12 @@ export async function POST(req: Request) {
             await closeMcpOnce();
           },
           onError: async () => {
+            // 流式中断/出错时 onFinish 不会跑，pending 不回收就会永久卡在"正在判断提问类型"。
+            await setBloomState('unclassified');
             await closeMcpOnce();
           },
           onAbort: async () => {
+            await setBloomState('unclassified');
             await closeMcpOnce();
           },
         });

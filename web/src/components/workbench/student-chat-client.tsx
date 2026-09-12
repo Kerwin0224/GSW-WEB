@@ -17,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { AIMessageList } from '@/components/workbench/ai-message-list';
+import { AIMessageList, type MessageEditState } from '@/components/workbench/ai-message-list';
 import { ChatComposer } from '@/components/workbench/chat-composer';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import type { BloomStatus } from '@/components/workbench/bloom-status-badge';
@@ -30,7 +30,9 @@ import {
   type StudentAssignmentData,
 } from '@/lib/student-chat-contract';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import { useSidebarCollapse } from '@/hooks/use-sidebar-collapse';
+import { useSidebarScroll } from '@/hooks/use-sidebar-scroll';
 import { useBloomStatus, type StudentBloomData } from '@/hooks/use-bloom-status';
 import { useMessageQueue, type QueuedStudentMessage } from '@/hooks/use-message-queue';
 import { useConversationSync } from '@/hooks/use-conversation-sync';
@@ -73,6 +75,7 @@ export function StudentChatClient({
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const { collapsed: sidebarCollapsed, toggle: toggleSidebar } = useSidebarCollapse();
+  const sidebarScrollRef = useSidebarScroll();
   const { bloomStatus, applyBloomStatus, markQueued: markBloomQueued, markPending: markBloomPending, reset: resetBloomStatus } = useBloomStatus();
   const scrollRef = useRef<HTMLDivElement>(null);
   const messageCountRef = useRef(0);
@@ -117,17 +120,17 @@ export function StudentChatClient({
     activeProjectId,
     activeProjectIdRef,
     activeProjectTitleRef,
-    expandedProjectId,
+    expandedProjectIds,
     assignmentNotice,
     justArchivedProjectId,
     setNotice: setAssignmentNotice,
     acceptResponseHeaders,
     acceptAssignmentData,
     enterProject,
+    toggleExpandedProject,
     resetToBlank,
     syncFromConversation,
   } = assignment;
-
   const chatFetch = useCallback(async (input: RequestInfo | URL, init?: RequestInit) => {
     const response = await fetch(input, init);
     const nextConversationId = response.headers.get('x-conversation-id');
@@ -378,6 +381,45 @@ export function StudentChatClient({
     void regenerate({ body: buildRequestBody() });
   };
 
+  // ── 会话中间节点编辑/回滚 ────────────────────────────────────────────────
+  // 语义：以某条用户消息为节点，删除该节点及其后的全部消息（PATCH 端点），
+  // 再以编辑后的文本重发。等价于"回到某节点改写上下文"，不做分支分叉。
+  const [edit, setEdit] = useState<MessageEditState | null>(null);
+  const [rollbackInFlight, setRollbackInFlight] = useState(false);
+
+  const startEditUserMessage = (messageId: string, currentText: string) => {
+    if (busyRef.current || conversationLocked || rollbackInFlight) return;
+    setEdit({ messageId, value: currentText });
+  };
+
+  const cancelEdit = () => setEdit(null);
+
+  const submitEdit = async () => {
+    if (!edit || busyRef.current || rollbackInFlight) return;
+    const text = edit.value.trim();
+    if (!text) return;
+    setRollbackInFlight(true);
+    try {
+      const response = await fetch('/api/student/conversations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: conversationIdRef.current || conversationId, messageId: edit.messageId }),
+      });
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? '会话回滚失败。');
+      const nodeIndex = messages.findIndex((message) => message.id === edit.messageId);
+      setEdit(null);
+      clearError();
+      setMessages(nodeIndex === -1 ? [] : messages.slice(0, nodeIndex));
+      // 会话已存在，服务端走普通追问路径；布鲁姆与归属在 onFinish 通路照常更新。
+      void sendMessage({ id: crypto.randomUUID(), parts: [{ type: 'text', text }] }, { body: buildRequestBody() });
+    } catch (editError) {
+      toast.error(editError instanceof Error ? editError.message : '会话回滚失败。');
+    } finally {
+      setRollbackInFlight(false);
+    }
+  };
+
   const confirmDeleteSession = async () => {
     if (!deleteTarget || deleting) return;
     setDeleting(true);
@@ -415,7 +457,7 @@ export function StudentChatClient({
 
   return (
     <div className={cn("grid min-h-0 w-full flex-1 bg-background/35 transition-all duration-300", sidebarCollapsed ? "lg:grid-cols-[3.5rem_minmax(0,1fr)]" : "lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[22rem_minmax(0,1fr)]")}>
-      <aside className={cn("order-2 border-t border-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--primary)_8%,transparent),transparent_18%),color-mix(in_oklch,var(--card)_92%,transparent)] shadow-soft backdrop-blur-xl lg:order-1 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-t-0 transition-all duration-300", sidebarCollapsed ? "lg:w-[3.5rem] lg:p-1.5" : "lg:w-auto lg:p-3")} aria-label="当前会话空间">
+      <aside ref={sidebarScrollRef} className={cn("order-2 border-t border-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--primary)_8%,transparent),transparent_18%),color-mix(in_oklch,var(--card)_92%,transparent)] shadow-soft backdrop-blur-xl lg:order-1 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-t-0 transition-all duration-300", sidebarCollapsed ? "lg:w-[3.5rem] lg:p-1.5" : "lg:w-auto lg:p-3")} aria-label="当前会话空间">
         {/* 收起态：窄图标栏（新会话 + 展开钮），悬停有 title 提示；展开态：新会话置顶。 */}
         <div className={cn('flex gap-2', sidebarCollapsed ? 'flex-col items-center' : 'flex-row items-stretch')}>
           <button
@@ -456,13 +498,14 @@ export function StudentChatClient({
               <div className="space-y-2">
                 {projects.map((project) => {
                   const active = project.id === activeProjectId;
-                  const expanded = project.id === expandedProjectId;
+                  const expanded = expandedProjectIds.includes(project.id);
                   const justArchived = project.id === justArchivedProjectId;
                   return (
                     <div key={project.id} className={cn('overflow-hidden rounded-xl border border-border/65 bg-background/76 shadow-soft transition-[border-color,background-color,box-shadow] duration-200', active && 'border-primary/55 bg-primary/7 shadow-ink ring-1 ring-primary/15', justArchived && 'border-primary/60 bg-primary/8 shadow-ink')}>
+                      {/* 点击整行 = 展开/收起（多项目可同时展开）；进入篇目是展开面板里的显式动作。 */}
                       <button
                         type="button"
-                        onClick={() => openProjectContext(project.id)}
+                        onClick={() => toggleExpandedProject(project.id)}
                         aria-expanded={expanded}
                         className="flex min-h-16 w-full cursor-pointer items-center justify-between gap-3 px-3 py-3 text-left transition-colors duration-200 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
@@ -482,6 +525,14 @@ export function StudentChatClient({
                       </button>
                       {expanded ? (
                         <div className="space-y-1 border-t border-border/55 bg-card/45 px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => openProjectContext(project.id)}
+                            className="flex min-h-10 w-full cursor-pointer items-center gap-2 rounded-lg border border-primary/25 bg-primary/8 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <Plus className="size-3.5 shrink-0" aria-hidden="true" />
+                            在《{project.title}》下提问
+                          </button>
                           {project.sessions.length === 0 ? <p className="rounded-lg border border-dashed bg-background/55 px-3 py-2 text-xs text-muted-foreground">暂无会话，可继续提问。</p> : null}
                           {project.sessions.map((session) => {
                             const current = session.id === conversationId;
@@ -564,22 +615,21 @@ export function StudentChatClient({
       </aside>
 
       <section className="order-1 flex min-h-0 min-w-0 flex-col lg:order-2 lg:h-full" aria-label="学生学习提问空间">
-        <div className="shrink-0 border-b border-border/60 bg-card/92 px-4 py-3 shadow-soft backdrop-blur">
-          <div className="mx-auto flex max-w-3xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">当前会话空间</p>
-              <p className="font-heading text-2xl tracking-tight">{inProjectContext ? projectDisplayName : conversationId ? '其他会话' : '从一个古诗文问题开始'}</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                {conversationLocked
-                  ? '这条会话已完成教师核实，只能回看，不能继续追问。'
-                  : inProjectContext ? '新问题会直接归入当前篇目。' : conversationId ? '继续追问会保留在这条会话中；也可以从篇目或空白入口另开会话。' : '直接提问即可；问题中明确出现篇目时，系统会自动归入对应篇目。'}
-              </p>
+        <div className="shrink-0 border-b border-border/60 bg-card/92 px-4 py-4 shadow-soft backdrop-blur sm:px-6 sm:py-5">
+          <div className="mx-auto max-w-3xl space-y-1.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <h2 className="font-heading text-xl tracking-tight sm:text-2xl">{inProjectContext ? projectDisplayName : conversationId ? '其他会话' : '从一个古诗文问题开始'}</h2>
+              <Badge className="border-primary/25 bg-primary/8 text-primary" variant="outline"><Sparkles className="mr-1 size-3" />{conversationLocked ? '教师已审核' : '学习提问'}</Badge>
             </div>
-            <Badge className="w-fit border-primary/25 bg-primary/8 text-primary" variant="outline"><Sparkles className="mr-1 size-3" />{conversationLocked ? '教师已审核' : '学习提问'}</Badge>
+            <p className="text-sm leading-6 text-muted-foreground">
+              {conversationLocked
+                ? '这条会话已完成教师核实，只能回看，不能继续追问。'
+                : inProjectContext ? '新问题会直接归入当前篇目。' : conversationId ? '继续追问会保留在这条会话中；也可以从篇目或空白入口另开会话。' : '直接提问即可；问题中明确出现篇目时，系统会自动归入对应篇目。'}
+            </p>
           </div>
         </div>
-        <div className="order-2 border-t border-border/60 bg-card/92 p-4 shadow-[0_-18px_48px_-42px_rgba(26,26,46,0.55)] backdrop-blur lg:order-3">
-          <div className="mx-auto max-w-3xl">
+        <div className="order-2 border-t border-border/60 bg-card/92 p-4 backdrop-blur sm:px-6 lg:order-3">
+          <div className="mx-auto max-w-2xl">
             <ChatComposer
               value={composerValue}
               onChange={setInput}
@@ -626,7 +676,16 @@ export function StudentChatClient({
                 )}
               />
             ) : (
-              <AIMessageList messages={displayMessages} userBloomStatus={bloomStatus} />
+              <AIMessageList
+                messages={displayMessages}
+                userBloomStatus={bloomStatus}
+                edit={edit}
+                canEditUserMessage={!conversationLocked && !busy && queueCount === 0 && !rollbackInFlight && Boolean(conversationId)}
+                onEditStart={startEditUserMessage}
+                onEditChange={(value) => setEdit((current) => (current ? { ...current, value } : current))}
+                onEditSubmit={submitEdit}
+                onEditCancel={cancelEdit}
+              />
             )}
             {messages.length > 0 && assignmentNotice ? (
               <div className={cn('animate-in fade-in rounded-lg border px-4 py-3 text-sm duration-200', assignmentNotice.kind === 'project' ? 'border-primary/20 bg-primary/5' : 'bg-muted/50 text-muted-foreground')} aria-live="polite">
@@ -636,11 +695,17 @@ export function StudentChatClient({
                   : '暂未识别到具体篇目，已保存到其他会话。'}
               </div>
             ) : null}
-            {busy ? (
-              <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground" aria-live="polite">
-                <Loader2 className="size-4 animate-spin" />
-                {status === 'submitted' ? '已提交，等待模型首个响应…' : queueCount > 0 ? `AI 正在回答，后续 ${queueCount} 条已排队。` : 'AI 正在流式回答…'}
+            {status === 'submitted' ? (
+              // 等待首字：只有一串呼吸圆点，贴近主流 AI chatbot 的极简反馈；
+              // 流式开始后正文本身在推进，不再叠状态卡片。
+              <div className="flex items-center gap-1.5 py-2 pl-12" role="status" aria-label="正在思考">
+                {[0, 1, 2].map((dot) => (
+                  <span key={dot} className="size-1.5 animate-bounce rounded-full bg-muted-foreground/50" style={{ animationDelay: `${dot * 150}ms` }} />
+                ))}
               </div>
+            ) : null}
+            {queueCount > 0 ? (
+              <p className="text-xs text-muted-foreground" aria-live="polite">已排队 {queueCount} 条，将依次回答。</p>
             ) : null}
             {error ? (
               <ErrorState

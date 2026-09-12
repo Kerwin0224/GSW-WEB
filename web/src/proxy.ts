@@ -37,6 +37,12 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
+  // 强制首登改密：初始密码=学号/工号的账号在改密前只能访问 /settings。
+  // API 侧由 requireRole 同步拦截（改密路由不走 requireRole，天然放行）。
+  if (session.mustChangePassword && pathname !== '/settings') {
+    return NextResponse.redirect(new URL('/settings?required=1', request.url));
+  }
+
   return NextResponse.next({ request });
 }
 

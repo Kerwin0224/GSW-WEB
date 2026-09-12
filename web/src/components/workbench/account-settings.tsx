@@ -38,13 +38,15 @@ type AccountSettingsProps = {
   readonly displayName: string;
   readonly loginId: string;
   readonly accountRole: AppRole;
+  /** 初始密码=学号/工号的账号首登未改密时为 true，页面顶部展示强制提示。 */
+  readonly mustChangePassword?: boolean;
 };
 
 type PasswordField = 'currentPassword' | 'newPassword' | 'confirmPassword';
 
 const idleFeedback: Feedback = { kind: 'idle', message: '' };
 
-export function AccountSettings({ avatarKey, displayName, loginId, accountRole }: AccountSettingsProps) {
+export function AccountSettings({ avatarKey, displayName, loginId, accountRole, mustChangePassword = false }: AccountSettingsProps) {
   const router = useRouter();
   const [savedAvatarKey, setSavedAvatarKey] = useState(avatarKey);
   const [selectedAvatarKey, setSelectedAvatarKey] = useState(avatarKey);
@@ -133,6 +135,11 @@ export function AccountSettings({ avatarKey, displayName, loginId, accountRole }
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      {mustChangePassword ? (
+        <div className="rounded-xl border border-primary/30 bg-primary/8 px-4 py-3 text-sm text-primary" role="alert">
+          当前账号仍在使用学号/工号作为初始密码，请先在下方设置新的登录密码（至少 10 位），改密完成后即可正常使用系统。
+        </div>
+      ) : null}
       <header className="space-y-2 border-b border-border/60 pb-6">
         <h1 className="font-sans text-2xl font-semibold tracking-tight sm:text-3xl">账号设置</h1>
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
