@@ -81,8 +81,8 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['mcp_servers']['Insert']>;
       };
       prompt_presets: {
-        Row: { id: string; title: string; scenario: string; system_instruction: string; user_template: string | null; variables: Json; target_role: AppRole; status: PromptPresetStatus; version: number; created_by: string | null; created_at: string; updated_at: string };
-        Insert: { id?: string; title: string; scenario: string; system_instruction: string; user_template?: string | null; variables?: Json; target_role?: AppRole; status?: PromptPresetStatus; version?: number; created_by?: string | null };
+        Row: { id: string; title: string; scenario: string; system_instruction: string; user_template: string | null; variables: Json; target_role: AppRole; status: PromptPresetStatus; version: number; created_by: string | null; class_id: string | null; purpose: 'chat' | 'project_classification'; created_at: string; updated_at: string };
+        Insert: { id?: string; title: string; scenario: string; system_instruction: string; user_template?: string | null; variables?: Json; target_role?: AppRole; status?: PromptPresetStatus; version?: number; created_by?: string | null; class_id?: string | null; purpose?: 'chat' | 'project_classification' };
         Update: Partial<Database['public']['Tables']['prompt_presets']['Insert']>;
       };
       text_projects: {

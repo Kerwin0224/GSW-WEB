@@ -16,10 +16,19 @@ const nonConcreteProjectTitles = new Set([
   '篇目项目', '日常会话归档',
 ]);
 
+/**
+ * 拒绝语识别。模型经常不守"无法归属时只输出 NULL"的协议，改说自然语言
+ * （"无法归属""无具体篇目"…）。这些必须判为无法归属，否则会被当作真实标题
+ * 建成垃圾项目——这是归类链路里最隐蔽的一类脏数据。
+ */
+const rejectionPattern = /^(?:null|无|没有|无法|不能|不确定|未知|无关|与.{0,12}无关|无(?:法)?(?:归属|判断|确定|识别|匹配|具体\d*篇目)|不(?:属于|是|在).{0,12}篇目)$/iu;
+
 export function normalizeConcreteProjectTitle(value?: string | null): string | null {
   const title = value?.trim().replace(/^《(.+)》$/, '$1').trim();
   if (!title || title.length > 80) return null;
   if (nonConcreteProjectTitles.has(title)) return null;
+  // 协议里的 NULL 及自然语言拒绝语都不是标题。
+  if (rejectionPattern.test(title)) return null;
   return title;
 }
 
@@ -28,17 +37,26 @@ export function normalizeProjectAuthor(value?: string | null): string | null {
   return author ? author : null;
 }
 
+/**
+ * 在问题里找出学生提到的已知篇目。
+ * 取**最早出现**的那个：学生先说哪个，哪个才是本轮要学的主篇目
+ * （"《春望》和《静夜思》比较"= 以《春望》为主，与先说哪篇无关的排序是错的）。
+ * 同一位置再取更长的标题，因为它更具体（"念奴娇·赤壁怀古" 优先于 "念奴娇"）。
+ */
 export function matchKnownProjectTitle(question: string, knownTitles: readonly string[]): string | null {
   const haystack = question.replace(/[《》\s]/g, '');
   if (!haystack) return null;
-  const candidates = knownTitles
-    .map((title) => normalizeConcreteProjectTitle(title))
-    .filter((title): title is string => Boolean(title))
-    .sort((a, b) => b.length - a.length);
-  for (const title of candidates) {
-    if (title.length >= 2 && haystack.includes(title)) return title;
+  let best: { title: string; index: number } | null = null;
+  for (const raw of knownTitles) {
+    const title = normalizeConcreteProjectTitle(raw);
+    if (!title || title.length < 2) continue;
+    const index = haystack.indexOf(title);
+    if (index < 0) continue;
+    if (!best || index < best.index || (index === best.index && title.length > best.title.length)) {
+      best = { title, index };
+    }
   }
-  return null;
+  return best?.title ?? null;
 }
 
 // 首行是否可信为一行标题：小模型不守协议时会把整段回答当首行输出，
@@ -73,6 +91,43 @@ export function parseBloomClassificationAnswer(text: string): BloomClassificatio
   const match = rawLevel.match(/^\D*([1-6])(?!\d)/);
   if (!match) return null;
   return { level: Number(match[1]) as BloomClassificationAnswer['level'], reason: rest.join('\n').trim().slice(0, 120) };
+}
+
+// ─── 分类器提示词（可被教师配置覆盖）────────────────────────────────────────
+//
+// 归类能力的核心就是提示词。这里把内置提示词抽成纯函数返回值，
+// 使它能作为“数据”传入分类器：教师在后台写一套自己的归类规则，
+// 就覆盖这里的默认值。分类器与路由都不再硬编码任何提示词文本。
+
+/** 输出协议。无论用内置规则还是教师规则，这一段落都由系统强制拼接。 */
+const projectClassificationProtocol =
+  '输出格式必须严格遵守：只输出两行，第一行只写项目标题本身（不加书名号、不写出处说明、不写完整句子），'
+  + '第二行是作者或出处（能确定才填，否则空着）；无法归属时只输出一行 NULL。';
+
+/** 内置归类规则（教师未配置时使用）。不含输出协议——协议统一由下方函数拼接。 */
+export const defaultProjectClassificationInstruction =
+  '你是文韵智途的篇目归属裁决器。只为全局空白入口首问判断会话沉淀容器，不决定 AI 回答范围。只能返回真实学习项目的标题。学生是否加书名号只是书写习惯，与能否归属无关："赤壁赋的背景是什么"归赤壁赋，"登高这首诗讲什么"归登高，"静夜思里疑是什么意思"归静夜思，"念奴娇上阕怎么理解"归念奴娇·赤壁怀古。首问提到多个篇目时，以学生本轮真正要学习的主旨裁决一个主篇目，不要直接判无法归属。只要问题聚焦于某个具体篇目或某位作者的作品，就给出对应标题；只有问题与学习完全无关时才判无法归属。禁止输出占位标题。';
+
+export const defaultBloomClassificationInstruction =
+  '你是文韵智途的布鲁姆认知路径判定器。只根据学生本轮问题的真实学习意图，判断把这个问题真正学懂所需要达到的最高充分层次；每个问题只记录一个层级。不要参考 AI 回答、教师修订、挑战结果、项目最高层级或学生语气篇幅；这不是挑战确认，也不是项目级布鲁姆认知分布。选择能够完整覆盖问题要求的最低层级，避免高估；若一个问题同时包含多个认知动作，取真正必需的最高动作。1 记忆=找出、背诵、指出人物/景物/字词/原句等文本事实；2 理解=翻译、解释、概括诗句文意或情感；3 应用=把文意、方法或情感迁移到相似新情境；4 分析=比较、拆分结构关系、意象关系、情感递进或写法作用；5 评价=提出判断并用文本依据支持；6 创造=仿写、改写、补写或生成新的贴合文本的表达。只输出以下两行，不要多余文字：第一行是 1 到 6 中的单个数字，第二行是一句不超过 120 字的理由。';
+
+/**
+ * 把教师的自定义归类规则组装成最终 system instruction。
+ * 教师只写“本学科的归类口径”，输出协议由系统强制拼接（内置规则也走同一路径），
+ * 这样教师改规则不会破坏解析协议——这是把提示词开放给教师的前提。
+ */
+export function buildProjectClassificationInstruction(options: {
+  /** 教师配置的归类规则；为空表示用内置默认。 */
+  teacherRule?: string | null;
+  /** 本校目录路径（如 "语文 / 高一 / 文言文"），帮助模型对齐本校归属口径。 */
+  catalogPaths?: readonly string[];
+} = {}): string {
+  const rule = options.teacherRule?.trim() || defaultProjectClassificationInstruction;
+  const parts = [rule, `以下是必须遵守的输出协议：${projectClassificationProtocol}`];
+  if (options.catalogPaths?.length) {
+    parts.push(`本校可选归属路径（尽量归到已存在的路径节点上）：\n${options.catalogPaths.map((path) => `- ${path}`).join('\n')}`);
+  }
+  return parts.join('\n\n');
 }
 
 // ─── 系统提示词构建 ───────────────────────────────────────────────────────────

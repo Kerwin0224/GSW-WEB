@@ -242,6 +242,76 @@ export async function getTeacherWorkspace(): Promise<DataResult<TeacherWorkspace
   return ok({ presets: Array.from(presetMap.values()), teacherPresets: teacherPresets ?? [], providerBlocked: cap.ok && cap.data.ready ? undefined : cap.ok ? cap.data.blockedReason : cap.message, sessions: (conversations ?? []).map((conversation) => toTeacherSessionSummary(conversation as ConversationSummaryRow)) });
 }
 
+export type TeacherClassRule = {
+  classId: string;
+  className: string;
+  /** 当前生效的归类规则（published）；无则 null。 */
+  rule: string | null;
+  /** 是否有草稿（未发布）。 */
+  hasDraft: boolean;
+  studentCount: number;
+};
+
+/**
+ * 教师视角的"我的班级 + 每班的项目归类规则"。
+ * 这是"把归类能力交给老师"的入口数据：教师在这里为每个班写自己学科的归类口径。
+ */
+export async function getTeacherClassRules(): Promise<DataResult<TeacherClassRule[]>> {
+  const role = await requireRole('teacher');
+  if (!role.ok) return role;
+  const supabase = await createClient();
+
+  const { data: memberships, error } = await supabase
+    .from('class_memberships')
+    .select('class_id,classes(name)')
+    .eq('profile_id', role.data.id)
+    .eq('role', 'teacher');
+  if (error) return fail('error', `任教班级加载失败：${error.message}`);
+
+  const rows = (memberships ?? []) as Array<{ class_id: string; classes: { name: string | null } | Array<{ name: string | null }> | null }>;
+  if (rows.length === 0) return ok([]);
+
+  const classIds = rows.map((row) => row.class_id);
+  const [presetsResult, studentsResult] = await Promise.all([
+    supabase
+      .from('prompt_presets')
+      .select('class_id,status,system_instruction')
+      .in('class_id', classIds)
+      .eq('purpose', 'project_classification')
+      .order('updated_at', { ascending: false }),
+    supabase.from('class_memberships').select('class_id').in('class_id', classIds).eq('role', 'student'),
+  ]);
+  if (presetsResult.error) return fail('error', `归类规则加载失败：${presetsResult.error.message}`);
+  if (studentsResult.error) return fail('error', `班级学生数加载失败：${studentsResult.error.message}`);
+
+  const ruleByClass = new Map<string, string>();
+  const draftClasses = new Set<string>();
+  for (const preset of (presetsResult.data ?? []) as Array<{ class_id: string | null; status: string; system_instruction: string }>) {
+    if (!preset.class_id) continue;
+    if (preset.status === 'published' && !ruleByClass.has(preset.class_id)) {
+      ruleByClass.set(preset.class_id, preset.system_instruction);
+    } else if (preset.status === 'draft') {
+      draftClasses.add(preset.class_id);
+    }
+  }
+
+  const studentCountByClass = new Map<string, number>();
+  for (const row of (studentsResult.data ?? []) as Array<{ class_id: string }>) {
+    studentCountByClass.set(row.class_id, (studentCountByClass.get(row.class_id) ?? 0) + 1);
+  }
+
+  return ok(rows.map((row) => {
+    const klass = Array.isArray(row.classes) ? row.classes[0] : row.classes;
+    return {
+      classId: row.class_id,
+      className: klass?.name?.trim() || '未命名班级',
+      rule: ruleByClass.get(row.class_id) ?? null,
+      hasDraft: draftClasses.has(row.class_id),
+      studentCount: studentCountByClass.get(row.class_id) ?? 0,
+    };
+  }));
+}
+
 export async function getTeacherConversation(conversationId: string): Promise<DataResult<TeacherConversationInitial | null>> {
   const role = await requireRole('teacher');
   if (!role.ok) return role;

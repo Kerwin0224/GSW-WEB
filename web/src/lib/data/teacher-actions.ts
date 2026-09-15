@@ -785,3 +785,67 @@ export async function saveTeacherPromptPreset(_previousState: AuditSubmissionSta
   revalidatePath('/teacher');
   return { ok: true, message: '教师预设已保存为草稿。' };
 }
+
+/**
+ * 保存本班的项目归类规则（publish 后立即对学生生效）。
+ *
+ * 产品语义（2026-09-16）：项目归类口径由任课教师决定。教师只写"本学科怎么归类"，
+ * 输出协议由系统拼接（见 buildProjectClassificationInstruction），所以教师改规则不会破坏解析。
+ * 一个班只保留一条生效规则：先撤下本班旧的 published，再发布新的（DB 部分唯一索引兜底）。
+ */
+export async function saveClassClassificationRule(_previousState: AuditSubmissionState, formData: FormData): Promise<AuditSubmissionState> {
+  void _previousState;
+  const role = await requireRole('teacher');
+  if (!role.ok) return { ok: false, message: role.message };
+
+  const classId = String(formData.get('class_id') ?? '').trim();
+  const instruction = String(formData.get('system_instruction') ?? '').trim();
+  const publish = String(formData.get('publish') ?? '') === 'true';
+  if (!classId) return { ok: false, message: '请选择要配置的班级。' };
+  if (!instruction) return { ok: false, message: '请填写归类规则。', errors: { system_instruction: '归类规则不能为空。' } };
+
+  const supabase = await createClient();
+  // 校验该班确属本人任教——RLS 也会拦，但提前给出可读错误而非静默失败。
+  const { data: membership, error: membershipError } = await supabase
+    .from('class_memberships')
+    .select('class_id')
+    .eq('class_id', classId)
+    .eq('profile_id', role.data.id)
+    .eq('role', 'teacher')
+    .limit(1)
+    .maybeSingle();
+  if (membershipError) return { ok: false, message: `班级校验失败：${membershipError.message}` };
+  if (!membership) return { ok: false, message: '你不在该班级任教，无法配置归类规则。' };
+
+  // 撤下本班旧的生效规则（草稿不动），保证"每班一条生效"。
+  if (publish) {
+    const { error: retractError } = await supabase
+      .from('prompt_presets')
+      .update({ status: 'draft' })
+      .eq('class_id', classId)
+      .eq('purpose', 'project_classification')
+      .eq('status', 'published');
+    if (retractError) return { ok: false, message: `旧规则撤下失败：${retractError.message}` };
+  }
+
+  const { error } = await supabase.from('prompt_presets').insert({
+    title: `项目归类规则 · ${new Date().toLocaleDateString('zh-CN')}`,
+    scenario: '项目归类',
+    system_instruction: instruction,
+    target_role: 'teacher',
+    class_id: classId,
+    purpose: 'project_classification',
+    status: publish ? 'published' : 'draft',
+    created_by: role.data.id,
+  });
+  if (error) return { ok: false, message: `归类规则保存失败：${error.message}` };
+
+  revalidatePath('/teacher');
+  revalidatePath('/student');
+  return {
+    ok: true,
+    message: publish
+      ? '归类规则已发布，本班学生的新提问会按这套规则归属项目。'
+      : '归类规则已保存为草稿；发布后才会对学生生效。',
+  };
+}

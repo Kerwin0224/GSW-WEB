@@ -3,13 +3,15 @@ import { AlertTriangle, ClipboardCheck, FileSearch } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
+import { ClassRulePanel } from '@/components/workbench/class-rule-panel';
 import { WorkspaceHero } from '@/components/workbench/workspace-hero';
-import { getTeacherAnalytics, getTeacherAuditQueue } from '@/lib/data/teacher';
+import { getTeacherAnalytics, getTeacherAuditQueue, getTeacherClassRules } from '@/lib/data/teacher';
 
 export default async function TeacherChatPage() {
-  const [analyticsResult, auditResult] = await Promise.all([
+  const [analyticsResult, auditResult, classRulesResult] = await Promise.all([
     getTeacherAnalytics(),
     getTeacherAuditQueue(),
+    getTeacherClassRules(),
   ]);
 
   if (!analyticsResult.ok) {
@@ -114,6 +116,14 @@ export default async function TeacherChatPage() {
             </div>
           </CardContent>
         </Card>
+      </section>
+
+      <section className="space-y-4">
+        {classRulesResult.ok ? (
+          <ClassRulePanel classes={classRulesResult.data} />
+        ) : (
+          <ErrorState title="归类规则加载失败" description={classRulesResult.message} />
+        )}
       </section>
     </div>
   );

@@ -5,6 +5,7 @@ import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { writeLogEvent } from '@/lib/observability/server-log-store';
 import { extractTextFromParts, getCapabilities, jsonForDatabase, requireRole, resolveEnvSecret, resolveLanguageModel } from '@/lib/data/common';
 import { isStudentConversationFinalized } from '@/lib/data/conversation-finalization';
+import { resolveClassificationRule } from '@/lib/data/classification-rule';
 import { retrieveConversationDocumentChunks } from '@/lib/data/retrieval';
 import { getRoleMcpTools } from '@/lib/mcp-runtime';
 import { shouldClassifyProjectForStudentTurn } from '@/lib/student-chat-contract';
@@ -147,8 +148,14 @@ async function resolveProjectAssignment({
 }): Promise<ProjectAssignment> {
   const { data: ownedTitles } = await supabase.from('text_projects').select('title').eq('owner_id', ownerId);
   const knownTitles = (ownedTitles ?? []).map((row) => row.title).filter((title): title is string => Boolean(title));
+  // 归类口径来自该班任课教师配置的规则（未配置则用内置默认）。
+  // 只在首问归类时解析一次，不进提问热路径。
+  const rule = await resolveClassificationRule(supabase, ownerId);
   const classified = projectModel
-    ? await classifyProjectFromQuestion(projectModel, userText, knownTitles)
+    ? await classifyProjectFromQuestion(projectModel, userText, knownTitles, {
+      teacherRule: rule.teacherRule,
+      catalogPaths: rule.catalogPaths,
+    })
     : { title: null, author: null, failure: 'model-unavailable' as const };
   const title = classified.title ?? null;
 
