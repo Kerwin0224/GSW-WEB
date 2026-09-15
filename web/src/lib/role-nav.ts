@@ -15,6 +15,7 @@ import {
   Download,
   FileSearch,
   FileText,
+  FolderTree,
   MessageSquare,
   Puzzle,
   School,
@@ -70,6 +71,7 @@ const adminNavGroups: RoleNavGroup[] = [
       { icon: ShieldCheck, label: '运行概览', href: '/admin', description: '账号规模与服务配置', primary: true },
       { icon: Users, label: '用户管理', href: '/admin/users', description: '创建和管理全校账号', primary: true },
       { icon: School, label: '班级管理', href: '/admin/classes', description: '分配任课教师与学生' },
+      { icon: FolderTree, label: '项目目录', href: '/admin/catalogs', description: '配置项目归属规则（学科/年级/专题）' },
     ],
   },
   {

@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { createClient } from '@/lib/supabase/server';
-import { getCapability, requireRole, resolveLanguageModel } from '@/lib/data/common';
+import { getCapability, requireRole, resolveReadyModel } from '@/lib/data/common';
 import { buildChallengeEvaluationPrompt } from '@/lib/challenge-prompts';
 
 export const runtime = 'nodejs';
@@ -39,10 +39,10 @@ export async function POST(req: Request) {
 
     const capability = await getCapability('practice_evaluation');
     if (!capability.ok) return Response.json({ state: 'error', error: capability.message }, { status: 500 });
-    if (!capability.data.ready) return Response.json({ state: 'blocked', error: 'Challenge confirmation provider not configured', resolution: capability.data.blockedReason }, { status: 503 });
 
-    const model = resolveLanguageModel(capability.data);
-    if (!model) return Response.json({ state: 'blocked', error: 'Challenge confirmation model unavailable', resolution: `${capability.data.providerName ?? 'Provider'} 的 secret_ref 未在服务端环境中解析成功。` }, { status: 503 });
+    const ready = resolveReadyModel(capability.data);
+    if (!ready.ok) return Response.json({ state: 'blocked', error: ready.error, resolution: ready.resolution }, { status: ready.status });
+    const model = ready.model;
 
     const supabase = await createClient();
     const { data: practice, error: practiceError } = await supabase

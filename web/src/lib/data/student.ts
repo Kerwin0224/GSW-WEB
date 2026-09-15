@@ -197,45 +197,57 @@ export async function getStudentWorkspace(): Promise<DataResult<StudentWorkspace
   });
 }
 
-export async function getStudentProjects(): Promise<DataResult<ProjectSummary[]>> {
+export async function getStudentProjects(options: { page?: number; pageSize?: number } = {}): Promise<DataResult<ProjectSummary[]>> {
   const role = await requireRole('student');
   if (!role.ok) return role;
   const supabase = await createClient();
 
+  // 分页为可选：不传 pageSize 时保持全量（供需要完整篇目树的调用方，如提问侧边栏）。
+  const paginated = typeof options.pageSize === 'number';
+  const pageSize = Math.max(1, options.pageSize ?? 0);
+  const page = Math.max(1, options.page ?? 1);
+
   // 单次查询：通过嵌套 select 拉取项目 + 关联会话 + 挑战记录，
   // 消除原来 N 个项目 × 4 次查询的 N+1 问题。
-  const [{ data: projects, error }, { data: allUserMessages, error: messagesError }] = await Promise.all([
-    supabase
-      .from('text_projects')
-      .select(`
-        *,
-        conversations!conversations_project_id_fkey(id,title,updated_at,project_id,deleted_at,conversation_messages(id)),
-        practice_records(target_bloom_level,achieved,evaluation_state,created_at)
-      `)
-      .eq('owner_id', role.data.id)
-      .order('updated_at', { ascending: false }),
-    // 学生所有未删除会话中的用户消息（用于问题计数和布鲁姆路径统计）
-    supabase
+  const projectsQuery = supabase
+    .from('text_projects')
+    .select(`
+      *,
+      conversations!conversations_project_id_fkey(id,title,updated_at,project_id,deleted_at,conversation_messages(id)),
+      practice_records(target_bloom_level,achieved,evaluation_state,created_at)
+    `)
+    .eq('owner_id', role.data.id)
+    .order('updated_at', { ascending: false });
+
+  const { data: projects, error } = paginated
+    ? await projectsQuery.range((page - 1) * pageSize, page * pageSize - 1)
+    : await projectsQuery;
+  if (error) return fail('error', `项目加载失败：${error.message}`);
+
+  type MessageRow = { id: string; bloom_level: number | null; bloom_state: string; conversations: { project_id: string | null; deleted_at: string | null } | { project_id: string | null; deleted_at: string | null }[] };
+
+  // 用户消息统计按当前页的篇目收窄：分页的意义就是不再全量拉取，
+  // 顺带把原来"拉学生所有项目全部用户消息"的最大开销一起砍掉。
+  const pageProjectIds = ((projects ?? []) as unknown as Array<{ id: string }>).map((project) => project.id);
+  const messagesByProject = new Map<string, MessageRow[]>();
+  if (pageProjectIds.length > 0) {
+    const { data: pageUserMessages, error: messagesError } = await supabase
       .from('conversation_messages')
       .select('id,bloom_level,bloom_state,conversations!inner(project_id,deleted_at)')
       .eq('conversations.owner_id', role.data.id)
       .is('conversations.deleted_at', null)
       .eq('role', 'user')
-      .not('conversations.project_id', 'is', null),
-  ]);
-  if (error) return fail('error', `项目加载失败：${error.message}`);
-  if (messagesError) return fail('error', `项目问题统计失败：${messagesError.message}`);
+      .in('conversations.project_id', pageProjectIds);
+    if (messagesError) return fail('error', `项目问题统计失败：${messagesError.message}`);
 
-  // 按 project_id 分组用户消息
-  type MessageRow = { id: string; bloom_level: number | null; bloom_state: string; conversations: { project_id: string | null; deleted_at: string | null } | { project_id: string | null; deleted_at: string | null }[] };
-  const messagesByProject = new Map<string, MessageRow[]>();
-  for (const msg of (allUserMessages ?? []) as MessageRow[]) {
-    const conv = Array.isArray(msg.conversations) ? msg.conversations[0] : msg.conversations;
-    const pid = conv?.project_id;
-    if (!pid) continue;
-    const list = messagesByProject.get(pid) ?? [];
-    list.push(msg);
-    messagesByProject.set(pid, list);
+    for (const msg of (pageUserMessages ?? []) as MessageRow[]) {
+      const conv = Array.isArray(msg.conversations) ? msg.conversations[0] : msg.conversations;
+      const pid = conv?.project_id;
+      if (!pid) continue;
+      const list = messagesByProject.get(pid) ?? [];
+      list.push(msg);
+      messagesByProject.set(pid, list);
+    }
   }
 
   type ProjectRow = Database['public']['Tables']['text_projects']['Row'] & {
@@ -281,6 +293,58 @@ export async function getStudentProjects(): Promise<DataResult<ProjectSummary[]>
   return ok(summaries);
 }
 
+
+/**
+ * 挑战入口的篇目列表。与 getStudentProjects 的关键区别：不拉会话与消息正文，
+ * 只取挑战进度所需的三张表的窄列。挑战页要的是"哪些篇目能挑战、挑战到什么程度"，
+ * 之前复用了学习记录页那套带嵌套会话的重量查询，属于口径错配。
+ */
+export type ChallengeProjectSummary = Pick<ProjectSummary, 'id' | 'title' | 'author' | 'questionCount' | 'challengeProgress'>;
+
+export async function getStudentChallengeProjects(): Promise<DataResult<ChallengeProjectSummary[]>> {
+  const role = await requireRole('student');
+  if (!role.ok) return role;
+  const supabase = await createClient();
+
+  const [{ data: projects, error }, { data: practices, error: practiceError }, { data: messages, error: messageError }] = await Promise.all([
+    supabase.from('text_projects').select('id,title,author,updated_at').eq('owner_id', role.data.id).order('updated_at', { ascending: false }),
+    supabase.from('practice_records').select('project_id,target_bloom_level,achieved,evaluation_state,created_at').eq('student_id', role.data.id),
+    supabase
+      .from('conversation_messages')
+      .select('id,conversations!inner(project_id,owner_id,deleted_at)')
+      .eq('conversations.owner_id', role.data.id)
+      .is('conversations.deleted_at', null)
+      .eq('role', 'user')
+      .not('conversations.project_id', 'is', null),
+  ]);
+  if (error) return fail('error', `篇目加载失败：${error.message}`);
+  if (practiceError) return fail('error', `挑战记录加载失败：${practiceError.message}`);
+  if (messageError) return fail('error', `提问统计失败：${messageError.message}`);
+
+  const practicesByProject = new Map<string, PracticeSummaryRow[]>();
+  for (const practice of (practices ?? []) as Array<PracticeSummaryRow & { project_id: string }>) {
+    const list = practicesByProject.get(practice.project_id) ?? [];
+    list.push(practice);
+    practicesByProject.set(practice.project_id, list);
+  }
+
+  const questionCountByProject = new Map<string, number>();
+  for (const message of (messages ?? []) as Array<{ conversations: { project_id: string | null } | Array<{ project_id: string | null }> }>) {
+    const conv = Array.isArray(message.conversations) ? message.conversations[0] : message.conversations;
+    if (!conv?.project_id) continue;
+    questionCountByProject.set(conv.project_id, (questionCountByProject.get(conv.project_id) ?? 0) + 1);
+  }
+
+  return ok(((projects ?? []) as Array<{ id: string; title: string; author: string | null }>).map((project) => ({
+    id: project.id,
+    title: project.title,
+    author: project.author ?? undefined,
+    questionCount: questionCountByProject.get(project.id) ?? 0,
+    challengeProgress: buildChallengeProgress(
+      (practicesByProject.get(project.id) ?? []).sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '')),
+    ),
+  })));
+}
 
 export async function getStudentConversation(conversationId: string): Promise<DataResult<StudentConversationInitial | null>> {
   const role = await requireRole('student');
@@ -337,13 +401,63 @@ export async function getStudentProject(projectId: string): Promise<DataResult<P
   return ok({ project, questions: (questions ?? []) as Database['public']['Tables']['conversation_messages']['Row'][], practices: practices ?? [], challengeProgress });
 }
 
-export async function getStudentProfileSummary() {
-  const projects = await getStudentProjects();
+/**
+ * 学习记录页的聚合统计。刻意不经过 getStudentProjects：
+ * 分页之后篇目列表只覆盖当前页，而页顶指标与层级分布是"全部篇目"口径，
+ * 必须来自独立聚合查询。这三条查询都只取窄列/计数，不拉会话与消息正文。
+ */
+export async function getStudentProjectStats(): Promise<DataResult<{
+  projectCount: number;
+  questionCount: number;
+  challengeCount: number;
+  awaitingChallengeCount: number;
+  distribution: Array<{ level: number; count: number }>;
+}>> {
+  const role = await requireRole('student');
+  if (!role.ok) return role;
+  const supabase = await createClient();
+
+  const [projectsResult, questionsResult, practicesResult] = await Promise.all([
+    // highest_bloom_level 由 practice_records 触发器维护，读它即可得到"已通过最高层级"。
+    supabase.from('text_projects').select('highest_bloom_level').eq('owner_id', role.data.id),
+    supabase
+      .from('conversation_messages')
+      .select('id, conversations!inner(owner_id,project_id,deleted_at)', { count: 'exact', head: true })
+      .eq('conversations.owner_id', role.data.id)
+      .is('conversations.deleted_at', null)
+      .eq('role', 'user')
+      .not('conversations.project_id', 'is', null),
+    supabase.from('practice_records').select('id', { count: 'exact', head: true }).eq('student_id', role.data.id),
+  ]);
+  if (projectsResult.error) return fail('error', `篇目统计失败：${projectsResult.error.message}`);
+  if (questionsResult.error) return fail('error', `提问统计失败：${questionsResult.error.message}`);
+  if (practicesResult.error) return fail('error', `挑战统计失败：${practicesResult.error.message}`);
+
+  const projectRows = (projectsResult.data ?? []) as Array<{ highest_bloom_level: number | null }>;
+  return ok({
+    projectCount: projectRows.length,
+    questionCount: questionsResult.count ?? 0,
+    challengeCount: practicesResult.count ?? 0,
+    awaitingChallengeCount: projectRows.filter((row) => row.highest_bloom_level === null).length,
+    distribution: [1, 2, 3, 4, 5, 6].map((level) => ({
+      level,
+      count: projectRows.filter((row) => row.highest_bloom_level === level).length,
+    })),
+  });
+}
+
+export async function getStudentProfileSummary(options: { page?: number; pageSize?: number } = {}): Promise<DataResult<{
+  distribution: Array<{ level: number; count: number }>;
+  projectBloomMatrix: ProjectBloomMatrixRow[];
+  projects: ProjectSummary[];
+  totalProjects: number;
+  questionCount: number;
+  challengeCount: number;
+  awaitingChallengeCount: number;
+}>> {
+  const [projects, stats] = await Promise.all([getStudentProjects(options), getStudentProjectStats()]);
   if (!projects.ok) return projects;
-  const distribution = [1, 2, 3, 4, 5, 6].map((level) => ({
-    level,
-    count: projects.data.filter((project) => project.challengeProgress.confirmedLevel === level).length,
-  }));
+  if (!stats.ok) return stats;
   const projectBloomMatrix: ProjectBloomMatrixRow[] = projects.data.map((project) => ({
     id: project.id,
     title: project.title,
@@ -351,6 +465,13 @@ export async function getStudentProfileSummary() {
     statusLabel: project.challengeProgress.statusLabel,
     levels: project.challengeProgress.levels,
   }));
-  const awaitingChallengeCount = projects.data.filter((project) => !project.challengeProgress.confirmedLevel).length;
-  return ok({ distribution, projectBloomMatrix, projects: projects.data, awaitingChallengeCount });
+  return ok({
+    distribution: stats.data.distribution,
+    projectBloomMatrix,
+    projects: projects.data,
+    totalProjects: stats.data.projectCount,
+    questionCount: stats.data.questionCount,
+    challengeCount: stats.data.challengeCount,
+    awaitingChallengeCount: stats.data.awaitingChallengeCount,
+  });
 }

@@ -125,6 +125,9 @@ export function AccountSettings({ avatarKey, displayName, loginId, accountRole, 
 
       form.reset();
       setPasswordFeedback({ kind: 'success', message: parsed.data.message });
+      // 服务端已在成功响应里清除会话 cookie；这里跳登录页完成"改密即登出"闭环。
+      // 用 replace 避免用户回退键回到已失效的设置页。
+      window.location.replace('/login');
     } catch (error) {
       if (!(error instanceof Error)) throw error;
       setPasswordFeedback({ kind: 'error', message: '网络连接失败，请稍后重试。' });

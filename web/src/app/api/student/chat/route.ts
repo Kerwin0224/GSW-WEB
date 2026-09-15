@@ -472,8 +472,20 @@ export async function POST(req: Request) {
             await supabase.from('conversation_messages').insert({ conversation_id: conversation.id, role: 'assistant', content: text, parts: jsonForDatabase([{ type: 'text', text }]), model_id: modelId, bloom_state: 'unclassified' });
             await closeMcpOnce();
           },
-          onError: async () => {
+          onError: async (error) => {
             // 流式中断/出错时 onFinish 不会跑，pending 不回收就会永久卡在"正在判断提问类型"。
+            // 关键：mid-stream 失败时 withApiLogging 已经把请求记成 200 _completed（响应头先返回了），
+            // 不在这里补一条 error 事件，模型调用故障就在 app_log_events 里彻底消失——这正是
+            // "接口报错查不到原因"的根因。这里显式落库，带上 provider/model 便于定位。
+            await writeLogEvent({
+              level: 'error',
+              area: 'api',
+              event: 'student_chat_stream_failed',
+              requestId,
+              route: '/api/student/chat',
+              message: error instanceof Error ? error.message : '学生会话流式响应失败',
+              context: { conversationId: conversation.id, modelId, provider: caps.student_chat.providerName },
+            });
             await setBloomState('unclassified');
             await closeMcpOnce();
           },
@@ -494,8 +506,8 @@ export async function POST(req: Request) {
         await closeMcpOnce();
       },
       onError: (error) => {
-        if (error instanceof Error) return error.message;
-        return '学生会话流式响应失败';
+        // 兜底文案保留可读中文；技术细节走上面的 app_log_events，不再把原始 provider 报文抛给浏览器。
+        return error instanceof Error ? `AI 回答生成失败：${error.message}` : '学生会话流式响应失败';
       },
     });
     const response = createUIMessageStreamResponse({ stream });

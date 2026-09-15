@@ -56,18 +56,58 @@ export function resolveLanguageModel(capability: CapabilityStatus): LanguageMode
 }
 
 /**
+ * "拿到一个能用的模型，或拿到一句能对用户说明白的话"——所有 AI 路由的统一入口。
+ *
+ * 之前 student/teacher/challenge 四条路由各自抄了 4 行 same-shape 的
+ * `ready → resolveLanguageModel → null → 503` 守卫，导致同一个故障在不同路由给出
+ * 不同文案、不同状态码，排查时无法判断是"模型没配"还是"密钥没注入"。
+ * 收口在这里：失败原因带 capability 名，文案一次写成，所有路由一致。
+ *
+ * 返回 ok:false 时调用方应直接把它转成 HTTP 响应（status 已给出），不要再自造文案。
+ */
+export function resolveReadyModel(capability: CapabilityStatus): { ok: true; model: LanguageModel; modelId: string } | { ok: false; status: number; error: string; resolution: string } {
+  if (!capability.ready) {
+    return {
+      ok: false,
+      status: 503,
+      error: `${capability.capability} 模型未就绪`,
+      resolution: capability.blockedReason ?? `缺少 ${capability.capability} 真实模型能力配置。`,
+    };
+  }
+  const model = resolveLanguageModel(capability);
+  if (!model || !capability.modelId) {
+    return {
+      ok: false,
+      status: 503,
+      error: `${capability.capability} 模型密钥未解析`,
+      resolution: `${capability.providerName ?? 'Provider'} 的 secret_ref 未在服务端环境中解析成功；不会从浏览器读取 Provider 密钥。`,
+    };
+  }
+  return { ok: true, model, modelId: capability.modelId };
+}
+
+/**
  * API 路由/server action 侧的鉴权入口：失败返回 DataResult（403/401 语义由调用方映射）。
  * RSC/页面侧请用 lib/auth.ts 的 requireProfile（redirect 语义）；
  * 两者都基于 getProfile()（每次调用重新读库，停用账号即时失效），分工不同勿混用。
  */
 export async function requireRole(role: AppRole): Promise<DataResult<Profile>> {
+  return requireAnyRole([role]);
+}
+
+/**
+ * 多角色版本：某些资源对公司级（org_admin）与校内（admin）都开放，
+ * 例如项目归属目录——公司可下发模板，学校可维护自有目录。
+ * 语义与 requireRole 完全一致，只是允许集合而非单值。
+ */
+export async function requireAnyRole(roles: AppRole[]): Promise<DataResult<Profile>> {
   try {
     const profile = await getProfile();
     if (!profile) return fail('missing_profile', '当前账号缺少 Supabase profile，无法猜测角色。');
     if (profile.status !== 'active') return fail('forbidden', '当前账号已停用。');
     // 强制首登改密：除改密接口（不走 requireRole）外，所有 API 一律拒绝。
     if (profile.must_change_password) return fail('password_change_required', '请先在账号设置中修改初始密码。');
-    if (profile.role !== role) return fail('forbidden', `当前账号不是 ${role} 角色。`);
+    if (!roles.includes(profile.role)) return fail('forbidden', `当前账号不是 ${roles.join(' / ')} 角色。`);
     return ok(profile);
   } catch (error) {
     return fail('error', error instanceof Error ? error.message : '读取角色资料失败');

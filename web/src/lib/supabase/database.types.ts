@@ -86,9 +86,14 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['prompt_presets']['Insert']>;
       };
       text_projects: {
-        Row: { id: string; owner_id: string; class_id: string | null; title: string; author: string | null; text_type: string; classification_state: 'pending' | 'classified' | 'failed' | 'manual'; highest_bloom_level: number | null; created_at: string; updated_at: string };
-        Insert: { id?: string; owner_id: string; class_id?: string | null; title: string; author?: string | null; text_type?: string; classification_state?: 'pending' | 'classified' | 'failed' | 'manual'; highest_bloom_level?: number | null };
+        Row: { id: string; owner_id: string; class_id: string | null; catalog_id: string | null; title: string; author: string | null; text_type: string; classification_state: 'pending' | 'classified' | 'failed' | 'manual'; highest_bloom_level: number | null; created_at: string; updated_at: string };
+        Insert: { id?: string; owner_id: string; class_id?: string | null; catalog_id?: string | null; title: string; author?: string | null; text_type?: string; classification_state?: 'pending' | 'classified' | 'failed' | 'manual'; highest_bloom_level?: number | null };
         Update: Partial<Database['public']['Tables']['text_projects']['Insert']>;
+      };
+      project_catalogs: {
+        Row: { id: string; organization_id: string; school_id: string | null; parent_id: string | null; name: string; kind: 'subject' | 'grade' | 'category' | 'topic'; sort_order: number; status: 'active' | 'archived'; created_by: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; organization_id: string; school_id?: string | null; parent_id?: string | null; name: string; kind?: 'subject' | 'grade' | 'category' | 'topic'; sort_order?: number; status?: 'active' | 'archived'; created_by?: string | null };
+        Update: Partial<Database['public']['Tables']['project_catalogs']['Insert']>;
       };
       conversations: {
         Row: { id: string; owner_id: string; class_id: string | null; project_id: string | null; source: InteractionSource; prompt_preset_id: string | null; title: string | null; deleted_at: string | null; created_at: string; updated_at: string };

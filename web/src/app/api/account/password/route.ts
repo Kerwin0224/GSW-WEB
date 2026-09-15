@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { accountPasswordSchema, resolvePasswordChangeResult } from '@/lib/account-settings';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
-import { attachSessionCookie, getAppSession } from '@/lib/session';
+import { clearSessionCookie, getAppSession } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -35,15 +35,10 @@ export async function PATCH(req: Request) {
 
     switch (result.kind) {
       case 'success': {
-        const response = NextResponse.json({ ok: true, message: '密码已更新。', requestId });
-        attachSessionCookie(response, {
-          sub: result.account.id,
-          loginId: result.account.login_id,
-          role: result.account.role,
-          displayName: result.account.display_name,
-          sessionVersion: result.account.session_version,
-          mustChangePassword: result.account.must_change_password,
-        });
+        // 改密成功即登出：session_version 已 +1，旧 cookie 的签名主体已失效；
+        // 继续下发新 cookie 会让当前标签页"看起来还登录着"，与用户预期（改完密码退出重新登录）不符。
+        const response = NextResponse.json({ ok: true, message: '密码已更新，请使用新密码重新登录。', requestId });
+        clearSessionCookie(response);
         return response;
       }
       case 'current-password-rejected':

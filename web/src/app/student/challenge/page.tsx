@@ -7,13 +7,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { BloomBadge } from '@/components/workbench/bloom-badge';
 import { ChallengeClient } from '@/components/workbench/challenge-client';
+import { Pagination, parsePageParam } from '@/components/workbench/pagination';
 import { BlockedState, EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { SectionHeader } from '@/components/workbench/workspace-hero';
-import { getStudentProject, getStudentProjects, getStudentWorkspace, type ProjectDetail, type ProjectSummary } from '@/lib/data/student';
+import { getStudentChallengeProjects, getStudentProject, getStudentWorkspace, type ChallengeProjectSummary, type ProjectDetail } from '@/lib/data/student';
 import { cn } from '@/lib/utils';
 
 type ChallengeFilter = 'all' | 'waiting' | 'active' | 'reinforce' | 'complete';
-type ChallengePageSearchParams = { projectId?: string | string[]; q?: string | string[]; status?: string | string[] };
+type ChallengePageSearchParams = { projectId?: string | string[]; q?: string | string[]; status?: string | string[]; page?: string | string[] };
+
+// 挑战页左侧篇目列表每页条数。选中篇目若不在本页，详情仍单独加载。
+const CHALLENGE_PAGE_SIZE = 20;
 
 const challengeFilters: Array<{ value: ChallengeFilter; label: string; description: string }> = [
   { value: 'all', label: '全部', description: '所有可挑战篇目' },
@@ -31,17 +35,17 @@ function normalizeFilter(value: string | undefined): ChallengeFilter {
   return challengeFilters.some((filter) => filter.value === value) ? (value as ChallengeFilter) : 'all';
 }
 
-function matchesQuery(project: ProjectSummary, query: string) {
+function matchesQuery(project: ChallengeProjectSummary, query: string) {
   if (!query) return true;
   const haystack = `${project.title} ${project.author ?? ''}`.toLowerCase();
   return haystack.includes(query.toLowerCase());
 }
 
-function isReinforceProject(project: ProjectSummary) {
+function isReinforceProject(project: ChallengeProjectSummary) {
   return project.challengeProgress.statusLabel === '待巩固' || project.challengeProgress.statusLabel === '需要巩固';
 }
 
-function matchesFilter(project: ProjectSummary, filter: ChallengeFilter) {
+function matchesFilter(project: ChallengeProjectSummary, filter: ChallengeFilter) {
   if (filter === 'all') return true;
   if (filter === 'waiting') return project.challengeProgress.attemptedCount === 0;
   if (filter === 'reinforce') return isReinforceProject(project);
@@ -55,32 +59,38 @@ function getLatestActionablePractice(practices: ProjectDetail['practices']) {
 
 export default async function ChallengePage({ searchParams }: { searchParams?: Promise<ChallengePageSearchParams> }) {
   const params = await searchParams;
-  const [workspace, projectsResult] = await Promise.all([getStudentWorkspace(), getStudentProjects()]);
+  const [workspace, projectsResult] = await Promise.all([getStudentWorkspace(), getStudentChallengeProjects()]);
   if (!workspace.ok) return <div className="p-6"><ErrorState title="挑战入口加载失败" description={workspace.message} /></div>;
   if (!projectsResult.ok) return <div className="p-6"><ErrorState title="挑战练习加载失败" description={projectsResult.message} /></div>;
 
   const projects = projectsResult.data;
   const query = (singleParam(params?.q) ?? '').trim();
   const activeFilter = normalizeFilter(singleParam(params?.status));
+  const page = parsePageParam(params?.page);
   const requestedProjectId = singleParam(params?.projectId);
   const queryMatchedProjects = projects.filter((project) => matchesQuery(project, query));
   const filteredProjects = queryMatchedProjects.filter((project) => matchesFilter(project, activeFilter));
+  const pageCount = Math.max(1, Math.ceil(filteredProjects.length / CHALLENGE_PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pagedProjects = filteredProjects.slice((currentPage - 1) * CHALLENGE_PAGE_SIZE, currentPage * CHALLENGE_PAGE_SIZE);
   const requestedProject = requestedProjectId ? projects.find((project) => project.id === requestedProjectId) : undefined;
   const selectedProject = requestedProject && matchesQuery(requestedProject, query) && matchesFilter(requestedProject, activeFilter)
     ? requestedProject
-    : filteredProjects[0];
+    : pagedProjects[0];
   const selectedProjectResult = selectedProject ? await getStudentProject(selectedProject.id) : null;
   const selectedProjectDetail = selectedProjectResult?.ok ? selectedProjectResult.data : null;
   const selectedProgress = selectedProjectDetail?.challengeProgress ?? selectedProject?.challengeProgress;
   const initialPractice = selectedProjectDetail ? getLatestActionablePractice(selectedProjectDetail.practices) : undefined;
 
-  const buildHref = (projectId?: string, overrides?: { status?: ChallengeFilter; q?: string }) => {
+  const buildHref = (projectId?: string, overrides?: { status?: ChallengeFilter; q?: string; page?: number }) => {
     const search = new URLSearchParams();
     const nextQuery = overrides?.q ?? query;
     const nextStatus = overrides?.status ?? activeFilter;
+    const nextPage = overrides?.page ?? currentPage;
     if (projectId) search.set('projectId', projectId);
     if (nextQuery) search.set('q', nextQuery);
     if (nextStatus !== 'all') search.set('status', nextStatus);
+    if (nextPage > 1) search.set('page', String(nextPage));
     const suffix = search.toString();
     return `/student/challenge${suffix ? `?${suffix}` : ''}`;
   };
@@ -122,6 +132,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* 筛选会改变结果集，提交时回到第 1 页（不保留 page 参数）。 */}
                 <form action="/student/challenge" className="flex gap-2">
                   {activeFilter !== 'all' ? <input type="hidden" name="status" value={activeFilter} /> : null}
                   <div className="relative min-w-0 flex-1">
@@ -138,7 +149,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                     <Button
                       key={filter.value}
                       nativeButton={false}
-                      render={<Link href={buildHref(undefined, { status: filter.value })} />}
+                      render={<Link href={buildHref(undefined, { status: filter.value, page: 1 })} />}
                       size="sm"
                       variant={activeFilter === filter.value ? 'default' : 'outline'}
                       aria-label={`${filter.label}：${filter.description}`}
@@ -160,7 +171,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                 <div className="p-4 text-sm text-muted-foreground">没有匹配篇目。清空搜索词或切换筛选条件后再试。</div>
               ) : (
                 <div className="divide-y">
-                  {filteredProjects.map((project) => {
+                  {pagedProjects.map((project) => {
                     const selected = selectedProject?.id === project.id;
                     return (
                       <Link
@@ -185,6 +196,16 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                   })}
                 </div>
               )}
+              {filteredProjects.length > 0 ? (
+                <Pagination
+                  className="border-t px-4 py-3"
+                  page={currentPage}
+                  pageSize={CHALLENGE_PAGE_SIZE}
+                  total={filteredProjects.length}
+                  itemLabel="个篇目"
+                  buildHref={(target) => buildHref(undefined, { page: target })}
+                />
+              ) : null}
             </div>
           </aside>
 

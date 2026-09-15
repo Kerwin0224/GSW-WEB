@@ -1,8 +1,9 @@
-import { consumeStream, convertToModelMessages, safeValidateUIMessages, streamText, stepCountIs, type LanguageModel } from 'ai';
+import { consumeStream, convertToModelMessages, safeValidateUIMessages, streamText, stepCountIs } from 'ai';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
-import { extractTextFromParts, getCapability, jsonForDatabase, requireRole, resolveEnvSecret, resolveLanguageModel, type CapabilityStatus } from '@/lib/data/common';
+import { writeLogEvent } from '@/lib/observability/server-log-store';
+import { extractTextFromParts, getCapability, jsonForDatabase, requireRole, resolveReadyModel } from '@/lib/data/common';
 import { retrieveConversationDocumentChunks } from '@/lib/data/retrieval';
 import { getRoleMcpTools } from '@/lib/mcp-runtime';
 import { buildTeacherSystemPrompt } from '@/lib/teacher-chat-prompts';
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic';
 const bodySchema = z.object({ messages: z.unknown(), presetId: z.string().uuid().optional(), conversationId: z.string().uuid().optional() });
 
 export async function POST(req: Request) {
-  return withApiLogging(req, { area: 'api', event: 'teacher_chat', route: '/api/teacher/chat' }, async () => {
+  return withApiLogging(req, { area: 'api', event: 'teacher_chat', route: '/api/teacher/chat' }, async (requestId) => {
   const role = await requireRole('teacher');
   if (!role.ok) return Response.json({ error: role.message }, { status: role.reason === 'forbidden' ? 403 : 401 });
   let body: unknown;
@@ -30,9 +31,9 @@ export async function POST(req: Request) {
   const messages = validated.data;
   const capability = await getCapability('teacher_chat');
   if (!capability.ok) return Response.json({ error: 'Teacher chat provider lookup failed', resolution: capability.message }, { status: 500 });
-  if (!capability.data.ready) return Response.json({ error: 'Teacher chat provider not configured', resolution: capability.data.blockedReason }, { status: 503 });
-  const languageModel = resolveLanguageModel(capability.data);
-  if (!languageModel) return Response.json({ error: 'Server model secret missing', resolution: `${capability.data.providerName ?? 'Provider'} 的 secret_ref 未在服务端环境中解析成功；不会从浏览器读取 Provider 密钥。` }, { status: 503 });
+  const ready = resolveReadyModel(capability.data);
+  if (!ready.ok) return Response.json({ error: ready.error, resolution: ready.resolution }, { status: ready.status });
+  const languageModel = ready.model;
 
   const supabase = await createClient();
   const preset = parsed.data.presetId
@@ -83,7 +84,18 @@ export async function POST(req: Request) {
       await mcp.close();
       await supabase.from('conversation_messages').insert({ conversation_id: conversation.id, role: 'assistant', content: text, model_id: modelId, bloom_state: 'unclassified' });
     },
-    onError: async () => {
+    onError: async (error) => {
+      // 与学生端一致：mid-stream 模型失败不会让 withApiLogging 记到 error（响应头已 200 返回），
+      // 必须在此显式落库，否则线上排查"接口报错"时这条故障完全不可见。
+      await writeLogEvent({
+        level: 'error',
+        area: 'api',
+        event: 'teacher_chat_stream_failed',
+        requestId,
+        route: '/api/teacher/chat',
+        message: error instanceof Error ? error.message : '教师问答流式响应失败',
+        context: { conversationId: conversation.id, modelId, provider: capability.data.providerName },
+      });
       await mcp.close();
     },
     onAbort: async () => {

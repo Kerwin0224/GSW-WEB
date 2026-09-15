@@ -16,6 +16,7 @@ export default async function SettingsPage() {
     <AppShell
       role={profile.role}
       displayName={profile.display_name}
+      loginId={profile.login_id}
       avatarKey={profile.avatar_key}
       breadcrumbs={[{ label: '账号设置' }]}
       chrome={profile.role === 'student' ? 'top' : 'sidebar'}

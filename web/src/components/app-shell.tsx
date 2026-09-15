@@ -23,6 +23,8 @@ interface BreadcrumbSegment { label: string; href?: string; }
 interface AppShellProps {
   role: Role;
   displayName: string;
+  /** 学号/工号（login_id）。头像菜单展示，学生/教师/管理员都要能看到自己的登录账号。 */
+  loginId?: string | null;
   avatarKey?: AvatarKey;
   breadcrumbs: BreadcrumbSegment[];
   children: React.ReactNode;
@@ -48,7 +50,7 @@ function derivedBreadcrumbs(pathname: string, fallback: BreadcrumbSegment[]) {
   return fallback;
 }
 
-export function AppShell({ role, displayName, avatarKey = 'ink', breadcrumbs, chrome = 'sidebar', children }: AppShellProps) {
+export function AppShell({ role, displayName, loginId, avatarKey = 'ink', breadcrumbs, chrome = 'sidebar', children }: AppShellProps) {
   const pathname = usePathname();
   const visibleBreadcrumbs = breadcrumbs.length > 1 ? breadcrumbs : derivedBreadcrumbs(pathname, breadcrumbs);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -125,6 +127,8 @@ export function AppShell({ role, displayName, avatarKey = 'ink', breadcrumbs, ch
             <AccountAvatar avatarKey={avatarKey} className="size-10" />
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{displayName}</p>
+              {/* 学号/工号是学生与教师核对本人账号的唯一凭据，头像菜单必须展示。 */}
+              {loginId ? <p className="truncate font-mono text-xs text-muted-foreground">{loginId}</p> : null}
               <RoleBadge role={role} className="mt-1 text-xs" />
             </div>
           </div>

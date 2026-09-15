@@ -1,11 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { useRouter } from 'next/navigation';
-import { ClipboardList, Loader2, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ClipboardList, Loader2, MessageSquare, Plus, Sparkles, Trash2 } from 'lucide-react';
 
 import type { Database } from '@/lib/supabase/database.types';
 import type { TeacherConversationInitial, TeacherSessionSummary } from '@/lib/data/teacher';
@@ -17,15 +17,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { AIMessageList } from '@/components/workbench/ai-message-list';
+import { ChatWorkspace } from '@/components/workbench/chat-workspace';
+import { ThinkingIndicator } from '@/components/workbench/thinking-indicator';
 import { ChatComposer } from '@/components/workbench/chat-composer';
 import { BlockedState, EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { saveTeacherPromptPreset, type AuditSubmissionState } from '@/lib/data/teacher-actions';
 import { cn } from '@/lib/utils';
 
 const teacherPrompts = ['这首诗的课堂导入怎么设计？', '学生容易误解哪个典故？', '设计三个分层追问', '把这段文言文讲得更清楚'];
-const teacherChatSidebarStorageKey = 'teacher-chat-sidebar-collapsed';
-const teacherChatSidebarStorageEvent = 'teacher-chat-sidebar-collapsed-change';
-let teacherChatSidebarCollapsedMemory = false;
 
 type Preset = Database['public']['Tables']['prompt_presets']['Row'];
 const instructionInitialState: AuditSubmissionState = { ok: false, message: '' };
@@ -36,39 +35,6 @@ function presetText(preset: Preset) {
 
 function FieldError({ message }: { message?: string }) {
   return message ? <p className="text-xs text-destructive" role="alert">{message}</p> : null;
-}
-
-function readTeacherChatSidebarCollapsed() {
-  if (typeof window === 'undefined') return false;
-  try {
-    return localStorage.getItem(teacherChatSidebarStorageKey) === 'true';
-  } catch {
-    return teacherChatSidebarCollapsedMemory;
-  }
-}
-
-function subscribeTeacherChatSidebarCollapsed(onStoreChange: () => void) {
-  if (typeof window === 'undefined') return () => {};
-
-  const handleStorage = (event: StorageEvent) => {
-    if (event.key === teacherChatSidebarStorageKey) onStoreChange();
-  };
-  window.addEventListener('storage', handleStorage);
-  window.addEventListener(teacherChatSidebarStorageEvent, onStoreChange);
-  return () => {
-    window.removeEventListener('storage', handleStorage);
-    window.removeEventListener(teacherChatSidebarStorageEvent, onStoreChange);
-  };
-}
-
-function writeTeacherChatSidebarCollapsed(collapsed: boolean) {
-  teacherChatSidebarCollapsedMemory = collapsed;
-  try {
-    localStorage.setItem(teacherChatSidebarStorageKey, String(collapsed));
-  } catch {
-    // localStorage 不可用时，内存快照仍能维持当前标签页交互。
-  }
-  window.dispatchEvent(new Event(teacherChatSidebarStorageEvent));
 }
 
 function CreatePresetDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -156,7 +122,6 @@ export function TeacherChatClient({
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [lastSubmittedInput, setLastSubmittedInput] = useState('');
-  const sidebarCollapsed = useSyncExternalStore(subscribeTeacherChatSidebarCollapsed, readTeacherChatSidebarCollapsed, () => false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { messages, setMessages, sendMessage, clearError, status, error } = useChat({
     messages: initialConversation?.messages,
@@ -292,27 +257,14 @@ export function TeacherChatClient({
     }
   };
 
-  const toggleSidebar = () => {
-    writeTeacherChatSidebarCollapsed(!sidebarCollapsed);
-  };
-
   return (
-    <div className={cn("grid min-h-0 w-full flex-1 bg-background/35 transition-all duration-300", sidebarCollapsed ? "lg:grid-cols-[3rem_minmax(0,1fr)]" : "lg:grid-cols-[21rem_minmax(0,1fr)] xl:grid-cols-[23rem_minmax(0,1fr)]")}>
+    <>
       <CreatePresetDialog open={createPresetOpen} onOpenChange={setCreatePresetOpen} />
       <PresetConflictDialog preset={pendingPreset} onCancel={() => setPendingPreset(null)} onReplace={replaceWithPendingPreset} onAppend={appendPendingPreset} />
-
-      <aside className={cn("order-2 border-t border-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--primary)_8%,transparent),transparent_18%),color-mix(in_oklch,var(--card)_92%,transparent)] p-3 shadow-soft backdrop-blur-xl lg:order-1 lg:max-h-[calc(100svh-5rem)] lg:overflow-y-auto lg:border-r lg:border-t-0 transition-all duration-300", sidebarCollapsed ? "lg:p-2" : "lg:p-4")} aria-label="备课问答会话管理">
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <button
-            type="button"
-            onClick={toggleSidebar}
-            className="hidden lg:flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background/80 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
-            aria-label={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
-          >
-            {sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-          </button>
-        </div>
-        <div className={cn("space-y-4 pb-3 transition-opacity duration-300", sidebarCollapsed && "lg:hidden")}>
+      <ChatWorkspace
+        storageKey="teacher-chat-sidebar-collapsed"
+        sidebarLabel="备课问答"
+        sidebar={(<>
           <section className="rounded-2xl border border-primary/18 bg-background/72 p-4 shadow-soft">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -411,12 +363,8 @@ export function TeacherChatClient({
               </Button>
             </CardContent>
           </Card>
-        </div>
-      </aside>
-
-      <section className="order-1 flex max-h-[calc(100svh-8rem)] min-w-0 flex-col lg:order-2 lg:max-h-[calc(100svh-5rem)]" aria-label="备课问答工作区">
-        <div className="border-b border-border/60 bg-card/92 px-4 py-4 shadow-soft backdrop-blur">
-          <div className="mx-auto flex max-w-4xl flex-col gap-3">
+        </>)}
+        header={(
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">当前会话</p>
@@ -430,11 +378,9 @@ export function TeacherChatClient({
                 <Badge className="w-fit" variant="secondary">{uploadStatus ? '已含附件' : '可传附件'}</Badge>
               </div>
             </div>
-          </div>
-        </div>
-
-        <div ref={scrollRef} className="order-2 min-h-0 flex-1 overflow-y-auto px-4 py-6">
-          <div className="mx-auto flex max-w-4xl flex-col gap-6">
+        )}
+        messages={(
+          <>
             {messages.length === 0 ? (
               <EmptyState
                 title="开始新的备课问答"
@@ -453,35 +399,28 @@ export function TeacherChatClient({
               <AIMessageList messages={messages} assistantCardClassName="max-h-[28rem] overflow-y-auto overscroll-contain pr-2" />
             )}
             {status === 'submitted' ? (
-              // 与学生端一致：等待首字只显示呼吸圆点，流式期间不叠状态卡片。
-              <div className="flex items-center gap-1.5 py-2 pl-12" role="status" aria-label="正在思考">
-                {[0, 1, 2].map((dot) => (
-                  <span key={dot} className="size-1.5 animate-bounce rounded-full bg-muted-foreground/50" style={{ animationDelay: `${dot * 150}ms` }} />
-                ))}
-              </div>
+              // 等待首字只显示呼吸圆点，流式期间不叠状态卡片（与学生端共用同一组件）。
+              <ThinkingIndicator />
             ) : null}
             {error ? <ErrorState title="备课问答响应失败" description={error.message} /> : null}
-          </div>
-        </div>
-
-        <div className="order-3 border-t border-border/60 bg-card/95 p-4 shadow-[0_-18px_40px_-32px_rgb(26_26_46/0.45)] backdrop-blur-xl">
-          <div className="mx-auto max-w-4xl">
-            <ChatComposer
-              value={input}
-              onChange={setInput}
-              onSubmit={submit}
-              placeholder="输入教学问题…（Enter 发送，Shift+Enter 换行）"
-              disabled={busy || uploading || Boolean(providerBlocked)}
-              inputDisabled={busy || uploading}
-              blockedReason={providerBlocked}
-              onFileUpload={uploadAttachment}
-              uploadDisabled={busy || uploading || Boolean(providerBlocked)}
-              uploadStatus={uploadStatus}
-              uploadError={uploadError}
-            />
-          </div>
-        </div>
-      </section>
+          </>
+        )}
+        composer={(
+          <ChatComposer
+            value={input}
+            onChange={setInput}
+            onSubmit={submit}
+            placeholder="输入教学问题…（Enter 发送，Shift+Enter 换行）"
+            disabled={busy || uploading || Boolean(providerBlocked)}
+            inputDisabled={busy || uploading}
+            blockedReason={providerBlocked}
+            onFileUpload={uploadAttachment}
+            uploadDisabled={busy || uploading || Boolean(providerBlocked)}
+            uploadStatus={uploadStatus}
+            uploadError={uploadError}
+          />
+        )}
+      />
 
       <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}>
         <DialogContent>
@@ -500,6 +439,6 @@ export function TeacherChatClient({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

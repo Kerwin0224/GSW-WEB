@@ -270,11 +270,19 @@ function normalizeMembership(row: {
 function getAssignmentSummary(userRole: AppRole, memberships: AdminClassMembership[]) {
   if (userRole === 'teacher') {
     const teacherClasses = memberships.filter((membership) => membership.role === 'teacher');
-    return teacherClasses.length > 0 ? `负责 ${teacherClasses.length} 个班级` : '暂未负责班级';
+    if (teacherClasses.length === 0) return '暂未负责班级';
+    // 只给数量时管理员无法判断教师到底带哪些班（同校重名班级尤其容易混淆），
+    // 因此列出班级名；超过 3 个再折叠为"等 N 个"。
+    const names = teacherClasses.map((membership) => membership.classInfo?.name?.trim() || '未命名班级');
+    const head = names.slice(0, 3).join('、');
+    return names.length > 3 ? `负责：${head} 等 ${names.length} 个班级` : `负责：${head}`;
   }
   if (userRole === 'student') {
     const studentClass = memberships.find((membership) => membership.role === 'student');
-    return studentClass?.classInfo?.name ? `所在班级：${studentClass.classInfo.name}` : '未分配班级';
+    const name = studentClass?.classInfo?.name?.trim();
+    const grade = studentClass?.classInfo?.grade?.trim();
+    if (!name) return '未分配班级';
+    return grade ? `所在班级：${name}（${grade}）` : `所在班级：${name}`;
   }
   return '管理员账号不绑定班级';
 }
@@ -451,6 +459,32 @@ export async function removeClassMember(formData: FormData): Promise<void> {
   revalidatePath('/admin/classes');
   revalidatePath('/admin/users');
   revalidatePath('/admin');
+}
+
+/**
+ * 批量把账号恢复为初始密码（初始密码 = 学号/工号本身，并重新强制首登改密）。
+ *
+ * 走 set_initial_password_by_profile RPC：它内部用 can_admin_profile 做租户边界校验，
+ * 校 admin 无法重置他校或公司级账号，因此这里不需要再叠一层校过滤——DB 是唯一闸门。
+ * 逐个调用并在失败处停下，返回明确的成功/失败计数，避免"部分成功却提示成功"。
+ */
+export async function resetInitialPasswords(profileIds: string[]): Promise<AdminActionState> {
+  const role = await requireRole('admin');
+  if (!role.ok) return actionResult(false, role.message);
+  const supabase = await createClient();
+  let reset = 0;
+  for (const profileId of profileIds) {
+    const { error } = await supabase.rpc('set_initial_password_by_profile', {
+      p_profile_id: profileId,
+      p_server_signature: createDatabaseSessionSignature(`pw:${profileId}`),
+    });
+    if (error) {
+      return actionResult(false, `已重置 ${reset} 个账号，第 ${reset + 1} 个失败：${error.message}`);
+    }
+    reset += 1;
+  }
+  revalidatePath('/admin/users');
+  return actionResult(true, `已将 ${reset} 个账号恢复为初始密码（学号/工号），对方下次登录会被要求改密。`);
 }
 
 export async function createClass(formData: FormData): Promise<void>;

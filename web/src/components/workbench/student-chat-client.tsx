@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
-import { BookOpen, ChevronDown, FolderOpen, Loader2, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Sparkles, Swords, Trash2 } from 'lucide-react';
+import { BookOpen, ChevronDown, FolderOpen, Loader2, MessageSquare, Plus, Sparkles, Swords, Trash2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { AIMessageList, type MessageEditState } from '@/components/workbench/ai-message-list';
+import { ChatWorkspace } from '@/components/workbench/chat-workspace';
+import { ThinkingIndicator } from '@/components/workbench/thinking-indicator';
 import { ChatComposer } from '@/components/workbench/chat-composer';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import type { BloomStatus } from '@/components/workbench/bloom-status-badge';
@@ -31,7 +33,6 @@ import {
 } from '@/lib/student-chat-contract';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { useSidebarCollapse } from '@/hooks/use-sidebar-collapse';
 import { useSidebarScroll } from '@/hooks/use-sidebar-scroll';
 import { useBloomStatus, type StudentBloomData } from '@/hooks/use-bloom-status';
 import { useMessageQueue, type QueuedStudentMessage } from '@/hooks/use-message-queue';
@@ -74,7 +75,6 @@ export function StudentChatClient({
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string; projectId?: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
-  const { collapsed: sidebarCollapsed, toggle: toggleSidebar } = useSidebarCollapse();
   const sidebarScrollRef = useSidebarScroll();
   const { bloomStatus, applyBloomStatus, markQueued: markBloomQueued, markPending: markBloomPending, reset: resetBloomStatus } = useBloomStatus();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -456,30 +456,26 @@ export function StudentChatClient({
   const blocked = conversationLocked ? finalizedConversationBlockedReason : providerBlocked;
 
   return (
-    <div className={cn("grid min-h-0 w-full flex-1 bg-background/35 transition-all duration-300", sidebarCollapsed ? "lg:grid-cols-[3.5rem_minmax(0,1fr)]" : "lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[22rem_minmax(0,1fr)]")}>
-      <aside ref={sidebarScrollRef} className={cn("order-2 border-t border-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--primary)_8%,transparent),transparent_18%),color-mix(in_oklch,var(--card)_92%,transparent)] shadow-soft backdrop-blur-xl lg:order-1 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-t-0 transition-all duration-300", sidebarCollapsed ? "lg:w-[3.5rem] lg:p-1.5" : "lg:w-auto lg:p-3")} aria-label="当前会话空间">
-        {/* 收起态：窄图标栏（新会话 + 展开钮），悬停有 title 提示；展开态：新会话置顶。 */}
-        <div className={cn('flex gap-2', sidebarCollapsed ? 'flex-col items-center' : 'flex-row items-stretch')}>
-          <button
-            type="button"
-            onClick={openEmptyContext}
-            title="开始新会话"
-            className={cn('flex min-h-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-sm font-medium text-primary-foreground shadow-lg shadow-primary/25 transition-[background-color,box-shadow,flex-direction] duration-200 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', sidebarCollapsed ? 'w-full px-0' : 'flex-1 px-4')}
-          >
-            <Plus className="size-4 shrink-0" aria-hidden="true" />
-            <span className={cn('truncate', sidebarCollapsed && 'sr-only')}>开始新会话</span>
-          </button>
-          <button
-            type="button"
-            onClick={toggleSidebar}
-            title={sidebarCollapsed ? "展开篇目与会话" : "收起篇目与会话"}
-            aria-label={sidebarCollapsed ? "展开篇目与会话" : "收起篇目与会话"}
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background/80 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
-          >
-            {sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-          </button>
-        </div>
-        <div className={cn("space-y-4 pt-3 transition-opacity duration-300", sidebarCollapsed && "lg:hidden")}>
+    <>
+    <ChatWorkspace
+      storageKey="student-chat-sidebar-collapsed"
+      sidebarLabel="当前会话空间"
+      mainLabel="学生学习提问空间"
+      sidebarRef={sidebarScrollRef}
+      scrollRef={scrollRef}
+      mobileComposerFirst
+      sidebarPrimaryAction={(collapsed) => (
+        <button
+          type="button"
+          onClick={openEmptyContext}
+          title="开始新会话"
+          className={cn('flex min-h-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-sm font-medium text-primary-foreground shadow-lg shadow-primary/25 transition-[background-color,box-shadow,flex-direction] duration-200 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', collapsed ? 'w-full px-0' : 'flex-1 px-4')}
+        >
+          <Plus className="size-4 shrink-0" aria-hidden="true" />
+          <span className={cn('truncate', collapsed && 'sr-only')}>开始新会话</span>
+        </button>
+      )}
+      sidebar={(<>
           <section className="rounded-2xl border border-border/65 bg-card/86 p-3 shadow-soft">
             <div className="mb-3 flex items-start justify-between gap-3 px-1">
               <div>
@@ -611,12 +607,9 @@ export function StudentChatClient({
               </div>
             )}
           </section>
-        </div>
-      </aside>
-
-      <section className="order-1 flex min-h-0 min-w-0 flex-col lg:order-2 lg:h-full" aria-label="学生学习提问空间">
-        <div className="shrink-0 border-b border-border/60 bg-card/92 px-4 py-4 shadow-soft backdrop-blur sm:px-6 sm:py-5">
-          <div className="mx-auto max-w-3xl space-y-1.5">
+        </>)}
+      header={(
+        <>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <h2 className="font-heading text-xl tracking-tight sm:text-2xl">{inProjectContext ? projectDisplayName : conversationId ? '其他会话' : '从一个古诗文问题开始'}</h2>
               <Badge className="border-primary/25 bg-primary/8 text-primary" variant="outline"><Sparkles className="mr-1 size-3" />{conversationLocked ? '教师已审核' : '学习提问'}</Badge>
@@ -626,27 +619,9 @@ export function StudentChatClient({
                 ? '这条会话已完成教师核实，只能回看，不能继续追问。'
                 : inProjectContext ? '新问题会直接归入当前篇目。' : conversationId ? '继续追问会保留在这条会话中；也可以从篇目或空白入口另开会话。' : '直接提问即可；问题中明确出现篇目时，系统会自动归入对应篇目。'}
             </p>
-          </div>
-        </div>
-        <div className="order-2 border-t border-border/60 bg-card/92 p-4 backdrop-blur sm:px-6 lg:order-3">
-          <div className="mx-auto max-w-2xl">
-            <ChatComposer
-              value={composerValue}
-              onChange={setInput}
-              onSubmit={submit}
-              placeholder="直接输入你的古诗文问题…（Enter 发送，Shift+Enter 换行）"
-              disabled={uploading || Boolean(blocked)}
-              inputDisabled={uploading || conversationLocked}
-              blockedReason={blocked}
-              onFileUpload={uploadAttachment}
-              uploadDisabled={busy || uploading || Boolean(blocked)}
-              uploadStatus={uploadStatus}
-              uploadError={uploadError}
-            />
-          </div>
-        </div>
-        <div ref={scrollRef} className="order-3 min-h-0 flex-1 overflow-y-auto px-4 py-7 lg:order-2">
-          <div className="mx-auto max-w-3xl space-y-6">
+        </>
+      )}
+      messages={(<>
             {classificationUnavailable ? (
               <div className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-muted-foreground">
                 篇目识别暂不可用；从空白入口发起的新会话会先保存到其他会话，不影响继续提问。
@@ -698,11 +673,7 @@ export function StudentChatClient({
             {status === 'submitted' ? (
               // 等待首字：只有一串呼吸圆点，贴近主流 AI chatbot 的极简反馈；
               // 流式开始后正文本身在推进，不再叠状态卡片。
-              <div className="flex items-center gap-1.5 py-2 pl-12" role="status" aria-label="正在思考">
-                {[0, 1, 2].map((dot) => (
-                  <span key={dot} className="size-1.5 animate-bounce rounded-full bg-muted-foreground/50" style={{ animationDelay: `${dot * 150}ms` }} />
-                ))}
-              </div>
+              <ThinkingIndicator />
             ) : null}
             {queueCount > 0 ? (
               <p className="text-xs text-muted-foreground" aria-live="polite">已排队 {queueCount} 条，将依次回答。</p>
@@ -714,9 +685,23 @@ export function StudentChatClient({
                 action={conversationLocked ? undefined : <Button type="button" variant="outline" onClick={retry}>重试本轮回答</Button>}
               />
             ) : null}
-          </div>
-        </div>
-      </section>
+        </>)}
+      composer={(
+        <ChatComposer
+          value={composerValue}
+          onChange={setInput}
+          onSubmit={submit}
+          placeholder="直接输入你的古诗文问题…（Enter 发送，Shift+Enter 换行）"
+          disabled={uploading || Boolean(blocked)}
+          inputDisabled={uploading || conversationLocked}
+          blockedReason={blocked}
+          onFileUpload={uploadAttachment}
+          uploadDisabled={busy || uploading || Boolean(blocked)}
+          uploadStatus={uploadStatus}
+          uploadError={uploadError}
+        />
+      )}
+    />
       <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}>
         <DialogContent>
           <DialogHeader>
@@ -736,6 +721,6 @@ export function StudentChatClient({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

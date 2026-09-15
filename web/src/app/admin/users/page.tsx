@@ -1,13 +1,12 @@
 import Link from 'next/link';
 import { Filter, Search, ShieldCheck, UsersRound } from 'lucide-react';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { AdminUsersTable } from '@/components/workbench/admin-users-table';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { UserImportDialog } from '@/components/workbench/user-import-dialog';
 import { SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
@@ -28,14 +27,6 @@ function parseRole(value: string | undefined): AppRole | 'all' {
 
 function parseStatus(value: string | undefined): AdminProfileStatus | 'all' {
   return value === 'active' || value === 'disabled' ? value : 'all';
-}
-
-function roleLabel(role: AppRole) {
-  return { org_admin: '公司管理员', admin: '管理员', teacher: '教师', student: '学生' }[role];
-}
-
-function statusLabel(status: AdminProfileStatus) {
-  return status === 'active' ? '启用' : '停用';
 }
 
 export default async function AdminUsersPage({ searchParams }: AdminUsersPageProps) {
@@ -134,30 +125,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
           {users.length === 0 ? (
             <EmptyState title="没有匹配账号" description="调整筛选条件，或通过 CSV 导入真实学校账号。" />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>姓名</TableHead>
-                  <TableHead>账号</TableHead>
-                  <TableHead>角色</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>班级归属</TableHead>
-                  <TableHead>最近管理活动</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.displayName}</TableCell>
-                    <TableCell className="font-mono text-xs">{user.loginId ?? '未设置账号'}</TableCell>
-                    <TableCell><Badge variant="outline">{roleLabel(user.role)}</Badge></TableCell>
-                    <TableCell><Badge variant={user.status === 'active' ? 'secondary' : 'destructive'}>{statusLabel(user.status)}</Badge></TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{user.assignmentSummary}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{user.recentActivityLabel}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <AdminUsersTable users={users} />
           )}
         </CardContent>
       </Card>
