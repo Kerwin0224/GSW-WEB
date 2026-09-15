@@ -5,8 +5,11 @@ import { createClient } from '@/lib/supabase/server';
 type SupabaseLike = Awaited<ReturnType<typeof createClient>>;
 
 export type ClassificationRule = {
-  /** 教师为本班配置的归类规则；null 表示未配置，用内置默认。 */
-  teacherRule: string | null;
+  /**
+   * 学生所在班各任课教师的归类规则（每师每班一条）。
+   * 空数组表示未配置，用内置默认。
+   */
+  teacherRules: Array<{ teacherName: string; instruction: string }>;
   /** 学生所在班级 id；null 表示无班级（无归属规则可用）。 */
   classId: string | null;
   /** 本校可选归属路径，帮模型对齐本校目录口径。 */
@@ -16,18 +19,21 @@ export type ClassificationRule = {
 /**
  * 解析"这个学生本轮该用哪套归类规则"。
  *
- * 产品语义（2026-09-16）：归类口径由**该班任课教师**决定，而不是管理员全局写死。
- * 链路：学生 → 其班级（学生只有一个班）→ 该班已发布的 project_classification 规则。
+ * 产品语义（2026-09-16）：归类口径由**任课教师**决定，且每师每班各一条。
+ * 一个班可以有语文/数学/英语等多位教师，各写各的学科口径；学生的问题由哪套规则管，
+ * 交给模型按学科判断（规则文本自带学科说明），所以这里把本班所有生效规则一并带出。
+ *
+ * 链路：学生 → 其班级（学生只有一个班）→ 该班全部已发布的 project_classification 规则。
  * 任一环缺失都安全退化：没配规则就用内置默认，不阻塞学生提问。
  *
  * 学生身份执行，故依赖迁移里给 class_memberships / prompt_presets / project_catalogs
- * 配好的 RLS；查不到就是 null，不做提权兜底。
+ * 配好的 RLS；查不到就是空，不做提权兜底。
  */
 export async function resolveClassificationRule(
   supabase: SupabaseLike,
   studentId: string,
 ): Promise<ClassificationRule> {
-  const fallback: ClassificationRule = { teacherRule: null, classId: null, catalogPaths: [] };
+  const fallback: ClassificationRule = { teacherRules: [], classId: null, catalogPaths: [] };
 
   const { data: membership, error: membershipError } = await supabase
     .from('class_memberships')
@@ -39,14 +45,14 @@ export async function resolveClassificationRule(
   if (membershipError || !membership?.class_id) return fallback;
 
   const classId = membership.class_id;
-  const [ruleResult, catalogResult] = await Promise.all([
+  const [rulesResult, catalogResult] = await Promise.all([
     supabase
       .from('prompt_presets')
-      .select('system_instruction')
+      .select('system_instruction,profiles(display_name)')
       .eq('class_id', classId)
       .eq('purpose', 'project_classification')
       .eq('status', 'published')
-      .maybeSingle(),
+      .order('updated_at', { ascending: false }),
     supabase
       .from('project_catalogs')
       .select('id,name,parent_id')
@@ -54,8 +60,18 @@ export async function resolveClassificationRule(
       .order('name', { ascending: true }),
   ]);
 
+  const teacherRules = ((rulesResult.data ?? []) as Array<{
+    system_instruction: string | null;
+    profiles: { display_name: string | null } | Array<{ display_name: string | null }> | null;
+  }>).flatMap((row) => {
+    const instruction = row.system_instruction?.trim();
+    if (!instruction) return [];
+    const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+    return [{ teacherName: profile?.display_name?.trim() || '任课教师', instruction }];
+  });
+
   return {
-    teacherRule: ruleResult.data?.system_instruction?.trim() || null,
+    teacherRules,
     classId,
     catalogPaths: catalogResult.error ? [] : buildCatalogPaths(catalogResult.data ?? []),
   };

@@ -44,7 +44,7 @@ export async function classifyProjectFromQuestion(
   model: LanguageModel,
   question: string,
   knownTitles: readonly string[] = [],
-  options: { teacherRule?: string | null; catalogPaths?: readonly string[] } = {},
+  options: { teacherRules?: readonly { teacherName: string; instruction: string }[]; catalogPaths?: readonly string[] } = {},
 ): Promise<ProjectClassificationOutcome> {
   const knownTitle = matchKnownProjectTitle(question, knownTitles);
   if (knownTitle) return { title: knownTitle, author: null };

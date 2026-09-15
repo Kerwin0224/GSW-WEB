@@ -58,10 +58,28 @@ test('buildProjectClassificationInstruction：无教师规则时用内置规则�
 });
 
 test('buildProjectClassificationInstruction：教师规则覆盖内置，协议仍由系统强制带上', () => {
-  const text = buildProjectClassificationInstruction({ teacherRule: '本班按数学知识点归类。' });
-  assert.ok(text.startsWith('本班按数学知识点归类。'));
+  const text = buildProjectClassificationInstruction({ teacherRules: [{ teacherName: '王老师', instruction: '本班按数学知识点归类。' }] });
+  assert.ok(text.includes('本班按数学知识点归类。'));
   assert.ok(!text.includes('你是文韵智途的篇目归属裁决器'), '教师规则应覆盖内置规则');
   assert.ok(text.includes('无法归属时只输出一行 NULL'), '协议必须保留');
+});
+
+test('buildProjectClassificationInstruction：每师每班一条，多位教师的规则并列带出', () => {
+  const text = buildProjectClassificationInstruction({
+    teacherRules: [
+      { teacherName: '王老师', instruction: '语文按篇目归类。' },
+      { teacherName: '李老师', instruction: '数学按知识点归类。' },
+    ],
+  });
+  assert.ok(text.includes('【王老师】') && text.includes('语文按篇目归类。'));
+  assert.ok(text.includes('【李老师】') && text.includes('数学按知识点归类。'));
+  // 两条规则都在，由模型按学科选用；协议只拼一次。
+  assert.equal(text.split('无法归属时只输出一行 NULL').length - 1, 1);
+});
+
+test('buildProjectClassificationInstruction：忽略空规则', () => {
+  const text = buildProjectClassificationInstruction({ teacherRules: [{ teacherName: '王老师', instruction: '   ' }] });
+  assert.ok(text.includes(defaultProjectClassificationInstruction), '空规则应退回内置默认');
 });
 
 test('buildProjectClassificationInstruction：带目录时附上可选归属路径', () => {

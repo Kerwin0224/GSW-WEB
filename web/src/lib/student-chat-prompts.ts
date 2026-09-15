@@ -112,18 +112,34 @@ export const defaultBloomClassificationInstruction =
   '你是文韵智途的布鲁姆认知路径判定器。只根据学生本轮问题的真实学习意图，判断把这个问题真正学懂所需要达到的最高充分层次；每个问题只记录一个层级。不要参考 AI 回答、教师修订、挑战结果、项目最高层级或学生语气篇幅；这不是挑战确认，也不是项目级布鲁姆认知分布。选择能够完整覆盖问题要求的最低层级，避免高估；若一个问题同时包含多个认知动作，取真正必需的最高动作。1 记忆=找出、背诵、指出人物/景物/字词/原句等文本事实；2 理解=翻译、解释、概括诗句文意或情感；3 应用=把文意、方法或情感迁移到相似新情境；4 分析=比较、拆分结构关系、意象关系、情感递进或写法作用；5 评价=提出判断并用文本依据支持；6 创造=仿写、改写、补写或生成新的贴合文本的表达。只输出以下两行，不要多余文字：第一行是 1 到 6 中的单个数字，第二行是一句不超过 120 字的理由。';
 
 /**
- * 把教师的自定义归类规则组装成最终 system instruction。
- * 教师只写“本学科的归类口径”，输出协议由系统强制拼接（内置规则也走同一路径），
- * 这样教师改规则不会破坏解析协议——这是把提示词开放给教师的前提。
+ * 把教师配置的归类规则组装成最终 system instruction。
+ *
+ * 每师每班一条：一个班可能有多位任课教师（语文/数学/英语），各写各的学科口径。
+ * 规则文本自带学科说明，由模型按问题所属学科选用对应一条——
+ * 因此这里把全部规则并列带出，而不是替模型选。
+ *
+ * 输出协议由系统强制拼接（内置规则也走同一路径），教师改规则不会破坏解析协议。
  */
 export function buildProjectClassificationInstruction(options: {
-  /** 教师配置的归类规则；为空表示用内置默认。 */
-  teacherRule?: string | null;
+  /** 本班各任课教师配置的归类规则；为空表示用内置默认。 */
+  teacherRules?: readonly { teacherName: string; instruction: string }[];
   /** 本校目录路径（如 "语文 / 高一 / 文言文"），帮助模型对齐本校归属口径。 */
   catalogPaths?: readonly string[];
 } = {}): string {
-  const rule = options.teacherRule?.trim() || defaultProjectClassificationInstruction;
-  const parts = [rule, `以下是必须遵守的输出协议：${projectClassificationProtocol}`];
+  const rules = (options.teacherRules ?? []).flatMap((rule) => {
+    const instruction = rule.instruction.trim();
+    return instruction ? [{ teacherName: rule.teacherName.trim() || '任课教师', instruction }] : [];
+  });
+
+  const head = rules.length === 0
+    ? defaultProjectClassificationInstruction
+    : [
+      '你是文韵智途的项目归属裁决器。本班各科教师配置了各自的归类口径，'
+      + '请按学生问题所属的学科，选用对应那一条来裁决归属；问题跨学科时取最主要的一门：',
+      ...rules.map((rule) => `【${rule.teacherName}】\n${rule.instruction}`),
+    ].join('\n\n');
+
+  const parts = [head, `以下是必须遵守的输出协议：${projectClassificationProtocol}`];
   if (options.catalogPaths?.length) {
     parts.push(`本校可选归属路径（尽量归到已存在的路径节点上）：\n${options.catalogPaths.map((path) => `- ${path}`).join('\n')}`);
   }

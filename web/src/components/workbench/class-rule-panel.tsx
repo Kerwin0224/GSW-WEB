@@ -96,6 +96,10 @@ function ClassRuleEditor({ klass }: { klass: TeacherClassRule }) {
         <p className="text-xs leading-5 text-muted-foreground">
           只写“本学科怎么归类”。两行输出协议与“无法归属”约定由系统自动拼接，不需要你重复。
         </p>
+        {/* 每师每班一条：同班其他学科教师的规则独立存在，这里只提示，不在这里改写。 */}
+        {klass.peerRuleCount > 0 ? (
+          <p className="text-xs text-muted-foreground">本班另有 {klass.peerRuleCount} 位任课教师配置了各自学科的规则。</p>
+        ) : null}
       </div>
       {state.message ? (
         <p className={state.ok ? 'rounded-lg border border-primary/30 bg-primary/10 p-2 text-sm text-primary' : 'rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive'} role={state.ok ? 'status' : 'alert'}>

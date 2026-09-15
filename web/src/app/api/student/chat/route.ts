@@ -153,7 +153,7 @@ async function resolveProjectAssignment({
   const rule = await resolveClassificationRule(supabase, ownerId);
   const classified = projectModel
     ? await classifyProjectFromQuestion(projectModel, userText, knownTitles, {
-      teacherRule: rule.teacherRule,
+      teacherRules: rule.teacherRules,
       catalogPaths: rule.catalogPaths,
     })
     : { title: null, author: null, failure: 'model-unavailable' as const };

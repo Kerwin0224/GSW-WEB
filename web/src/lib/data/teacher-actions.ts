@@ -817,12 +817,14 @@ export async function saveClassClassificationRule(_previousState: AuditSubmissio
   if (membershipError) return { ok: false, message: `班级校验失败：${membershipError.message}` };
   if (!membership) return { ok: false, message: '你不在该班级任教，无法配置归类规则。' };
 
-  // 撤下本班旧的生效规则（草稿不动），保证"每班一条生效"。
+  // 撤下**本人**在该班旧的生效规则（草稿不动），保证"每师每班一条生效"。
+  // 注意不能按整班收窄：同班其他学科教师的规则必须保留，否则一发布就把别人的顶掉。
   if (publish) {
     const { error: retractError } = await supabase
       .from('prompt_presets')
       .update({ status: 'draft' })
       .eq('class_id', classId)
+      .eq('created_by', role.data.id)
       .eq('purpose', 'project_classification')
       .eq('status', 'published');
     if (retractError) return { ok: false, message: `旧规则撤下失败：${retractError.message}` };

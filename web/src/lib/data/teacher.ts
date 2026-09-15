@@ -245,16 +245,21 @@ export async function getTeacherWorkspace(): Promise<DataResult<TeacherWorkspace
 export type TeacherClassRule = {
   classId: string;
   className: string;
-  /** 当前生效的归类规则（published）；无则 null。 */
+  /** 本人为这个班配置的、当前生效的归类规则（published）；无则 null。 */
   rule: string | null;
-  /** 是否有草稿（未发布）。 */
+  /** 本人是否有草稿（未发布）。 */
   hasDraft: boolean;
+  /** 同班其他任课教师已配置的规则条数（提示"本班已有 N 位老师配了规则"）。 */
+  peerRuleCount: number;
   studentCount: number;
 };
 
 /**
- * 教师视角的"我的班级 + 每班的项目归类规则"。
+ * 教师视角的"我的班级 + 我为各班配置的归类规则"。
  * 这是"把归类能力交给老师"的入口数据：教师在这里为每个班写自己学科的归类口径。
+ *
+ * 每师每班一条：只取**本人**的规则作为可编辑对象；同班其他教师的规则只计数，
+ * 因为那是别人学科的口径，本人不该在这里改写。
  */
 export async function getTeacherClassRules(): Promise<DataResult<TeacherClassRule[]>> {
   const role = await requireRole('teacher');
@@ -275,7 +280,7 @@ export async function getTeacherClassRules(): Promise<DataResult<TeacherClassRul
   const [presetsResult, studentsResult] = await Promise.all([
     supabase
       .from('prompt_presets')
-      .select('class_id,status,system_instruction')
+      .select('class_id,status,system_instruction,created_by')
       .in('class_id', classIds)
       .eq('purpose', 'project_classification')
       .order('updated_at', { ascending: false }),
@@ -284,14 +289,23 @@ export async function getTeacherClassRules(): Promise<DataResult<TeacherClassRul
   if (presetsResult.error) return fail('error', `归类规则加载失败：${presetsResult.error.message}`);
   if (studentsResult.error) return fail('error', `班级学生数加载失败：${studentsResult.error.message}`);
 
-  const ruleByClass = new Map<string, string>();
-  const draftClasses = new Set<string>();
-  for (const preset of (presetsResult.data ?? []) as Array<{ class_id: string | null; status: string; system_instruction: string }>) {
+  // 本人的生效规则 / 本人草稿：只看 created_by = 自己。
+  const ownRuleByClass = new Map<string, string>();
+  const ownDraftClasses = new Set<string>();
+  // 其他教师的生效规则数：按 (class, 作者) 去重计数。
+  const peerRuleKeys = new Set<string>();
+  const teacherId = role.data.id;
+  for (const preset of (presetsResult.data ?? []) as Array<{ class_id: string | null; status: string; system_instruction: string; created_by: string | null }>) {
     if (!preset.class_id) continue;
-    if (preset.status === 'published' && !ruleByClass.has(preset.class_id)) {
-      ruleByClass.set(preset.class_id, preset.system_instruction);
-    } else if (preset.status === 'draft') {
-      draftClasses.add(preset.class_id);
+    const isOwn = preset.created_by === teacherId;
+    if (isOwn) {
+      if (preset.status === 'published' && !ownRuleByClass.has(preset.class_id)) {
+        ownRuleByClass.set(preset.class_id, preset.system_instruction);
+      } else if (preset.status === 'draft') {
+        ownDraftClasses.add(preset.class_id);
+      }
+    } else if (preset.status === 'published' && preset.created_by) {
+      peerRuleKeys.add(`${preset.class_id}:${preset.created_by}`);
     }
   }
 
@@ -305,8 +319,9 @@ export async function getTeacherClassRules(): Promise<DataResult<TeacherClassRul
     return {
       classId: row.class_id,
       className: klass?.name?.trim() || '未命名班级',
-      rule: ruleByClass.get(row.class_id) ?? null,
-      hasDraft: draftClasses.has(row.class_id),
+      rule: ownRuleByClass.get(row.class_id) ?? null,
+      hasDraft: ownDraftClasses.has(row.class_id),
+      peerRuleCount: Array.from(peerRuleKeys).filter((key) => key.startsWith(`${row.class_id}:`)).length,
       studentCount: studentCountByClass.get(row.class_id) ?? 0,
     };
   }));
