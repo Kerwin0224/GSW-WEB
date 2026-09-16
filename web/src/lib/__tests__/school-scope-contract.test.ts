@@ -104,6 +104,16 @@ test('capability 的租户归属由 provider 继承，不取会话默认值', ()
   assert.doesNotMatch(sql, /current_school_id/);
 });
 
+test('预设归属由创建者继承，不靠各写入口自己填', () => {
+  const sql = newestFunctionBody('sync_prompt_preset_scope');
+
+  // 写入口有三处（教师建归类规则、教师存模板、管理员建模板）。漏掉任何一处，
+  // 那条规则就会因为 school_id / organization_id 为空而谁都读不到：
+  // 归类静默退回内置默认，等于教师配的口径没生效。
+  assert.match(sql, /select p\.organization_id, p\.school_id into new\.organization_id, new\.school_id/);
+  assert.match(sql, /from public\.profiles p where p\.id = new\.created_by/);
+});
+
 test('迁移带派生表非空自检（它空了就是所有模型调用 503）', () => {
   // 自检写在迁移的 do $$ 块里（迁移级门禁），不在函数体内——函数里 raise 只会在运行时炸。
   const sql = migrationFiles().join('\n');

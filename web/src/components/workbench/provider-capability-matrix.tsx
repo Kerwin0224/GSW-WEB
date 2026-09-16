@@ -429,7 +429,7 @@ function ProviderOperationsTable({ providers, modelTiers }: { providers: Provide
                     {/* 作用域必须显示：同一张列表里既有本公司下发的模板，也有本校自发配置的，
                         不标出来就分不清「这条我能改吗」。null = 公司级模板。 */}
                     <Badge variant={provider.schoolId ? 'default' : 'outline'} className="text-[10px]">
-                      {provider.schoolId ? '本校' : '公司级模板'}
+                      {provider.schoolId ? '学校自配' : '公司级模板'}
                     </Badge>
                   </div>
                   <div className="text-xs text-muted-foreground">{provider.providerType}</div>

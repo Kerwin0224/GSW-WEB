@@ -542,7 +542,7 @@ export async function getAdminProviders() {
 
 
 export async function saveProviderConfig(formData: FormData): Promise<void> {
-  const role = await requireRole('admin');
+  const role = await requireAnyRole(['admin', 'org_admin']);
   if (!role.ok) return;
   const name = String(formData.get('name') ?? '').trim();
   const provider_type = String(formData.get('provider_type') ?? '').trim();
@@ -562,7 +562,7 @@ export async function saveProviderConfig(formData: FormData): Promise<void> {
 }
 
 export async function saveProviderConfigV2(input: ProviderConfigInput): Promise<ProviderActionResult> {
-  const role = await requireRole('admin');
+  const role = await requireAnyRole(['admin', 'org_admin']);
   if (!role.ok) return providerFailure(role.message);
   const name = input.name.trim();
   const providerType = input.providerType.trim();
@@ -590,7 +590,7 @@ export async function saveProviderConfigV2(input: ProviderConfigInput): Promise<
 }
 
 export async function updateProviderConfig(providerId: string, patch: ProviderPatchInput): Promise<ProviderActionResult> {
-  const role = await requireRole('admin');
+  const role = await requireAnyRole(['admin', 'org_admin']);
   if (!role.ok) return providerFailure(role.message);
   const updates: Database['public']['Tables']['provider_configs']['Update'] = {};
   if (patch.name !== undefined) updates.name = patch.name.trim();
@@ -611,7 +611,7 @@ export async function updateProviderConfig(providerId: string, patch: ProviderPa
 }
 
 export async function updateProviderCapabilities(providerId: string, rows: ProviderCapabilityInput[]): Promise<ProviderActionResult> {
-  const role = await requireRole('admin');
+  const role = await requireAnyRole(['admin', 'org_admin']);
   if (!role.ok) return providerFailure(role.message);
   const validRows = rows
     .map((row) => ({ capability: row.capability.trim(), modelId: row.modelId.trim() }))
@@ -633,7 +633,7 @@ export async function updateProviderCapabilities(providerId: string, rows: Provi
 }
 
 export async function deleteProvider(providerId: string): Promise<ProviderActionResult> {
-  const role = await requireRole('admin');
+  const role = await requireAnyRole(['admin', 'org_admin']);
   if (!role.ok) return providerFailure(role.message);
   const supabase = await createClient();
   const tierDelete = await supabase.from('model_tier_bindings').delete().eq('provider_id', providerId);
@@ -648,7 +648,7 @@ export async function deleteProvider(providerId: string): Promise<ProviderAction
 }
 
 export async function saveProviderHealthCheck(providerId: string, result: { healthy: boolean; latencyMs: number; message?: string }): Promise<ProviderActionResult> {
-  const role = await requireRole('admin');
+  const role = await requireAnyRole(['admin', 'org_admin']);
   if (!role.ok) return providerFailure(role.message);
   const supabase = await createClient();
   const { error } = await supabase.from('provider_configs').update({
@@ -662,7 +662,7 @@ export async function saveProviderHealthCheck(providerId: string, result: { heal
 }
 
 export async function saveProviderApiModels(providerId: string, models: ProviderApiModel[]): Promise<ProviderActionResult> {
-  const role = await requireRole('admin');
+  const role = await requireAnyRole(['admin', 'org_admin']);
   if (!role.ok) return providerFailure(role.message);
   const seen = new Set<string>();
   const apiModels = models.flatMap((model) => {
@@ -679,7 +679,7 @@ export async function saveProviderApiModels(providerId: string, models: Provider
 }
 
 export async function saveModelTierBinding(input: { tier: ModelTier; providerId: string; modelId: string }): Promise<ProviderActionResult> {
-  const role = await requireRole('admin');
+  const role = await requireAnyRole(['admin', 'org_admin']);
   if (!role.ok) return providerFailure(role.message);
   const modelId = input.modelId.trim();
   if (!modelId) return providerFailure('请填写模型 ID。');
@@ -723,7 +723,7 @@ export async function getAdminMcp() {
 }
 
 export async function testMcpServerConnection(input: McpServerInput): Promise<McpServerTestResult> {
-  const role = await requireRole('admin');
+  const role = await requireAnyRole(['admin', 'org_admin']);
   if (!role.ok) return { ok: false, message: role.message };
 
   let connectionRef: string;
@@ -759,7 +759,7 @@ export async function testMcpServerConnection(input: McpServerInput): Promise<Mc
 }
 
 export async function createMcpServer(input: McpServerInput): Promise<ProviderActionResult> {
-  const role = await requireRole('admin');
+  const role = await requireAnyRole(['admin', 'org_admin']);
   if (!role.ok) return providerFailure(role.message);
   let connectionRef: string;
   try {
@@ -793,7 +793,7 @@ export async function createMcpServer(input: McpServerInput): Promise<ProviderAc
 }
 
 export async function updateMcpServer(id: string, input: McpServerInput): Promise<ProviderActionResult> {
-  const role = await requireRole('admin');
+  const role = await requireAnyRole(['admin', 'org_admin']);
   if (!role.ok) return providerFailure(role.message);
   let connectionRef: string;
   try {
@@ -826,7 +826,7 @@ export async function updateMcpServer(id: string, input: McpServerInput): Promis
 }
 
 export async function deleteMcpServer(id: string): Promise<ProviderActionResult> {
-  const role = await requireRole('admin');
+  const role = await requireAnyRole(['admin', 'org_admin']);
   if (!role.ok) return providerFailure(role.message);
   const supabase = await createClient();
   const { error } = await supabase.from('mcp_servers').delete().eq('id', id);

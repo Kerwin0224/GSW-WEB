@@ -89,6 +89,7 @@ const orgAdminNavGroups: RoleNavGroup[] = [
     label: '公司管理',
     items: [
       { icon: Building2, label: '学校总览', href: '/org', description: '旗下学校与规模', primary: true },
+      { icon: Cpu, label: '模型与工具', href: '/org/platform', description: '公司级 Provider 与 MCP 模板' },
     ],
   },
 ];

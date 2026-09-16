@@ -399,6 +399,29 @@ create policy "model_tier_bindings_scope_write" on public.model_tier_bindings fo
   with check (public.can_admin_school_scope(school_id));
 
 -- ── 8. prompt_presets：租户收敛（修两条实锤越权）────────────────────────────
+-- 归属从创建者继承，用触发器而不是各写入口自己填：写入口有多处（教师建归类规则、
+-- 教师存备课模板、管理员建模板），漏掉任何一处，那条规则就会因为 school_id/organization_id
+-- 为空而谁都读不到 —— 归类会静默退回内置默认，等于教师配的规则没生效。
+-- 与 provider_capabilities 用触发器继承同一个理由：能忘的事就别靠自觉。
+create or replace function public.sync_prompt_preset_scope() returns trigger
+    language plpgsql security definer
+    set search_path to 'public'
+    as $$
+begin
+  if new.created_by is not null and (new.organization_id is null or new.school_id is null) then
+    select p.organization_id, p.school_id into new.organization_id, new.school_id
+    from public.profiles p where p.id = new.created_by;
+  end if;
+  return new;
+end $$;
+
+revoke all on function public.sync_prompt_preset_scope() from public, anon, authenticated;
+
+drop trigger if exists prompt_presets_sync_scope on public.prompt_presets;
+create trigger prompt_presets_sync_scope
+  before insert or update of created_by on public.prompt_presets
+  for each row execute function public.sync_prompt_preset_scope();
+
 -- 回填：按创建者反查归属。查不到创建者（账号已删）的历史行留 NULL，
 -- 结果是「谁也读不到」——安全的一侧。不要为了兼容它们保留 is_admin() 全域放行，
 -- 那正好把这次要修的越权原样留下来。
