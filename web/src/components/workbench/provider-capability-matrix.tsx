@@ -282,7 +282,7 @@ function ModelTierCard({ tierView, providers }: { tierView: TierView; providers:
   );
 }
 
-function ScenarioMappingTable({ tierViews, embeddingConfigured, scenarioTierBindings }: { tierViews: Record<ModelTier, TierView>; embeddingConfigured: boolean; scenarioTierBindings: AdminScenarioTierBinding[] }) {
+function ScenarioMappingTable({ tierViews, embeddingConfigured, scenarioTierBindings, canEdit }: { tierViews: Record<ModelTier, TierView>; embeddingConfigured: boolean; scenarioTierBindings: AdminScenarioTierBinding[]; canEdit: boolean }) {
   const router = useRouter();
   const [draftBindings, setDraftBindings] = useState(scenarioTierBindings);
   const [savedBindings, setSavedBindings] = useState(scenarioTierBindings);
@@ -341,6 +341,7 @@ function ScenarioMappingTable({ tierViews, embeddingConfigured, scenarioTierBind
                         { value: 'advanced', label: 'Advanced Model' },
                       ]}
                       onValueChange={(value) => updateScenarioTier(row.scenario, value as ModelTier)}
+                      disabled={!canEdit}
                     >
                       <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -377,10 +378,16 @@ function ScenarioMappingTable({ tierViews, embeddingConfigured, scenarioTierBind
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
-      <div className="flex justify-end">
-        <Button type="button" onClick={save} disabled={submitting || !hasChanges}>
-          {submitting ? <><Loader2 className="mr-2 size-4 animate-spin" />保存中…</> : '保存场景映射'}
-        </Button>
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {/* 校管理员看得到路由结果（它决定本校模型怎么走），但改不了——那是公司级资产。
+            与其让他点了再收到「仅公司管理员可改」的报错，不如直接不给入口。 */}
+        {canEdit ? (
+          <Button type="button" onClick={save} disabled={submitting || !hasChanges}>
+            {submitting ? <><Loader2 className="mr-2 size-4 animate-spin" />保存中…</> : '保存场景映射'}
+          </Button>
+        ) : (
+          <p className="text-xs text-muted-foreground">场景路由映射是公司级配置，仅公司管理员可改；本校只决定各路由层绑到哪个 Provider。</p>
+        )}
       </div>
     </div>
   );
@@ -417,7 +424,14 @@ function ProviderOperationsTable({ providers, modelTiers }: { providers: Provide
             return (
               <TableRow key={provider.id}>
                 <TableCell className="align-top font-medium">
-                  <div>{provider.name}</div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {provider.name}
+                    {/* 作用域必须显示：同一张列表里既有本公司下发的模板，也有本校自发配置的，
+                        不标出来就分不清「这条我能改吗」。null = 公司级模板。 */}
+                    <Badge variant={provider.schoolId ? 'default' : 'outline'} className="text-[10px]">
+                      {provider.schoolId ? '本校' : '公司级模板'}
+                    </Badge>
+                  </div>
                   <div className="text-xs text-muted-foreground">{provider.providerType}</div>
                 </TableCell>
                 <TableCell className="max-w-[240px] truncate align-top font-mono text-xs">
@@ -463,7 +477,7 @@ function ProviderOperationsTable({ providers, modelTiers }: { providers: Provide
   );
 }
 
-export function ProviderCapabilityMatrix({ providers, modelTiers, scenarioTierBindings }: { providers: ProviderListItem[]; modelTiers: Record<ModelTier, AdminModelTierStatus>; scenarioTierBindings: AdminScenarioTierBinding[] }) {
+export function ProviderCapabilityMatrix({ providers, modelTiers, scenarioTierBindings, canEditScenarioRouting = false }: { providers: ProviderListItem[]; modelTiers: Record<ModelTier, AdminModelTierStatus>; scenarioTierBindings: AdminScenarioTierBinding[]; /** 场景→tier 是公司级资产，只有 org_admin 能改（见 saveScenarioTierBindings）。 */ canEditScenarioRouting?: boolean }) {
   const tierViews = useMemo(() => ({
     flash: getTierView('flash', providers, modelTiers, scenarioTierBindings),
     advanced: getTierView('advanced', providers, modelTiers, scenarioTierBindings),
@@ -490,7 +504,7 @@ export function ProviderCapabilityMatrix({ providers, modelTiers, scenarioTierBi
             <Sparkles className="mr-1 size-3" />模型路由状态
           </Badge>
         </div>
-        <ScenarioMappingTable tierViews={tierViews} embeddingConfigured={embeddingConfigured} scenarioTierBindings={scenarioTierBindings} />
+        <ScenarioMappingTable tierViews={tierViews} embeddingConfigured={embeddingConfigured} scenarioTierBindings={scenarioTierBindings} canEdit={canEditScenarioRouting} />
       </section>
 
       <section className="space-y-3">

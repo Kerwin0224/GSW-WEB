@@ -13,9 +13,34 @@
 -- 与 get_provider_capability_provider / get_model_tier_provider 同构：security definer +
 -- 会话签名门禁，租户/角色边界写在函数体里。
 --
--- 注意：本迁移会让一个从未在生产跑过的功能开始工作。上线前应当逐行审计
--- `select id, name, is_enabled, allowed_roles, enabled_tools from public.mcp_servers;`，
--- 没审过的先 is_enabled = false —— 那是天然的开关，不需要额外 kill switch。
+-- 本迁移会让一个从未在生产跑过的功能开始工作：此前所有 MCP Server 都是死的，
+-- 通电后每一个「已启用且角色命中」的 Server 会立刻对全校生效，产生真实外部请求。
+--
+-- 这种「一次性人工审计」不该靠自觉 —— 把它变成数据状态：
+-- **先把现有 Server 全部置为未启用**，谁审过谁手动打开。
+-- 因为它们在通电前本来就是死的，这一步零行为变化，只是让「生效」必须由人显式决定。
+-- 原子性无虞：置位与 RPC 创建在同一事务里，中间不存在「能用了但没审」的窗口。
+
+do $$
+declare
+  v_disabled integer;
+  v_names text;
+begin
+  select count(*), string_agg(name, '、' order by name)
+    into v_disabled, v_names
+    from public.mcp_servers
+   where is_enabled;
+
+  update public.mcp_servers set is_enabled = false where is_enabled;
+
+  if v_disabled > 0 then
+    raise notice 'MCP 通电前已关闭 % 个原本「已启用」的 Server：%。'
+                 '它们此前因 RLS 从未被调用过；请在 /admin/mcp 逐行审计 connection_ref、'
+                 'allowed_roles 与 enabled_tools 后手动启用。', v_disabled, v_names;
+  else
+    raise notice 'MCP 通电前无需关闭任何 Server（没有已启用的行）';
+  end if;
+end $$;
 
 create or replace function public.get_role_mcp_servers(p_role public.app_role)
 returns table(

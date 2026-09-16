@@ -3,6 +3,7 @@ import { ProviderConfigDialog } from '@/components/workbench/provider-config-dia
 import { ErrorState } from '@/components/workbench/state-surfaces';
 import { SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { getAdminProviders } from '@/lib/data/admin';
+import { getProfile } from '@/lib/auth';
 
 export default async function AdminProvidersPage() {
   const result = await getAdminProviders();
@@ -15,6 +16,8 @@ export default async function AdminProvidersPage() {
   }
 
   const { providers, modelTiers, scenarioTierBindings } = result.data;
+  // 场景路由是公司级资产，页面按角色决定给不给编辑入口。
+  const profile = await getProfile();
   const checkedProviders = providers.filter((provider) => provider.lastHealthCheckAt).length;
   const configuredTiers = [modelTiers.flash, modelTiers.advanced].filter((tier) => tier.providerId && tier.modelId).length;
 
@@ -38,7 +41,7 @@ export default async function AdminProvidersPage() {
             <ProviderConfigDialog />
           )}
         />
-        <ProviderCapabilityMatrix providers={providers} modelTiers={modelTiers} scenarioTierBindings={scenarioTierBindings} />
+        <ProviderCapabilityMatrix providers={providers} modelTiers={modelTiers} scenarioTierBindings={scenarioTierBindings} canEditScenarioRouting={profile?.role === 'org_admin'} />
       </section>
     </div>
   );

@@ -14,6 +14,9 @@
 - v1 已知边界：provider/model_tier/presets/mcp/data_quality_events 仍为
   全 admin 共享（公司统一配置口径，未按校隔离）；org_admin 无独立控制台
   侧边栏外壳（/org 自带头部）；export_batches 历史行 school_id 为 NULL 过渡。
+  **2026-09-16 修订：provider / model_tier / mcp 已按校隔离，见
+  [ADR-0003](0003-school-scoped-platform-config.md)；presets 同时修掉两条跨校越权。
+  data_quality_events 仍未收敛。**
 
 本文覆盖两个互相独立的数据模型变更：多租户隔离（SaaS 化前提）与群文阅读场景下会话归属多个篇目。两者都动核心表，先立设计再动迁移。
 

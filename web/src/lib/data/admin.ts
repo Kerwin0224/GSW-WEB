@@ -8,7 +8,7 @@ import { assertStdioMcpDisabled, requireAllowedMcpRemoteUrl } from '@/lib/mcp-ru
 import { createDatabaseSessionSignature } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
 import type { AppRole, Database, Json, ModelTier, ProviderCapability } from '@/lib/supabase/database.types';
-import { fail, getModelTiers, ok, requireRole, scenarioModelTiers, type DataResult, type ModelTierStatus } from './common';
+import { fail, getModelTiers, ok, requireAnyRole, requireRole, scenarioModelTiers, type DataResult, type ModelTierStatus } from './common';
 
 export type AdminActionState = { ok: boolean; message: string; errors?: Record<string, string> };
 export type ProviderActionResult = { ok: true; message?: string } | { ok: false; message: string };
@@ -172,6 +172,8 @@ function toProviderListItem(provider: ProviderWithCapabilities) {
     secretLastUsedAt: provider.secret_last_used_at,
     secretRotatedAt: provider.secret_rotated_at,
     isEnabled: provider.is_enabled,
+    /** null = 公司级模板（所有校可用）；非空 = 该校自带。 */
+    schoolId: provider.school_id,
     healthStatus: provider.health_status,
     lastHealthCheckAt: provider.last_health_check_at,
     lastHealthLatencyMs: provider.last_health_latency_ms,
@@ -520,7 +522,9 @@ export async function createClass(first: FormData | AdminActionState, second?: F
 }
 
 export async function getAdminProviders() {
-  const role = await requireRole('admin');
+  // 校 admin 与 org_admin 都要进得来：前者管本校自带，后者管公司级模板与各校。
+  // 看得到哪些行由 RLS 决定（can_read_school_scope），不在这里过滤。
+  const role = await requireAnyRole(['admin', 'org_admin']);
   if (!role.ok) return role;
   const supabase = await createClient();
   try {
@@ -693,8 +697,10 @@ export async function saveModelTierBinding(input: { tier: ModelTier; providerId:
 }
 
 export async function saveScenarioTierBindings(input: AdminScenarioTierBinding[]): Promise<ProviderActionResult> {
-  const role = await requireRole('admin');
-  if (!role.ok) return providerFailure(role.message);
+  // 场景路由决定「哪个场景走哪个 tier」，是公司级资产：改它会影响所有学校。
+  // 学校要换的是 tier 绑到哪个 Provider（saveModelTierBinding），不是这套映射。
+  const role = await requireRole('org_admin');
+  if (!role.ok) return providerFailure('场景路由映射是公司级配置，仅公司管理员可改。');
   const normalized = configurableScenarios.map((scenario) => {
     const tier = input.find((binding) => binding.scenario === scenario)?.tier ?? scenarioModelTiers[scenario] ?? 'flash';
     return { scenario, tier } satisfies AdminScenarioTierBinding;
@@ -708,7 +714,7 @@ export async function saveScenarioTierBindings(input: AdminScenarioTierBinding[]
 }
 
 export async function getAdminMcp() {
-  const role = await requireRole('admin');
+  const role = await requireAnyRole(['admin', 'org_admin']);
   if (!role.ok) return role;
   const supabase = await createClient();
   const { data, error } = await supabase.from('mcp_servers').select('*').order('created_at', { ascending: false });

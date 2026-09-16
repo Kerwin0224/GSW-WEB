@@ -56,18 +56,18 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['class_memberships']['Insert']>;
       };
       provider_configs: {
-        Row: { id: string; name: string; provider_type: string; base_url: string | null; secret_ref: string | null; secret_last_four: string | null; secret_created_at: string | null; secret_last_used_at: string | null; secret_rotated_at: string | null; api_models: Json; last_health_check_at: string | null; last_health_latency_ms: number | null; is_enabled: boolean; health_status: string; created_by: string | null; created_at: string; updated_at: string };
-        Insert: { id?: string; name: string; provider_type: string; base_url?: string | null; secret_ref?: string | null; secret_last_four?: string | null; secret_created_at?: string | null; secret_last_used_at?: string | null; secret_rotated_at?: string | null; api_models?: Json; last_health_check_at?: string | null; last_health_latency_ms?: number | null; is_enabled?: boolean; health_status?: string; created_by?: string | null };
+        Row: { id: string; school_id: string | null; name: string; provider_type: string; base_url: string | null; secret_ref: string | null; secret_last_four: string | null; secret_created_at: string | null; secret_last_used_at: string | null; secret_rotated_at: string | null; api_models: Json; last_health_check_at: string | null; last_health_latency_ms: number | null; is_enabled: boolean; health_status: string; created_by: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; school_id?: string | null; name: string; provider_type: string; base_url?: string | null; secret_ref?: string | null; secret_last_four?: string | null; secret_created_at?: string | null; secret_last_used_at?: string | null; secret_rotated_at?: string | null; api_models?: Json; last_health_check_at?: string | null; last_health_latency_ms?: number | null; is_enabled?: boolean; health_status?: string; created_by?: string | null };
         Update: Partial<Database['public']['Tables']['provider_configs']['Insert']>;
       };
       provider_capabilities: {
-        Row: { id: string; provider_id: string; capability: ProviderCapability; model_id: string; is_enabled: boolean; metadata: Json };
-        Insert: { id?: string; provider_id: string; capability: ProviderCapability; model_id: string; is_enabled?: boolean; metadata?: Json };
+        Row: { id: string; school_id: string | null; provider_id: string; capability: ProviderCapability; model_id: string; is_enabled: boolean; metadata: Json };
+        Insert: { id?: string; school_id?: string | null; provider_id: string; capability: ProviderCapability; model_id: string; is_enabled?: boolean; metadata?: Json };
         Update: Partial<Database['public']['Tables']['provider_capabilities']['Insert']>;
       };
       model_tier_bindings: {
-        Row: { id: string; tier: ModelTier; provider_id: string; model_id: string; is_enabled: boolean; metadata: Json; created_at: string; updated_at: string };
-        Insert: { id?: string; tier: ModelTier; provider_id: string; model_id: string; is_enabled?: boolean; metadata?: Json };
+        Row: { id: string; school_id: string | null; tier: ModelTier; provider_id: string; model_id: string; is_enabled: boolean; metadata: Json; created_at: string; updated_at: string };
+        Insert: { id?: string; school_id?: string | null; tier: ModelTier; provider_id: string; model_id: string; is_enabled?: boolean; metadata?: Json };
         Update: Partial<Database['public']['Tables']['model_tier_bindings']['Insert']>;
       };
       scenario_tier_bindings: {
@@ -76,13 +76,13 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['scenario_tier_bindings']['Insert']>;
       };
       mcp_servers: {
-        Row: { id: string; name: string; description: string | null; connection_ref: string | null; secret_ref: string | null; secret_last_four: string | null; health_status: string; enabled_tools: Json; allowed_roles: AppRole[]; metadata: Json; is_enabled: boolean; created_by: string | null; created_at: string; updated_at: string };
-        Insert: { id?: string; name: string; description?: string | null; connection_ref?: string | null; secret_ref?: string | null; secret_last_four?: string | null; health_status?: string; enabled_tools?: Json; allowed_roles?: AppRole[]; metadata?: Json; is_enabled?: boolean; created_by?: string | null };
+        Row: { id: string; school_id: string | null; name: string; description: string | null; connection_ref: string | null; secret_ref: string | null; secret_last_four: string | null; health_status: string; enabled_tools: Json; allowed_roles: AppRole[]; metadata: Json; is_enabled: boolean; created_by: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; school_id?: string | null; name: string; description?: string | null; connection_ref?: string | null; secret_ref?: string | null; secret_last_four?: string | null; health_status?: string; enabled_tools?: Json; allowed_roles?: AppRole[]; metadata?: Json; is_enabled?: boolean; created_by?: string | null };
         Update: Partial<Database['public']['Tables']['mcp_servers']['Insert']>;
       };
       prompt_presets: {
-        Row: { id: string; title: string; scenario: string; system_instruction: string; user_template: string | null; variables: Json; target_role: AppRole; status: PromptPresetStatus; version: number; created_by: string | null; class_id: string | null; purpose: 'chat' | 'project_classification'; created_at: string; updated_at: string };
-        Insert: { id?: string; title: string; scenario: string; system_instruction: string; user_template?: string | null; variables?: Json; target_role?: AppRole; status?: PromptPresetStatus; version?: number; created_by?: string | null; class_id?: string | null; purpose?: 'chat' | 'project_classification' };
+        Row: { id: string; organization_id: string | null; school_id: string | null; title: string; scenario: string; system_instruction: string; user_template: string | null; variables: Json; target_role: AppRole; status: PromptPresetStatus; version: number; created_by: string | null; class_id: string | null; purpose: 'chat' | 'project_classification'; created_at: string; updated_at: string };
+        Insert: { id?: string; organization_id?: string | null; school_id?: string | null; title: string; scenario: string; system_instruction: string; user_template?: string | null; variables?: Json; target_role?: AppRole; status?: PromptPresetStatus; version?: number; created_by?: string | null; class_id?: string | null; purpose?: 'chat' | 'project_classification' };
         Update: Partial<Database['public']['Tables']['prompt_presets']['Insert']>;
       };
       projects: {

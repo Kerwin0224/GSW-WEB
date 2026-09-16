@@ -25,6 +25,8 @@ const EMBEDDING_CAPABILITY = 'embedding';
 
 export type ProviderListItem = {
   id: string;
+  /** null = 公司级模板（所有校可用）；非空 = 该校自带。 */
+  schoolId: string | null;
   name: string;
   providerType: string;
   baseUrl: string | null;
