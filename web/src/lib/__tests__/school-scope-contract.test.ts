@@ -120,3 +120,38 @@ test('迁移带派生表非空自检（它空了就是所有模型调用 503）'
 
   assert.match(sql, /raise exception 'rebuild produced zero derived capability rows/);
 });
+
+/**
+ * `create or replace function` **不能改返回类型**（SQLSTATE 42P13），改了必须 drop 再建。
+ * 这条线上炸过一次：132800 建了 6 列的 get_role_mcp_servers，132900 想加一列 school_id
+ * 直接 replace，迁移 CI 失败、生产卡在「新代码 + 半迁移」。
+ *
+ * 这里按时间顺序重放所有迁移，找出「同名函数、returns table 列不同、却没用 drop function」的。
+ */
+test('没有靠 create or replace 改函数返回类型（那会直接炸迁移）', () => {
+  const signatures = new Map<string, string>();
+  const violations: string[] = [];
+
+  for (const sql of migrationFiles()) {
+    // 同一文件里 create 与 drop 的先后也重要，所以按出现位置排序后重放。
+    const events: Array<{ at: number; kind: 'create' | 'drop'; name: string; columns?: string }> = [];
+    for (const match of sql.matchAll(/create\s+(or\s+replace\s+)?function\s+public\.(\w+)\s*\([^)]*\)\s*returns\s+table\s*\(([^)]*)\)/gi)) {
+      events.push({ at: match.index ?? 0, kind: 'create', name: match[2], columns: match[3].replace(/\s+/g, ' ').trim().toLowerCase() });
+    }
+    for (const match of sql.matchAll(/drop\s+function\s+(?:if\s+exists\s+)?public\.(\w+)/gi)) {
+      events.push({ at: match.index ?? 0, kind: 'drop', name: match[1] });
+    }
+    events.sort((left, right) => left.at - right.at);
+
+    for (const event of events) {
+      if (event.kind === 'drop') { signatures.delete(event.name); continue; }
+      const previous = signatures.get(event.name);
+      if (previous !== undefined && previous !== event.columns) {
+        violations.push(`${event.name}: ${previous} → ${event.columns}`);
+      }
+      signatures.set(event.name, event.columns!);
+    }
+  }
+
+  assert.deepEqual(violations, [], '改返回类型必须先 drop function');
+});

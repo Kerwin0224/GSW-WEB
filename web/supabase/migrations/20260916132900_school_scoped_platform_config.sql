@@ -144,6 +144,10 @@ begin
   limit 1;
 end $$;
 
+-- 必须先 drop：`create or replace` 改不了返回类型（SQLSTATE 42P13），而这里要给
+-- 132800 建的 6 列版本加一列 school_id。这条踩过一次——线上迁移就是这么失败的。
+drop function if exists public.get_role_mcp_servers(public.app_role);
+
 create or replace function public.get_role_mcp_servers(p_role public.app_role)
 returns table(id uuid, name text, connection_ref text, secret_ref text, enabled_tools jsonb, health_status text, school_id uuid)
     language plpgsql stable security definer
