@@ -1,7 +1,14 @@
--- 存量高危修复：建班不可用 + security definer 函数对匿名角色开放。
+-- 存量高危修复：建班不可用 + security definer 函数的 EXECUTE 面授错。
 --
--- 两条都是本次做「空间」功能时顺出来的既有缺陷，与空间本身无关，但都在同一条链路上。
--- 分两个互不依赖的段落，任何一段单独回滚都不影响另一段。
+-- 都是本次做「空间」功能时顺出来的既有缺陷，与空间本身无关，但都在同一条链路上。
+-- 各段互不依赖，单独回滚任何一段都不影响其余段。
+--
+--   §1 管理员建班写侧按 id 回查表 → INSERT 恒假，建班在生产上根本插不进去
+--   §2 definer 函数的 EXECUTE 面按调用方收敛（收回一批，见该段分组理由）
+--   §3 补回一个被授错的：is_student_conversation_finalized 只有 authenticated，
+--      而本仓运行角色是 anon，应用层那句 .rpc() 一直在 42501，靠回落查询兜着
+--
+-- §2 与 §3 合起来才叫「授对了」：只收回不补回，就是把 42501 从一端搬到另一端。
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- 一、管理员建班在生产上根本插不进去
@@ -117,7 +124,26 @@ begin
 end $$;
 
 -- ══════════════════════════════════════════════════════════════════════════════
--- 三、自检
+-- 三、补回一个被授错的函数：is_student_conversation_finalized
+-- ══════════════════════════════════════════════════════════════════════════════
+-- 第一次推送时自检报出来的。事实链：
+--   · 基线 dump 里它是 `REVOKE ALL ... FROM PUBLIC` + `GRANT ... TO authenticated, service_role`
+--     —— **没有 anon**；
+--   · 而本仓的运行角色就是 anon（server.ts 用 publishable key 作 Bearer，身份走
+--     x-cwb-user-id 头，不是 auth.uid()），所以应用层那句 .rpc() 一直在 42501；
+--   · 之所以没人发现：conversation-finalization.ts 在 RPC 失败时回落到直接查
+--     audit_records，两条路结果一样，只是白白多跑一次查询。
+--
+-- 授予 anon 是安全的，它的定义式里自带归属判定：
+--     and c.owner_id = public.current_app_user_id()
+-- 拿 publishable key 而没有合法签名头时 current_app_user_id() 为 NULL，EXISTS 判假、
+-- 返回 false，问不出别人的会话。**授予 definer 函数给 anon 前必须像这样先确认函数体
+-- 自己有归属谓词** —— refresh_project_highest_bloom_level 就是反面例子（函数体零校验，
+-- 所以它只配 revoke）。
+grant execute on function public.is_student_conversation_finalized(uuid) to anon;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- 四、自检
 -- ══════════════════════════════════════════════════════════════════════════════
 
 do $$
