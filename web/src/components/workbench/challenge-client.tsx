@@ -11,7 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { MarkdownContent } from '@/components/workbench/markdown-content';
-import { BloomBadge, bloomLevelInfo, type BloomLevel } from '@/components/workbench/bloom-badge';
+import { BloomBadge } from '@/components/workbench/bloom-badge';
+import { BLOOM_LEVELS, BLOOM_LEVEL_INFO, type BloomLevel } from '@/lib/bloom-levels';
 import { BlockedState, ErrorState } from '@/components/workbench/state-surfaces';
 import type { Database } from '@/lib/supabase/database.types';
 import { cn } from '@/lib/utils';
@@ -61,8 +62,8 @@ function initialChallengeState(practice?: PracticeRecord): ChallengeState {
 function LevelRoute({ currentLevel, targetLevel }: { currentLevel?: number | null; targetLevel: BloomLevel }) {
   return (
     <div className="grid gap-3 md:grid-cols-6">
-      {([1, 2, 3, 4, 5, 6] as BloomLevel[]).map((level) => {
-        const info = bloomLevelInfo[level];
+      {BLOOM_LEVELS.map((level) => {
+        const info = BLOOM_LEVEL_INFO[level];
         const reached = Boolean(currentLevel && level <= currentLevel);
         const isTarget = level === targetLevel;
         return (
@@ -181,7 +182,7 @@ export function ChallengeClient({
       const nextLevel = Math.min((result.achieved ? result.target_bloom_level : confirmedLevel ?? 0) + 1 || 1, 6) as BloomLevel;
       setTargetLevel(nextLevel);
       setState('evaluated');
-      setMessage(result.achieved ? '挑战已通过，篇目的通过层级已更新。' : '本次尚未通过，请先回到学习提问继续复习，再来挑战。');
+      setMessage(result.achieved ? '挑战已通过，项目的通过层级已更新。' : '本次尚未通过，请先回到学习提问继续复习，再来挑战。');
       router.refresh();
     } catch (error) {
       setState('error');

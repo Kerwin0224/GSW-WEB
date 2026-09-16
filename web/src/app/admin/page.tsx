@@ -36,7 +36,7 @@ export default async function AdminDashboard() {
   const capabilityLabels = {
     student_chat: '学生提问回答',
     bloom_classification: '提问类型判断',
-    project_classification: '篇目归档',
+    project_classification: '项目归属',
     teacher_chat: '备课问答',
     practice_generation: '挑战生成',
     practice_evaluation: '挑战评阅',
@@ -98,7 +98,7 @@ export default async function AdminDashboard() {
             <p className="leading-6 text-muted-foreground">
               {studentMissing.length
                 ? `缺少路由：${studentMissing.map((capability) => capabilityLabels[capability]).join('、')}。`
-                : '学生提问、提问类型判断和篇目归档都可路由。'}
+                : '学生提问、提问类型判断和项目归属都可路由。'}
             </p>
             <Button nativeButton={false} render={<a href="/admin/providers">检查 Provider 能力</a>} variant="outline" className="rounded-lg" />
           </CardContent>

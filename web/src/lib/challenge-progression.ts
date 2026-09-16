@@ -1,5 +1,7 @@
-/** 布鲁姆认知路径的六个层级，用于单个学生问题的层级标注和挑战确认。 */
-export type BloomLevel = 1 | 2 | 3 | 4 | 5 | 6;
+import { BLOOM_LEVELS, type BloomLevel } from './bloom-levels.ts';
+
+// 六层的唯一定义在 lib/bloom-levels.ts；这里重导出，维持既有调用点（lib/data/student.ts 等）。
+export type { BloomLevel } from './bloom-levels.ts';
 
 export type ChallengeProgressRecord = {
   target_bloom_level: number;
@@ -21,23 +23,21 @@ export type ChallengeClimbProgress = {
   levels: ChallengeLevelProgress[];
 };
 
-const bloomLevels = [1, 2, 3, 4, 5, 6] as const satisfies readonly BloomLevel[];
-
 export function getChallengeClimbProgress(records: ChallengeProgressRecord[]): ChallengeClimbProgress {
   const achievedLevels = new Set(
     records
       .filter((record) => record.evaluation_state === 'evaluated' && record.achieved === true)
       .map((record) => record.target_bloom_level),
   );
-  const nextLevel = bloomLevels.find((level) => !achievedLevels.has(level));
-  const completedLevels = nextLevel ? nextLevel - 1 : bloomLevels.length;
+  const nextLevel = BLOOM_LEVELS.find((level) => !achievedLevels.has(level));
+  const completedLevels = nextLevel ? nextLevel - 1 : BLOOM_LEVELS.length;
   const currentLevel = nextLevel ?? 6;
 
   return {
     currentLevel,
     completedLevels,
-    isComplete: completedLevels === bloomLevels.length,
-    levels: bloomLevels.map((level) => ({
+    isComplete: completedLevels === BLOOM_LEVELS.length,
+    levels: BLOOM_LEVELS.map((level) => ({
       level,
       state: level <= completedLevels ? 'achieved' : level === currentLevel && nextLevel ? 'current' : 'locked',
     })) satisfies ChallengeLevelProgress[],

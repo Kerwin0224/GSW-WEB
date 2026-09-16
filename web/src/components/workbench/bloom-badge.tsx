@@ -1,30 +1,22 @@
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import type { BloomLevel } from '@/lib/challenge-progression';
+import { BLOOM_LEVEL_INFO, toBloomLevel } from '@/lib/bloom-levels';
 
-// BloomLevel 类型定义在 lib/challenge-progression.ts，这里只做 re-export 维持向后兼容。
-export type { BloomLevel } from '@/lib/challenge-progression';
-
-export const bloomLevelInfo: Record<BloomLevel, { label: string; hint: string; meaning: string }> = {
-  1: { label: '记忆', hint: '背诵、识记、找出处', meaning: 'recognize / recall' },
-  2: { label: '理解', hint: '解释、翻译、概括', meaning: 'explain / summarize' },
-  3: { label: '应用', hint: '套用、迁移、举例', meaning: 'transfer / use' },
-  4: { label: '分析', hint: '比较、拆解、找关系', meaning: 'compare / decompose' },
-  5: { label: '评价', hint: '判断、论证、评价', meaning: 'judge / argue' },
-  6: { label: '创造', hint: '仿写、创作、重组', meaning: 'compose / recombine' },
-};
-
+/**
+ * 层级徽章。六层的名称、提示、色号索引都来自 lib/bloom-levels.ts 的唯一定义
+ * （此前这个文件自带一份 bloomLevelInfo，与提示词里的另外三份各自漂移）。
+ */
 export function BloomBadge({ level, className }: { level: number; className?: string }) {
-  const safeLevel = ([1, 2, 3, 4, 5, 6].includes(level) ? level : 1) as BloomLevel;
-  const info = bloomLevelInfo[safeLevel];
+  const safeLevel = toBloomLevel(level) ?? 1;
+  const info = BLOOM_LEVEL_INFO[safeLevel];
   return (
     <Badge
       className={cn('font-heading tracking-wider border-2 border-current/20 shadow-sm', className)}
       style={{ backgroundColor: `var(--bloom-${safeLevel})`, color: `var(--bloom-${safeLevel}-fg)` }}
-      title={`L${safeLevel} ${info.label}：${info.hint}`}
-      aria-label={`布鲁姆 L${safeLevel} ${info.label}，${info.hint}`}
+      title={`L${safeLevel} ${info.name}：${info.hint}`}
+      aria-label={`布鲁姆 L${safeLevel} ${info.name}，${info.hint}`}
     >
-      L{safeLevel} {info.label}
+      L{safeLevel} {info.name}
     </Badge>
   );
 }

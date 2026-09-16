@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { createClient } from '@/lib/supabase/server';
 import { getCapability, requireRole, resolveReadyModel } from '@/lib/data/common';
-import { buildChallengeGenerationPrompt, getK12ChallengeTask } from '@/lib/challenge-prompts';
+import { buildChallengeGenerationPrompt } from '@/lib/challenge-prompts';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
       .eq('owner_id', role.data.id)
       .maybeSingle();
     if (projectError) return Response.json({ state: 'error', error: `项目加载失败：${projectError.message}` }, { status: 500 });
-    if (!project) return Response.json({ state: 'error', error: '未找到可挑战的真实篇目项目。' }, { status: 404 });
+    if (!project) return Response.json({ state: 'error', error: '未找到可挑战的真实项目。' }, { status: 404 });
 
     const targetBloomLevel = nextBloomLevel(project.highest_bloom_level);
     const { data: priorQuestions, error: questionError } = await supabase

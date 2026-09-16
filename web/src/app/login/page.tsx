@@ -104,7 +104,7 @@ export default function LoginPage() {
                 <span className="text-primary lg:block">学深一步。</span>
               </h1>
               <p className="max-w-md text-base leading-7 text-muted-foreground">
-                古诗文学习与教学平台，让提问、练习和备课更有依据。
+                AI 学习与教学平台，让提问、练习和备课更有依据。
               </p>
             </div>
           </div>

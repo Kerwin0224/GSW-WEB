@@ -7,7 +7,7 @@ import { canonicalizeUiMessageParts } from '@/lib/chat-message-parts';
 import type { Database } from '@/lib/supabase/database.types';
 import { fail, getCapabilities, ok, requireRole, type DataResult } from './common';
 import { isStudentConversationFinalized } from './conversation-finalization';
-import type { BloomLevel } from '@/lib/challenge-progression';
+import { BLOOM_LEVELS, toBloomLevel, type BloomLevel } from '@/lib/bloom-levels';
 
 export type ProjectSessionSummary = { id: string; title: string; messageCount: number; updatedLabel: string; projectId?: string };
 export type ProjectLevelSummary = { level: BloomLevel; pathQuestionCount: number; confirmedChallengeCount: number };
@@ -57,10 +57,6 @@ type ConversationSummaryRow = {
 };
 type ConversationMessageRow = Pick<Database['public']['Tables']['conversation_messages']['Row'], 'id' | 'role' | 'content' | 'parts'>;
 type ConversationMessageWithBloomRow = ConversationMessageRow & Pick<Database['public']['Tables']['conversation_messages']['Row'], 'bloom_level' | 'bloom_state'>;
-
-function toBloomLevel(value: number | null | undefined): BloomLevel | undefined {
-  return value && value >= 1 && value <= 6 ? (value as BloomLevel) : undefined;
-}
 
 function toSessionSummary(conversation: ConversationSummaryRow): ProjectSessionSummary {
   return {
@@ -157,7 +153,7 @@ function buildChallengeProgress(practices: PracticeSummaryRow[]): ProjectChallen
     nextLevel,
     statusLabel,
     isComplete,
-    levels: ([1, 2, 3, 4, 5, 6] as BloomLevel[]).map((level) => ({
+    levels: BLOOM_LEVELS.map((level) => ({
       level,
       state: achievedLevels.has(level) ? 'achieved' : level === currentLevel && !isComplete ? 'current' : 'locked',
     })),
@@ -202,7 +198,7 @@ export async function getStudentProjects(options: { page?: number; pageSize?: nu
   if (!role.ok) return role;
   const supabase = await createClient();
 
-  // 分页为可选：不传 pageSize 时保持全量（供需要完整篇目树的调用方，如提问侧边栏）。
+  // 分页为可选：不传 pageSize 时保持全量（供需要完整项目树的调用方，如提问侧边栏）。
   const paginated = typeof options.pageSize === 'number';
   const pageSize = Math.max(1, options.pageSize ?? 0);
   const page = Math.max(1, options.page ?? 1);
@@ -226,7 +222,7 @@ export async function getStudentProjects(options: { page?: number; pageSize?: nu
 
   type MessageRow = { id: string; bloom_level: number | null; bloom_state: string; conversations: { project_id: string | null; deleted_at: string | null } | { project_id: string | null; deleted_at: string | null }[] };
 
-  // 用户消息统计按当前页的篇目收窄：分页的意义就是不再全量拉取，
+  // 用户消息统计按当前页的项目收窄：分页的意义就是不再全量拉取，
   // 顺带把原来"拉学生所有项目全部用户消息"的最大开销一起砍掉。
   const pageProjectIds = ((projects ?? []) as unknown as Array<{ id: string }>).map((project) => project.id);
   const messagesByProject = new Map<string, MessageRow[]>();
@@ -269,7 +265,7 @@ export async function getStudentProjects(options: { page?: number; pageSize?: nu
     const questionCount = projectMessages.length;
     const pathRows = projectMessages.filter((m) => m.bloom_state === 'classified');
 
-    const levelSummary = [1, 2, 3, 4, 5, 6].map((level) => ({
+    const levelSummary = BLOOM_LEVELS.map((level) => ({
       level: level as BloomLevel,
       pathQuestionCount: pathRows.filter((row) => row.bloom_level === level).length,
       confirmedChallengeCount: practices.filter((practice) => practice.target_bloom_level === level && practice.achieved).length,
@@ -295,8 +291,8 @@ export async function getStudentProjects(options: { page?: number; pageSize?: nu
 
 
 /**
- * 挑战入口的篇目列表。与 getStudentProjects 的关键区别：不拉会话与消息正文，
- * 只取挑战进度所需的三张表的窄列。挑战页要的是"哪些篇目能挑战、挑战到什么程度"，
+ * 挑战入口的项目列表。与 getStudentProjects 的关键区别：不拉会话与消息正文，
+ * 只取挑战进度所需的三张表的窄列。挑战页要的是"哪些项目能挑战、挑战到什么程度"，
  * 之前复用了学习记录页那套带嵌套会话的重量查询，属于口径错配。
  */
 export type ChallengeProjectSummary = Pick<ProjectSummary, 'id' | 'title' | 'author' | 'questionCount' | 'challengeProgress'>;
@@ -317,7 +313,7 @@ export async function getStudentChallengeProjects(): Promise<DataResult<Challeng
       .eq('role', 'user')
       .not('conversations.project_id', 'is', null),
   ]);
-  if (error) return fail('error', `篇目加载失败：${error.message}`);
+  if (error) return fail('error', `项目加载失败：${error.message}`);
   if (practiceError) return fail('error', `挑战记录加载失败：${practiceError.message}`);
   if (messageError) return fail('error', `提问统计失败：${messageError.message}`);
 
@@ -389,7 +385,7 @@ export async function getStudentProject(projectId: string): Promise<DataResult<P
   if (!role.ok) return role;
   const supabase = await createClient();
   const { data: project, error } = await supabase.from('text_projects').select('*').eq('id', projectId).eq('owner_id', role.data.id).maybeSingle();
-  if (error) return fail('error', `篇目详情加载失败：${error.message}`);
+  if (error) return fail('error', `项目详情加载失败：${error.message}`);
   if (!project) return ok(null);
   const [{ data: questions, error: qError }, { data: practices, error: pError }] = await Promise.all([
     supabase.from('conversation_messages').select('*, conversations!inner(project_id,deleted_at)').eq('conversations.project_id', project.id).is('conversations.deleted_at', null).eq('role', 'user').eq('bloom_state', 'classified').order('created_at', { ascending: false }),
@@ -403,7 +399,7 @@ export async function getStudentProject(projectId: string): Promise<DataResult<P
 
 /**
  * 学习记录页的聚合统计。刻意不经过 getStudentProjects：
- * 分页之后篇目列表只覆盖当前页，而页顶指标与层级分布是"全部篇目"口径，
+ * 分页之后项目列表只覆盖当前页，而页顶指标与层级分布是"全部项目"口径，
  * 必须来自独立聚合查询。这三条查询都只取窄列/计数，不拉会话与消息正文。
  */
 export async function getStudentProjectStats(): Promise<DataResult<{
@@ -429,7 +425,7 @@ export async function getStudentProjectStats(): Promise<DataResult<{
       .not('conversations.project_id', 'is', null),
     supabase.from('practice_records').select('id', { count: 'exact', head: true }).eq('student_id', role.data.id),
   ]);
-  if (projectsResult.error) return fail('error', `篇目统计失败：${projectsResult.error.message}`);
+  if (projectsResult.error) return fail('error', `项目统计失败：${projectsResult.error.message}`);
   if (questionsResult.error) return fail('error', `提问统计失败：${questionsResult.error.message}`);
   if (practicesResult.error) return fail('error', `挑战统计失败：${practicesResult.error.message}`);
 
@@ -439,7 +435,7 @@ export async function getStudentProjectStats(): Promise<DataResult<{
     questionCount: questionsResult.count ?? 0,
     challengeCount: practicesResult.count ?? 0,
     awaitingChallengeCount: projectRows.filter((row) => row.highest_bloom_level === null).length,
-    distribution: [1, 2, 3, 4, 5, 6].map((level) => ({
+    distribution: BLOOM_LEVELS.map((level) => ({
       level,
       count: projectRows.filter((row) => row.highest_bloom_level === level).length,
     })),

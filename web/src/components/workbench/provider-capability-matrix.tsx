@@ -72,7 +72,7 @@ const TIER_COPY: Record<ModelTier, {
   flash: {
     title: 'Flash Model',
     subtitle: '快速、低成本、高吞吐',
-    intent: '面向学习提问、提问类型判断、篇目归属与挑战生成，优先响应速度和单位成本。',
+    intent: '面向学习提问、提问类型判断、项目归属与挑战生成，优先响应速度和单位成本。',
     tone: 'from-primary/15 via-background to-background',
     icon: <Zap className="size-5" />,
   },

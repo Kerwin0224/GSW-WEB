@@ -1,6 +1,6 @@
 import { CheckCircle2, Circle, Lock } from 'lucide-react';
 
-import { bloomLevelInfo, type BloomLevel } from '@/components/workbench/bloom-badge';
+import { BLOOM_LEVELS, BLOOM_LEVEL_INFO, type BloomLevel } from '@/lib/bloom-levels';
 import { cn } from '@/lib/utils';
 
 type ProjectBloomMatrixRow = {
@@ -11,16 +11,16 @@ type ProjectBloomMatrixRow = {
   levels: Array<{ level: BloomLevel; state: 'achieved' | 'current' | 'locked' }>;
 };
 
-const bloomLevels = [1, 2, 3, 4, 5, 6] as BloomLevel[];
+
 
 function levelCellCopy(row: ProjectBloomMatrixRow, level: BloomLevel) {
   const state = row.levels.find((item) => item.level === level)?.state ?? 'locked';
-  const info = bloomLevelInfo[level];
+  const info = BLOOM_LEVEL_INFO[level];
 
   if (state === 'achieved') {
     return {
       label: '已通过',
-      ariaLabel: `《${row.title}》L${level} ${info.label} 已通过挑战`,
+      ariaLabel: `《${row.title}》L${level} ${info.name} 已通过挑战`,
       icon: CheckCircle2,
       className: 'border-transparent shadow-sm',
       style: { backgroundColor: `var(--bloom-${level})`, color: `var(--bloom-${level}-fg)` },
@@ -30,7 +30,7 @@ function levelCellCopy(row: ProjectBloomMatrixRow, level: BloomLevel) {
   if (state === 'current') {
     return {
       label: '待挑战',
-      ariaLabel: `《${row.title}》L${level} ${info.label} 待挑战`,
+      ariaLabel: `《${row.title}》L${level} ${info.name} 待挑战`,
       icon: Circle,
       className: 'border-primary/55 bg-primary/10 text-primary ring-1 ring-primary/20',
       style: undefined,
@@ -39,7 +39,7 @@ function levelCellCopy(row: ProjectBloomMatrixRow, level: BloomLevel) {
 
   return {
     label: '未开放',
-    ariaLabel: `《${row.title}》L${level} ${info.label} 未开放`,
+    ariaLabel: `《${row.title}》L${level} ${info.name} 未开放`,
     icon: Lock,
     className: 'border-border/45 bg-muted/40 text-muted-foreground',
     style: undefined,
@@ -51,14 +51,14 @@ export function CognitiveProfileMatrix({ rows }: { rows: ProjectBloomMatrixRow[]
     <div className="overflow-hidden rounded-lg border bg-background/50">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[48rem] border-collapse text-sm">
-          <caption className="sr-only">每个篇目在 L1 到 L6 六个层级上的挑战通过状态</caption>
+          <caption className="sr-only">每个项目在 L1 到 L6 六个层级上的挑战通过状态</caption>
           <thead>
             <tr className="border-b bg-muted/45">
-              <th scope="col" className="w-[15rem] px-4 py-3 text-left font-medium text-muted-foreground">篇目</th>
-              {bloomLevels.map((level) => (
+              <th scope="col" className="w-[15rem] px-4 py-3 text-left font-medium text-muted-foreground">项目</th>
+              {BLOOM_LEVELS.map((level) => (
                 <th key={level} scope="col" className="px-3 py-3 text-center font-medium text-muted-foreground">
                   <span className="block text-foreground">L{level}</span>
-                  <span className="block text-xs font-normal">{bloomLevelInfo[level].label}</span>
+                  <span className="block text-xs font-normal">{BLOOM_LEVEL_INFO[level].name}</span>
                 </th>
               ))}
               <th scope="col" className="w-[8rem] px-4 py-3 text-left font-medium text-muted-foreground">状态</th>
@@ -73,7 +73,7 @@ export function CognitiveProfileMatrix({ rows }: { rows: ProjectBloomMatrixRow[]
                     {row.confirmedLevel ? `已通过到 L${row.confirmedLevel}` : '尚未通过挑战'}
                   </span>
                 </th>
-                {bloomLevels.map((level) => {
+                {BLOOM_LEVELS.map((level) => {
                   const cell = levelCellCopy(row, level);
                   const Icon = cell.icon;
 

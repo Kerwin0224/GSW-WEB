@@ -17,8 +17,8 @@ const notoSerifSC = Noto_Serif_SC({
 });
 
 export const metadata: Metadata = {
-  title: "文韵智途 · 古诗文学习与教学平台",
-  description: "围绕古诗文提问、练习与备课，支持教师审核 AI 回答。",
+  title: "文韵智途 · AI 学习与教学平台",
+  description: "围绕学习内容提问、练习与备课，支持教师核实 AI 回答。",
 };
 
 export default function RootLayout({
@@ -36,7 +36,7 @@ export default function RootLayout({
         <TooltipProvider>
           {children}
         </TooltipProvider>
-        {/* 归档等异步结果的全局回执：学生会话归入篇目时在顶部给出可感知反馈。 */}
+        {/* 归档等异步结果的全局回执：学生会话归入项目时在顶部给出可感知反馈。 */}
         <Toaster position="top-center" richColors closeButton />
       </body>
     </html>

@@ -45,8 +45,8 @@ const studentNavGroups: RoleNavGroup[] = [
   {
     label: '学习',
     items: [
-      { icon: MessageSquare, label: '学习提问', href: '/student', description: '围绕篇目提问', primary: true },
-      { icon: Swords, label: '挑战练习', href: '/student/challenge', description: '选择篇目开始练习', primary: true },
+      { icon: MessageSquare, label: '学习提问', href: '/student', description: '围绕项目提问', primary: true },
+      { icon: Swords, label: '挑战练习', href: '/student/challenge', description: '选择项目开始练习', primary: true },
       { icon: BarChart3, label: '学习记录', href: '/student/me', description: '查看提问与挑战记录', primary: true },
     ],
   },

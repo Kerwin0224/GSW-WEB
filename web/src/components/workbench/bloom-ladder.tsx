@@ -3,7 +3,8 @@
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { BloomBadge, bloomLevelInfo, type BloomLevel } from './bloom-badge';
+import { BloomBadge } from './bloom-badge';
+import { BLOOM_LEVELS_DESC, BLOOM_LEVEL_INFO, type BloomLevel } from '@/lib/bloom-levels';
 import { Lock } from 'lucide-react';
 
 interface BloomLevelNode {
@@ -19,11 +20,11 @@ export function BloomLadder({ levels, currentMaxLevel }: Props) {
   return (
     <div className="relative py-6" aria-label="布鲁姆六层认知路径">
       <div className="space-y-4">
-        {([6, 5, 4, 3, 2, 1] as BloomLevel[]).map((level) => {
+        {BLOOM_LEVELS_DESC.map((level) => {
           const data = levels[level] ?? { questions: [] };
           const isActive = currentMaxLevel ? level <= currentMaxLevel : false;
           const isCurrent = level === currentMaxLevel;
-          const info = bloomLevelInfo[level];
+          const info = BLOOM_LEVEL_INFO[level];
 
           return (
             <div key={level} className="grid gap-3 sm:grid-cols-[7rem_1fr] sm:items-center">
@@ -41,7 +42,7 @@ export function BloomLadder({ levels, currentMaxLevel }: Props) {
                             type="button"
                             className="size-8 rounded-lg text-[10px] font-medium transition-[box-shadow] duration-200 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                             style={{ backgroundColor: `var(--bloom-${level})`, color: `var(--bloom-${level}-fg)` }}
-                            aria-label={`L${level} ${info.label}问题：${q.text}`}
+                            aria-label={`L${level} ${info.name}问题：${q.text}`}
                           >
                             问
                           </button>

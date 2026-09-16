@@ -205,13 +205,13 @@ export default function DatasetExportClient() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>篇目</TableHead>
+                    <TableHead>项目</TableHead>
                     <TableHead>样本数</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {preview.poemDistribution.length === 0 ? (
-                    <TableRow><TableCell colSpan={2}>暂无篇目分布</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={2}>暂无项目分布</TableCell></TableRow>
                   ) : (
                     preview.poemDistribution.map((item) => (
                       <TableRow key={item.title}>

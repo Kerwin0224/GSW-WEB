@@ -2,7 +2,8 @@ import { BookOpen, MessageSquare, Route, Swords } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { BloomBadge, bloomLevelInfo, type BloomLevel } from '@/components/workbench/bloom-badge';
+import { BloomBadge } from '@/components/workbench/bloom-badge';
+import { BLOOM_LEVELS, BLOOM_LEVEL_INFO } from '@/lib/bloom-levels';
 import type { ProjectSummary } from '@/lib/data/student';
 import { cn } from '@/lib/utils';
 
@@ -12,8 +13,8 @@ function BloomMiniBar({ project }: { project: ProjectCardData }) {
   const confirmedLevel = project.challengeProgress.confirmedLevel;
   return (
     <div className="grid grid-cols-6 gap-1.5">
-      {([1, 2, 3, 4, 5, 6] as BloomLevel[]).map((level) => {
-        const info = bloomLevelInfo[level];
+      {BLOOM_LEVELS.map((level) => {
+        const info = BLOOM_LEVEL_INFO[level];
         const summary = project.levelSummary.find((item) => item.level === level);
         const active = Boolean(confirmedLevel && level <= confirmedLevel);
         return (
@@ -23,10 +24,10 @@ function BloomMiniBar({ project }: { project: ProjectCardData }) {
               'rounded-md border px-1.5 py-2 text-center text-[10px] transition-[border-color,background-color] duration-200',
               active ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border/60 bg-muted/30 text-muted-foreground'
             )}
-            title={`L${level} ${info.label}：相关提问 ${summary?.pathQuestionCount ?? 0} 条，挑战通过 ${summary?.confirmedChallengeCount ?? 0} 次`}
+            title={`L${level} ${info.name}：相关提问 ${summary?.pathQuestionCount ?? 0} 条，挑战通过 ${summary?.confirmedChallengeCount ?? 0} 次`}
           >
             <span className="block font-semibold">L{level}</span>
-            <span className="sr-only">{info.label}</span>
+            <span className="sr-only">{info.name}</span>
           </div>
         );
       })}
@@ -95,7 +96,7 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
       <CardFooter className="pt-0">
         <Button
           nativeButton={false}
-          render={<a href={`/student?projectId=${project.id}`}><BookOpen className="mr-2 size-4" aria-hidden="true" />进入篇目提问</a>}
+          render={<a href={`/student?projectId=${project.id}`}><BookOpen className="mr-2 size-4" aria-hidden="true" />进入项目提问</a>}
           className="min-h-11 w-full cursor-pointer rounded-lg"
         />
       </CardFooter>

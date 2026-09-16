@@ -407,10 +407,10 @@ export async function POST(req: Request) {
               .eq('id', conversation.id)
               .eq('owner_id', role.data.id)
               .is('project_id', null)
-              // 防御：学生在篇目识别期间删掉会话时，race 下不应该再把 project_id
+              // 防御：学生在归属识别期间删掉会话时，race 下不应该再把 project_id
               // 补写到已软删的行里；与会话入口处的 deleted_at 过滤保持一致。
               .is('deleted_at', null);
-            if (projectLinkError) throw new Error(`会话归入篇目失败：${projectLinkError.message}`);
+            if (projectLinkError) throw new Error(`会话归入项目失败：${projectLinkError.message}`);
             assignedProjectId = assignment.projectId;
             projectId = assignment.projectId;
             classifiedProjectTitle = assignment.title;
@@ -426,7 +426,7 @@ export async function POST(req: Request) {
             writer.write({
               type: 'data-student-assignment',
               id: conversation.id,
-              data: { kind: 'project', projectId: assignment.projectId, title: assignment.title ?? '对应篇目' },
+              data: { kind: 'project', projectId: assignment.projectId, title: assignment.title ?? '对应项目' },
               transient: true,
             });
             return assignment;

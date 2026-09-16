@@ -12,7 +12,7 @@ import { AdminDialogShell } from '@/components/workbench/admin-dialog-shell';
 import { createStudentProject } from '@/lib/data/student-projects';
 
 /**
- * 学生自建项目。此前项目只能由 AI 从提问中识别篇目产生，
+ * 学生自建项目。此前项目只能由 AI 从提问中识别产生，
  * 学生想围绕"自己的专题"（例：文言虚词笔记）组织学习就没有入口。
  */
 export function StudentProjectCreateButton() {

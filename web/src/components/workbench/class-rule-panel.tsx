@@ -15,7 +15,10 @@ import type { TeacherClassRule } from '@/lib/data/teacher';
 
 const initialState: AuditSubmissionState = { ok: false, message: '' };
 
-const PLACEHOLDER = `例如（语文）：本班问题是古诗文/文言文学习时，归到学生实际在学的篇目（如《赤壁赋》《静夜思》）；问题涉及语文知识点（虚词、句式、修辞）时，归到对应知识点名称，不要硬套到某篇作品上。`;
+const PLACEHOLDER = `只写「本班按什么分类」，不用管输出格式。例如：
+· 语文老师：按学生实际在学的篇目归类——问题聚焦哪一篇就归到那篇（如《赤壁赋》《静夜思》）；问的是知识点（虚词、句式、修辞）时归到知识点名称，不要硬套到某篇作品上。
+· 数学老师：按知识点归类，如「一次函数」「全等三角形」；综合题归到最主要的那个知识点。
+分类依据由你定，写清楚学生的问题该归到哪一类即可。`;
 
 /**
  * 项目归类规则配置（教师视角）。
@@ -40,7 +43,7 @@ export function ClassRulePanel({ classes }: { classes: TeacherClassRule[] }) {
           项目归类规则
         </CardTitle>
         <CardDescription>
-          为每个班写下本学科的归类口径。发布后，本班学生的新提问会按这套规则归属项目；未配置则用系统默认（古诗文篇目）。
+          为每个班写下本学科的归类口径。发布后，本班学生的新提问会按这套规则归属项目；未配置则用系统默认（按学习主题归类）。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

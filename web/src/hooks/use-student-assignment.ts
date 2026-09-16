@@ -68,12 +68,12 @@ export function useStudentAssignment({
     return () => window.clearTimeout(timer);
   }, [justArchivedProjectId]);
 
-  /** 点击项目行：展开/收起该篇目的会话列表（多展开互不影响）。 */
+  /** 点击项目行：展开/收起该项目的会话列表（多展开互不影响）。 */
   const toggleExpandedProject = useCallback((projectId: string) => {
     setExpandedProjectIds((current) => (current.includes(projectId) ? current.filter((id) => id !== projectId) : [...current, projectId]));
   }, []);
 
-  /** 归属落定/进入篇目/载入会话时自动展开目标项目（不收起其他项目）。 */
+  /** 归属落定/进入项目/载入会话时自动展开目标项目（不收起其他项目）。 */
   const expandProject = useCallback((projectId: string) => {
     if (!projectId) return;
     setExpandedProjectIds((current) => (current.includes(projectId) ? current : [...current, projectId]));
@@ -109,7 +109,7 @@ export function useStudentAssignment({
 
     setAssignmentNotice({ kind: 'archive' });
     toast('已保存到日常会话归档', {
-      description: '没有识别到明确篇目；这条会话会保留在左侧归档里，可回看续问。',
+      description: '没有识别到明确归属；这条会话会保留在左侧归档里，可回看续问。',
       duration: 5000,
     });
     if (!isStreamingRef?.current) refreshRoute(routeConversationId);
@@ -121,12 +121,12 @@ export function useStudentAssignment({
     if (assignment) acceptAssignment(assignment, routeConversationId);
   }, [acceptAssignment]);
 
-  /** 通路二：异步篇目识别，从流内 data-student-assignment part 读取。 */
+  /** 通路二：异步归属识别，从流内 data-student-assignment part 读取。 */
   const acceptAssignmentData = useCallback((data: StudentAssignmentData, routeConversationId?: string) => {
     acceptAssignment(data, routeConversationId);
   }, [acceptAssignment]);
 
-  /** 用户显式进入某个项目（开启该篇目的新会话）。 */
+  /** 用户显式进入某个项目（开启该项目的新会话）。 */
   const enterProject = useCallback((projectId: string) => {
     setActiveProjectId(projectId);
     activeProjectIdRef.current = projectId;

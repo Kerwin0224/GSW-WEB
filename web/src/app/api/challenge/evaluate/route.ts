@@ -53,7 +53,7 @@ export async function POST(req: Request) {
       .maybeSingle();
     if (practiceError) return Response.json({ state: 'error', error: `挑战记录加载失败：${practiceError.message}` }, { status: 500 });
     if (!practice) return Response.json({ state: 'error', error: '未找到可评估的真实挑战记录。' }, { status: 404 });
-    if (!practice.project_id) return Response.json({ state: 'error', error: '挑战记录缺少篇目项目，不能更新项目认知状态。' }, { status: 422 });
+    if (!practice.project_id) return Response.json({ state: 'error', error: '挑战记录缺少项目，不能更新项目认知状态。' }, { status: 422 });
     if (!practice.prompt) return Response.json({ state: 'error', error: '挑战记录缺少题目，不能评估。' }, { status: 422 });
 
     const project = Array.isArray(practice.text_projects) ? practice.text_projects[0] : practice.text_projects;
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
         model,
         schema: evaluationSchema,
         prompt: buildChallengeEvaluationPrompt({
-          projectTitle: project?.title ?? '未知篇目',
+          projectTitle: project?.title ?? '未知项目',
           projectAuthor: project?.author,
           targetBloomLevel: practice.target_bloom_level,
           challengePrompt: practice.prompt,

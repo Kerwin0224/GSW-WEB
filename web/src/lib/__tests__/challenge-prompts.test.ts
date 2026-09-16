@@ -4,31 +4,9 @@ import assert from 'node:assert/strict';
 import {
   buildChallengeEvaluationPrompt,
   buildChallengeGenerationPrompt,
-  getK12ChallengeTask,
 } from '../challenge-prompts.ts';
 
-// ─── getK12ChallengeTask ──────────────────────────────────────────────────────
-
-test('returns a task description for each bloom level 1-6', () => {
-  for (let level = 1; level <= 6; level++) {
-    const task = getK12ChallengeTask(level);
-    assert.ok(task.length > 0, `level ${level} should return a non-empty task`);
-    assert.ok(typeof task === 'string');
-  }
-});
-
-test('returns fallback description for out-of-range level', () => {
-  const task = getK12ChallengeTask(0);
-  assert.ok(task.includes('清楚、具体'), 'out-of-range level should return generic task');
-});
-
-test('level 1 task focuses on recalling information', () => {
-  assert.ok(getK12ChallengeTask(1).includes('找出'), 'L1 should focus on locating information');
-});
-
-test('level 6 task focuses on creation', () => {
-  assert.ok(getK12ChallengeTask(6).includes('仿写'), 'L6 should focus on creative writing');
-});
+// 六层本身的定义与文案在 bloom-levels.test.ts —— 这里只测提示词组装。
 
 // ─── buildChallengeGenerationPrompt ──────────────────────────────────────────
 
@@ -44,7 +22,7 @@ const baseCtx = {
 test('generation prompt contains project title and author', () => {
   const result = buildChallengeGenerationPrompt(baseCtx);
   assert.ok(result.includes('《水调歌头》'), 'should embed title with marks');
-  assert.ok(result.includes('作者：苏轼'), 'should embed author');
+  assert.ok(result.includes('（苏轼）'), 'should embed author');
 });
 
 test('generation prompt does not instruct model to output backend data formats', () => {
@@ -83,7 +61,7 @@ test('generation prompt includes the target bloom level task description', () =>
 
 test('generation prompt works without author', () => {
   const result = buildChallengeGenerationPrompt({ ...baseCtx, projectAuthor: null });
-  assert.ok(!result.includes('作者：'), 'should omit author line when not provided');
+  assert.ok(!result.includes('《水调歌头》（'), 'should omit author when not provided');
   assert.ok(result.includes('《水调歌头》'), 'should still include title');
 });
 
@@ -129,5 +107,5 @@ test('evaluation prompt includes the target level', () => {
 
 test('evaluation prompt works without author', () => {
   const result = buildChallengeEvaluationPrompt({ ...evalCtx, projectAuthor: null });
-  assert.ok(!result.includes('作者：'), 'should omit author when not provided');
+  assert.ok(!result.includes('《静夜思》（'), 'should omit author when not provided');
 });

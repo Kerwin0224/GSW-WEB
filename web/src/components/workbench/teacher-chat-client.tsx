@@ -24,7 +24,7 @@ import { BlockedState, EmptyState, ErrorState } from '@/components/workbench/sta
 import { saveTeacherPromptPreset, type AuditSubmissionState } from '@/lib/data/teacher-actions';
 import { cn } from '@/lib/utils';
 
-const teacherPrompts = ['这首诗的课堂导入怎么设计？', '学生容易误解哪个典故？', '设计三个分层追问', '把这段文言文讲得更清楚'];
+const teacherPrompts = ['这节课的课堂导入怎么设计？', '学生容易混淆哪个概念？', '设计三个分层追问', '把这段内容讲得更清楚'];
 
 type Preset = Database['public']['Tables']['prompt_presets']['Row'];
 const instructionInitialState: AuditSubmissionState = { ok: false, message: '' };
@@ -384,7 +384,7 @@ export function TeacherChatClient({
             {messages.length === 0 ? (
               <EmptyState
                 title="开始新的备课问答"
-                description="围绕篇目、课堂目标、学生误区或追问设计直接提问；需要时再补模板或附件。"
+                description="围绕学习内容、课堂目标、学生误区或追问设计直接提问；需要时再补模板或附件。"
                 action={(
                   <div className="flex flex-wrap justify-center gap-2">
                     {teacherPrompts.map((prompt) => (

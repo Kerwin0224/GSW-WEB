@@ -1,7 +1,7 @@
 /**
  * 会话归属（assignment）在客户端的两条到达通路：
  * 1. 首问即知归属（点项目开新会话）→ HTTP 响应 header，先于流到达；
- * 2. 空白首问的异步篇目识别 → 流内 data-student-assignment part。
+ * 2. 空白首问的异步归属识别 → 流内 data-student-assignment part。
  * 两条路都汇入 useStudentAssignment 的同一处理函数。
  */
 export type StudentAssignmentData =

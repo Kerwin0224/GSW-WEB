@@ -133,14 +133,12 @@ test('内置归类口径不假设学科', () => {
   }
 });
 
-test('内置布鲁姆口径不假设学科', () => {
+test('内置布鲁姆口径不假设学科，但保留六层语义', () => {
   for (const forbidden of ['古诗文', '文言文', '诗句', '意象', '背诵诗句']) {
     assert.ok(!defaultBloomClassificationInstruction.includes(forbidden), `内置布鲁姆口径不应出现「${forbidden}」`);
   }
-  // 六层语义本身保留。
-  for (const level of ['1 记忆=', '2 理解=', '3 应用=', '4 分析=', '5 评价=', '6 创造=']) {
-    assert.ok(defaultBloomClassificationInstruction.includes(level), `应保留 ${level}`);
-  }
+  // 六层语义来自 lib/bloom-levels.ts 的唯一定义，此处只确认它被完整带入。
+  assert.equal(defaultBloomClassificationInstruction.split('\n').filter((line) => /^[1-6] /.test(line)).length, 6);
 });
 
 test('输出协议第二行是通用补充标识，不是「作者」', () => {

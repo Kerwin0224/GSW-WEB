@@ -58,7 +58,7 @@ function AddMemberForm({ klass, users, memberRole }: { klass: AdminClassListItem
       </div>
       {memberRole === 'student' ? (
         <p className="rounded-lg border border-primary/20 bg-primary/5 p-2 text-xs text-primary">
-          学生会从原班级迁入当前班级；其历史篇目和未删除的学习会话也会归入新班级，供新班教师审核。
+          学生会从原班级迁入当前班级；其历史项目和未删除的学习会话也会归入新班级，供新班教师审核。
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">教师可以负责多个班级；重复加入同一班级会被忽略。</p>

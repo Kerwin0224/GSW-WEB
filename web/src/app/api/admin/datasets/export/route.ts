@@ -119,7 +119,7 @@ async function getPreviewStats(type: DatasetType, filters: DatasetFilters, sampl
   for (const row of sampledRows) {
     const conversation = firstJoined(row.conversations);
     const project = firstJoined(conversation?.text_projects);
-    const title = project?.title?.trim() || '未关联篇目';
+    const title = project?.title?.trim() || '未关联项目';
     poemCounts.set(title, (poemCounts.get(title) ?? 0) + 1);
   }
 

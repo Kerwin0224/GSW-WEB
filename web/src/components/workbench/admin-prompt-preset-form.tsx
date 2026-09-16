@@ -41,7 +41,7 @@ export function AdminPromptPresetFormFields() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="variables">变量</Label>
-          <Input id="variables" name="variables" placeholder="篇目, 年级, 学生误区" />
+          <Input id="variables" name="variables" placeholder="学习内容, 年级, 学生误区" />
           <p className="text-xs text-muted-foreground">多个变量请用半角逗号分隔。</p>
         </div>
         <div className="space-y-2">

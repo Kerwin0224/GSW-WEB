@@ -40,7 +40,7 @@ import { useConversationSync } from '@/hooks/use-conversation-sync';
 import { useStudentAssignment } from '@/hooks/use-student-assignment';
 
 const globalPromptChips = ['《静夜思》的“疑”是什么意思？', '这句怎么翻译？', '诗人为什么这样写？', '帮我换一个分析角度追问'];
-const finalizedConversationBlockedReason = '这条会话已完成教师审核，不能继续追问。请从篇目或空白入口新开会话。';
+const finalizedConversationBlockedReason = '这条会话已完成教师审核，不能继续追问。请从项目或空白入口新开会话。';
 
 type StudentChatMessage = UIMessage<unknown, {
   'student-assignment': StudentAssignmentData;
@@ -170,7 +170,7 @@ export function StudentChatClient({
     messages: initialConversation?.messages as StudentChatMessage[] | undefined,
     onData: (part) => {
       if (part.type === 'data-student-assignment') {
-        // 通路二：空白首问的异步篇目识别，归属经流内 data part 到达。
+        // 通路二：空白首问的异步归属识别，归属经流内 data part 到达。
         acceptAssignmentData(part.data);
       }
       if (part.type === 'data-student-bloom') {
@@ -188,7 +188,7 @@ export function StudentChatClient({
   const busy = status === 'submitted' || status === 'streaming';
   const activeProject = useMemo(() => projects.find((project) => project.id === activeProjectId), [activeProjectId, projects]);
   const inProjectContext = Boolean(activeProjectId);
-  const projectDisplayName = activeProject?.title ? `《${activeProject.title}》` : '当前篇目';
+  const projectDisplayName = activeProject?.title ? `《${activeProject.title}》` : '当前项目';
   const promptChips = !inProjectContext
     ? globalPromptChips
     : activeProject?.title
@@ -343,7 +343,7 @@ export function StudentChatClient({
         enterProject(payload.projectId);
         setAssignmentNotice({
           kind: 'project',
-          title: matchedProject?.title ?? activeProject?.title ?? '对应篇目',
+          title: matchedProject?.title ?? activeProject?.title ?? '对应项目',
         });
       } else {
         setAssignmentNotice({ kind: 'archive' });
@@ -479,15 +479,15 @@ export function StudentChatClient({
           <section className="rounded-2xl border border-border/65 bg-card/86 p-3 shadow-soft">
             <div className="mb-3 flex items-start justify-between gap-3 px-1">
               <div>
-                <p className="font-heading text-lg">篇目</p>
-                <p className="mt-1 text-xs text-muted-foreground">选择篇目开始新会话；明确提到篇目时会自动归入。</p>
+                <p className="font-heading text-lg">项目</p>
+                <p className="mt-1 text-xs text-muted-foreground">选择项目开始新会话；问题聚焦哪个学习主题，就会自动归入对应项目。</p>
               </div>
               <Badge variant="outline">{projects.length}</Badge>
             </div>
             {projects.length === 0 ? (
               <EmptyState
                 title="先自然提问"
-                description="系统识别到篇目后会在这里保存学习记录。"
+                description="系统识别到归属后会在这里保存学习记录。"
                 className="bg-background/60"
               />
             ) : (
@@ -498,7 +498,7 @@ export function StudentChatClient({
                   const justArchived = project.id === justArchivedProjectId;
                   return (
                     <div key={project.id} className={cn('overflow-hidden rounded-xl border border-border/65 bg-background/76 shadow-soft transition-[border-color,background-color,box-shadow] duration-200', active && 'border-primary/55 bg-primary/7 shadow-ink ring-1 ring-primary/15', justArchived && 'border-primary/60 bg-primary/8 shadow-ink')}>
-                      {/* 点击整行 = 展开/收起（多项目可同时展开）；进入篇目是展开面板里的显式动作。 */}
+                      {/* 点击整行 = 展开/收起（多项目可同时展开）；进入项目是展开面板里的显式动作。 */}
                       <button
                         type="button"
                         onClick={() => toggleExpandedProject(project.id)}
@@ -572,7 +572,7 @@ export function StudentChatClient({
             <div className="mb-3 flex items-start justify-between gap-3 px-1">
               <div>
                 <p className="font-heading text-lg">其他会话</p>
-                <p className="mt-1 text-xs text-muted-foreground">未归入篇目的会话保存在这里，可回看续问。</p>
+                <p className="mt-1 text-xs text-muted-foreground">未归入项目的会话保存在这里，可回看续问。</p>
               </div>
               <Badge variant="secondary">{dailyArchive.sessions.length}</Badge>
             </div>
@@ -611,20 +611,20 @@ export function StudentChatClient({
       header={(
         <>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <h2 className="font-heading text-xl tracking-tight sm:text-2xl">{inProjectContext ? projectDisplayName : conversationId ? '其他会话' : '从一个古诗文问题开始'}</h2>
+              <h2 className="font-heading text-xl tracking-tight sm:text-2xl">{inProjectContext ? projectDisplayName : conversationId ? '其他会话' : '从一个学习问题开始'}</h2>
               <Badge className="border-primary/25 bg-primary/8 text-primary" variant="outline"><Sparkles className="mr-1 size-3" />{conversationLocked ? '教师已审核' : '学习提问'}</Badge>
             </div>
             <p className="text-sm leading-6 text-muted-foreground">
               {conversationLocked
                 ? '这条会话已完成教师核实，只能回看，不能继续追问。'
-                : inProjectContext ? '新问题会直接归入当前篇目。' : conversationId ? '继续追问会保留在这条会话中；也可以从篇目或空白入口另开会话。' : '直接提问即可；问题中明确出现篇目时，系统会自动归入对应篇目。'}
+                : inProjectContext ? '新问题会直接归入当前项目。' : conversationId ? '继续追问会保留在这条会话中；也可以从项目或空白入口另开会话。' : '直接提问即可；问题聚焦在哪个学习主题上，系统会把它归入对应项目。'}
             </p>
         </>
       )}
       messages={(<>
             {classificationUnavailable ? (
               <div className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-muted-foreground">
-                篇目识别暂不可用；从空白入口发起的新会话会先保存到其他会话，不影响继续提问。
+                项目归属识别暂不可用；从空白入口发起的新会话会先保存到其他会话，不影响继续提问。
               </div>
             ) : null}
             {bloomUnavailable ? (
@@ -634,12 +634,12 @@ export function StudentChatClient({
             ) : null}
             {messages.length === 0 ? (
               <EmptyState
-                title={inProjectContext ? `继续提问${activeProject?.title ? `《${activeProject.title}》` : '当前项目'}` : '把正在学的古诗文问题直接问出来'}
+                title={inProjectContext ? `继续提问${activeProject?.title ? `《${activeProject.title}》` : '当前项目'}` : '把正在学的问题直接问出来'}
                 description={inProjectContext
-                  ? '这条新会话已归入当前篇目。'
+                  ? '这条新会话已归入当前项目。'
                   : conversationId
                     ? '继续追问会保留在当前会话中。'
-                    : '提到具体篇目时，系统会自动归入对应篇目；无法识别时会保存到其他会话。'}
+                    : '提到具体学习主题时，系统会自动归入对应项目；无法识别时会保存到其他会话。'}
                 action={(
                   <div className="flex flex-wrap justify-center gap-2">
                     {promptChips.map((chip) => (
@@ -667,7 +667,7 @@ export function StudentChatClient({
                 <BookOpen className={cn('mr-2 inline size-4', assignmentNotice.kind === 'project' ? 'text-primary' : 'text-muted-foreground')} aria-hidden="true" />
                 {assignmentNotice.kind === 'project'
                   ? `已归入《${assignmentNotice.title}》。`
-                  : '暂未识别到具体篇目，已保存到其他会话。'}
+                  : '暂未识别到具体归属，已保存到其他会话。'}
               </div>
             ) : null}
             {status === 'submitted' ? (
@@ -692,7 +692,7 @@ export function StudentChatClient({
           value={composerValue}
           onChange={setInput}
           onSubmit={submit}
-          placeholder="直接输入你的古诗文问题…（Enter 发送，Shift+Enter 换行）"
+          placeholder="直接输入你的问题…（Enter 发送，Shift+Enter 换行）"
           disabled={uploading || Boolean(blocked)}
           inputDisabled={uploading || conversationLocked}
           blockedReason={blocked}
