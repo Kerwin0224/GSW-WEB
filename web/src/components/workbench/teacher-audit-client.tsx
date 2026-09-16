@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { MarkdownContent } from '@/components/workbench/markdown-content';
 import { EmptyState } from '@/components/workbench/state-surfaces';
+import { Pagination } from '@/components/workbench/pagination';
 import type { AuditQueueRecord, TeacherAuditMessage } from '@/lib/data/teacher';
 import { finalizeLearningConversation, reviseLearningRecord, runConversationPreReview, type AuditSubmissionState } from '@/lib/data/teacher-actions';
 import { cn } from '@/lib/utils';
@@ -247,10 +248,17 @@ function InlineAssistantEditor({ record, message }: { record: AuditQueueRecord; 
   );
 }
 
-export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] }) {
+export function TeacherAuditClient({ records, total, pendingTotal, page, pageSize, status }: {
+  records: AuditQueueRecord[];
+  total: number;
+  pendingTotal: number;
+  page: number;
+  pageSize: number;
+  status: 'pending' | 'all';
+}) {
   const [selectedId, setSelectedId] = useState('');
   const selected = records.find((record) => record.id === selectedId);
-  const { issueCount, pendingCount, finalizedCount, revisedCount, classCount, studentCount, projectCount, sessionCount, assistantCount, groupedRecords } = useMemo(() => {
+  const { issueCount, revisedCount, classCount, studentCount, projectCount, assistantCount, groupedRecords } = useMemo(() => {
     const groups = new Map<string, Map<string, Map<string, AuditQueueRecord[]>>>();
     for (const record of records) {
       const studentGroups = groups.get(record.classLabel) ?? new Map<string, Map<string, AuditQueueRecord[]>>();
@@ -275,13 +283,12 @@ export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] })
 
     return {
       issueCount: records.reduce((sum, record) => sum + record.preReviewIssues.length, 0),
-      pendingCount: records.filter((record) => !record.conversationFinalized).length,
-      finalizedCount: records.filter((record) => record.conversationFinalized).length,
       revisedCount: records.filter((record) => record.revisedAssistantCount > 0).length,
+      // 班级/学生/篇目数按当前页统计：分页后这是"本页覆盖范围"，不是全局口径，
+      // 文案里必须说清，否则又是一个"看起来是总数其实不是"的误导。
       classCount: new Set(records.map((record) => record.classId ?? record.classLabel)).size,
       studentCount: new Set(records.map((record) => record.studentName)).size,
       projectCount: new Set(records.map((record) => record.projectTitle)).size,
-      sessionCount: records.length,
       assistantCount: records.reduce((sum, record) => sum + record.assistantCount, 0),
       groupedRecords,
     };
@@ -358,6 +365,16 @@ export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] })
             ))
           )}
         </div>
+        {/* 待核实队列必须可分页：此前固定只显示最新 30 个会话，且截断早于状态推导，
+            已核实的会话会把未核实的挤出去，教师以为审完了。 */}
+        <Pagination
+          className="mt-4 border-t border-border/60 pt-4"
+          page={page}
+          pageSize={pageSize}
+          total={status === 'pending' ? pendingTotal : total}
+          itemLabel="个会话"
+          buildHref={(target) => `/teacher/audit?${new URLSearchParams({ ...(status === 'all' ? { status } : {}), ...(target > 1 ? { page: String(target) } : {}) }).toString()}`}
+        />
       </aside>
 
       <main className="min-w-0 overflow-y-auto p-4 xl:h-full xl:min-h-0 xl:p-6" aria-label="完整会话记录">
@@ -452,37 +469,34 @@ export function TeacherAuditClient({ records }: { records: AuditQueueRecord[] })
                 <p className="text-sm text-muted-foreground">从左侧选班级，再进入学生和会话。选中会话后，右侧会显示完整对话和核实操作。</p>
               </CardHeader>
               <CardContent className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
+                {/* 待核实是全局口径（不受分页影响）；其余按当前页统计，文案标明"本页"。 */}
                 <div className="rounded-xl border border-primary/20 bg-primary/6 p-4 shadow-soft">
-                  <p className="text-sm text-muted-foreground">待提交会话</p>
-                  <p className="mt-2 text-3xl font-semibold tracking-tight text-primary">{pendingCount}</p>
+                  <p className="text-sm text-muted-foreground">待核实会话</p>
+                  <p className="mt-2 text-3xl font-semibold tracking-tight text-primary">{pendingTotal}</p>
                 </div>
                 <div className="rounded-xl border border-border/65 bg-background/78 p-4 shadow-soft">
-                  <p className="text-sm text-muted-foreground">已提交会话</p>
-                  <p className="mt-2 text-3xl font-semibold tracking-tight">{finalizedCount}</p>
+                  <p className="text-sm text-muted-foreground">本页会话</p>
+                  <p className="mt-2 text-3xl font-semibold tracking-tight">{records.length}</p>
                 </div>
                 <div className="rounded-xl border border-border/65 bg-background/78 p-4 shadow-soft">
-                  <p className="text-sm text-muted-foreground">含修订会话</p>
+                  <p className="text-sm text-muted-foreground">本页含修订</p>
                   <p className="mt-2 text-3xl font-semibold tracking-tight">{revisedCount}</p>
                 </div>
                 <div className="rounded-xl border border-border/65 bg-background/78 p-4 shadow-soft">
-                  <p className="text-sm text-muted-foreground">AI 回答</p>
+                  <p className="text-sm text-muted-foreground">本页 AI 回答</p>
                   <p className="mt-2 text-3xl font-semibold tracking-tight">{assistantCount}</p>
                 </div>
                 <div className="rounded-xl border border-border/65 bg-background/78 p-4 shadow-soft">
-                  <p className="text-sm text-muted-foreground">班级</p>
+                  <p className="text-sm text-muted-foreground">本页班级</p>
                   <p className="mt-2 text-3xl font-semibold tracking-tight">{classCount}</p>
                 </div>
                 <div className="rounded-xl border border-border/65 bg-background/78 p-4 shadow-soft">
-                  <p className="text-sm text-muted-foreground">学生</p>
+                  <p className="text-sm text-muted-foreground">本页学生</p>
                   <p className="mt-2 text-3xl font-semibold tracking-tight">{studentCount}</p>
                 </div>
                 <div className="rounded-xl border border-border/65 bg-background/78 p-4 shadow-soft">
-                  <p className="text-sm text-muted-foreground">篇目</p>
+                  <p className="text-sm text-muted-foreground">本页篇目</p>
                   <p className="mt-2 text-3xl font-semibold tracking-tight">{projectCount}</p>
-                </div>
-                <div className="rounded-xl border border-border/65 bg-background/78 p-4 shadow-soft">
-                  <p className="text-sm text-muted-foreground">会话</p>
-                  <p className="mt-2 text-3xl font-semibold tracking-tight">{sessionCount}</p>
                 </div>
               </CardContent>
             </Card>

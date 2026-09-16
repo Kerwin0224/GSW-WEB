@@ -23,10 +23,12 @@ export default async function TeacherChatPage() {
   }
 
   const analytics = analyticsResult.data;
-  const auditRecords = auditResult.ok ? auditResult.data : [];
-  const pendingRecords = auditRecords.filter((record) => !record.conversationFinalized);
-  const auditWorkload = auditResult.ok ? pendingRecords.length : analytics.auditWorkload;
-  const reviewedCount = auditResult.ok ? auditRecords.filter((record) => record.conversationFinalized).length : analytics.reviewedCount;
+  // 看板只要"待办概览"，取第一页即可；精确的待核实总数用队列返回的 pendingTotal，
+  // 不受分页影响——这修掉了此前"只看得到 30 条、其余静默丢失"的问题。
+  const auditPage = auditResult.ok ? auditResult.data : null;
+  const pendingRecords = auditPage?.records ?? [];
+  const auditWorkload = auditPage ? auditPage.pendingTotal : analytics.auditWorkload;
+  const reviewedCount = analytics.reviewedCount;
   const highRiskRecords = pendingRecords.filter((record) => record.preReviewIssues.length > 0).slice(0, 3);
   const classSummaries = Array.from(pendingRecords.reduce((groups, record) => {
     const current = groups.get(record.classLabel) ?? { classLabel: record.classLabel, pending: 0, risk: 0, latest: record.createdAt };

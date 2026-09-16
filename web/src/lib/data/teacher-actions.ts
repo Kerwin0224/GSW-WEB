@@ -74,11 +74,12 @@ type SourceContext = {
 };
 
 type ConversationContext = {
-  conversation: { id: string; class_id: string | null; project_id: string | null; source: string; title: string | null };
+  conversation: { id: string; class_id: string | null; project_id: string | null; source: string; title: string | null; finalized_at: string | null };
   classId: string;
   transcript: Array<{ id: string; role: 'user' | 'assistant' | 'system' | 'tool'; content: string; created_at: string }>;
   auditRows: AuditRow[];
 };
+
 
 function isFinalizedMaterializedReview(row: AuditRow) {
   return (row.kind === 'sft' || row.kind === 'dpo')
@@ -131,8 +132,9 @@ function resolveOriginalAnswer(sourceContent: string, sourceAudits: AuditRow[]) 
   return materializedOriginal ?? sourceContent.trim();
 }
 
-function isConversationFinalized(audits: AuditRow[]) {
-  return audits.some((audit) => audit.kind === 'metadata' && isApprovedAudit(audit) && metadataAction(audit) === 'conversation_finalized');
+/** 会话是否已核实：读 conversations.finalized_at 列，不再扫 audit_records 的 JSON。 */
+function isConversationFinalized(finalizedAt: string | null | undefined) {
+  return Boolean(finalizedAt);
 }
 
 function nearestPrompt(transcript: ConversationContext['transcript'], sourceMessageId: string) {
@@ -145,7 +147,7 @@ async function getConversationContext(conversationId: string, teacherId: string)
   const supabase = await createClient();
   const { data: conversation, error: conversationError } = await supabase
     .from('conversations')
-    .select('id,class_id,project_id,source,title')
+    .select('id,class_id,project_id,source,title,finalized_at')
     .eq('id', conversationId)
     .eq('source', 'student_chat')
     .is('deleted_at', null)
@@ -212,7 +214,7 @@ async function getSourceContext(sourceMessageId: string, teacherId: string): Pro
   const supabase = await createClient();
   const { data: source, error: sourceError } = await supabase
     .from('conversation_messages')
-    .select('id,conversation_id,content,created_at,parts,conversations!inner(class_id,project_id,source,deleted_at)')
+    .select('id,conversation_id,content,created_at,parts,conversations!inner(class_id,project_id,source,deleted_at,finalized_at)')
     .eq('id', sourceMessageId)
     .eq('role', 'assistant')
     .is('conversations.deleted_at', null)
@@ -289,7 +291,7 @@ async function getSourceContext(sourceMessageId: string, teacherId: string): Pro
       originalAnswer,
       currentAnswer: source.content.trim(),
       reviewState: resolveReviewState(reviewedAudits),
-      conversationFinalized: isConversationFinalized(conversationAudits),
+      conversationFinalized: isConversationFinalized(conversation.finalized_at),
     },
   };
 }
@@ -528,8 +530,8 @@ export async function runConversationPreReview(conversationId: string, _previous
 
   const contextResult = await getConversationContext(conversationId, role.data.id);
   if (!contextResult.ok) return { ok: false, message: contextResult.message };
-  if (isConversationFinalized(contextResult.data.auditRows)) {
-    return { ok: true, message: '这个会话已经完成最终核实提交，无需重复发起 AI 辅助审计。' };
+  if (isConversationFinalized(contextResult.data.conversation.finalized_at)) {
+    return { ok: true, message: '这个会话已经完成最终核实提交，无需重复发起 AI 预审。' };
   }
 
   const assistantMessages = contextResult.data.transcript.filter((row) => row.role === 'assistant');
@@ -594,7 +596,8 @@ export async function finalizeLearningConversation(conversationId: string, _prev
   const contextResult = await getConversationContext(conversationId, role.data.id);
   if (!contextResult.ok) return { ok: false, message: contextResult.message };
   const { conversation, classId, transcript, auditRows } = contextResult.data;
-  if (isConversationFinalized(auditRows)) {
+  // 已核实判定读列（状态真源），不再扫 audit_records 的 JSON。
+  if (isConversationFinalized(conversation.finalized_at)) {
     return { ok: true, message: '这个会话已经完成最终核实提交，学生侧不能继续追问。' };
   }
 
@@ -717,7 +720,18 @@ export async function finalizeLearningConversation(conversationId: string, _prev
     }
   }
 
-  const { error: finalizeError } = await supabase.from('audit_records').insert({
+  // 状态真源：写会话列。此后所有读者（学生继续追问、教师队列、导出）都读这一列，
+  // 不再扫 audit_records 的 JSON 推导「是否已核实」。
+  // 带 deleted_at 过滤是产品硬约束：学生已删除的会话不进入核实，也不能被标记为已核实。
+  const { error: finalizeError } = await supabase
+    .from('conversations')
+    .update({ finalized_at: now })
+    .eq('id', conversation.id)
+    .is('deleted_at', null);
+  if (finalizeError) return { ok: false, message: `会话核实状态写入失败：${finalizeError.message}` };
+
+  // 审计事件：记录本次提交的计数，供导出与追溯。不承担状态判定职责。
+  const { error: auditEventError } = await supabase.from('audit_records').insert({
     source_message_id: latestAssistant.id,
     source_conversation_id: conversation.id,
     auditor_id: role.data.id,
@@ -739,7 +753,7 @@ export async function finalizeLearningConversation(conversationId: string, _prev
     },
   });
 
-  if (finalizeError) return { ok: false, message: `会话级最终提交保存失败：${finalizeError.message}` };
+  if (auditEventError) return { ok: false, message: `会话级最终提交保存失败：${auditEventError.message}` };
 
   await broadcastStudentConversationUpdate(supabase, conversation.id, {
     kind: 'conversation_finalized',

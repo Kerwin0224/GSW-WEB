@@ -1,22 +1,15 @@
 import type { UIMessage } from 'ai';
 import { canonicalizeUiMessageParts } from '@/lib/chat-message-parts';
 import { createClient } from '@/lib/supabase/server';
-import { containsPreReviewQuote, isPreReviewResultChecked, normalizePreReviewIssuesForMessage, type NormalizedPreReviewIssue } from '@/lib/teacher-pre-review';
+import { isPreReviewResultChecked, normalizePreReviewIssuesForMessage, type NormalizedPreReviewIssue } from '@/lib/teacher-pre-review';
 import { fail, getCapability, ok, requireRole, type DataResult } from './common';
 import type { Database } from '@/lib/supabase/database.types';
 import {
   asMetadataObject,
   firstJoined,
-  isApprovedAudit,
-  isRevisionDraft,
-  latestMaterializedReview,
   latestMetadataByAction,
-  latestRevisionDraft,
-  metadataAction,
-  metadataText,
   resolveRevisionDisplay,
   resolveReviewState,
-  reviewTimestamp,
   type AuditRowBase,
   type ReviewState,
 } from './audit-record';
@@ -27,11 +20,8 @@ export type TeacherWorkspace = { presets: Database['public']['Tables']['prompt_p
 export type TeacherAnalytics = {
   assignedClasses: number;
   auditWorkload: number;
-  studentsWaitingChallenge: number;
   reviewedCount: number;
   weeklyAuditCoverage: { coveragePercent: number; audited: number; pending: number; eligible: number };
-  stuckStudents: Array<{ studentId: string; studentName: string; className: string; lowLevelAttempts: number; attempts: number; auditHref: string }>;
-  weakProjects: Array<{ projectId: string; title: string; className: string; notAchieved: number; attempts: number; weakRate: number; auditHref: string }>;
 };
 export type TeacherPreReviewIssue = { messageId: string; quote: string; label: string; severity: 'low' | 'medium' | 'high' };
 export type { ReviewState } from './audit-record';
@@ -74,17 +64,6 @@ export type AuditQueueRecord = {
   riskAssistantCount: number;
 };
 
-type ConversationJoin = {
-  class_id: string | null;
-  project_id: string | null;
-  source: string;
-  title?: string | null;
-  deleted_at?: string | null;
-  profiles?: { display_name?: string | null } | Array<{ display_name?: string | null }>;
-  text_projects?: { title?: string | null } | Array<{ title?: string | null }>;
-  classes?: { name?: string | null } | Array<{ name?: string | null }>;
-};
-
 type ReviewAuditRow = AuditRowBase & {
   source_message_id?: string | null;
   source_conversation_id?: string | null;
@@ -98,14 +77,6 @@ type ConversationSummaryRow = {
   conversation_messages?: Array<{ id: string }> | null;
 };
 type ConversationMessageRow = Pick<Database['public']['Tables']['conversation_messages']['Row'], 'id' | 'role' | 'content' | 'parts'>;
-
-type CandidateRow = {
-  id: string;
-  conversation_id: string;
-  content: string;
-  created_at: string;
-  conversations?: ConversationJoin | ConversationJoin[];
-};
 
 function parseStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
@@ -356,57 +327,89 @@ export async function getTeacherConversation(conversationId: string): Promise<Da
   });
 }
 
-export async function getTeacherAuditQueue(): Promise<DataResult<AuditQueueRecord[]>> {
+export type TeacherAuditQueueStatus = 'pending' | 'all';
+export type TeacherAuditQueueOptions = { page?: number; pageSize?: number; status?: TeacherAuditQueueStatus };
+export type TeacherAuditQueuePage = {
+  records: AuditQueueRecord[];
+  /** 当前筛选下的会话总数（不受分页影响）。 */
+  total: number;
+  /** 待核实会话总数（不受筛选/分页影响）。 */
+  pendingTotal: number;
+  page: number;
+  pageSize: number;
+  status: TeacherAuditQueueStatus;
+};
+
+/**
+ * 教师学习记录核实队列。
+ *
+ * 第一性：队列的主体是**会话**，不是消息。此前按消息查询（limit 500）→ 在 JS 里推导
+ * 会话状态 → 最后 slice(0,30)，而截断发生在推导之前：已核实的会话照样占满名额，
+ * 未核实的被静默丢弃，界面还显示「暂无待审核」。核实是要担责的队列，不能丢数据。
+ *
+ * 现在：未核实过滤（finalized_at is null）在 SQL 完成，分页在 SQL 完成，计数精确。
+ * 只有「详情」部分（逐条消息与预审疑点）才按当前页的会话 id 拉取。
+ */
+export async function getTeacherAuditQueue(options: TeacherAuditQueueOptions = {}): Promise<DataResult<TeacherAuditQueuePage>> {
   const role = await requireRole('teacher');
   if (!role.ok) return role;
 
   const classScope = await getTeacherClassIds(role.data.id);
   if (!classScope.ok) return fail('error', classScope.message);
-  if (classScope.classIds.length === 0) return ok([]);
+
+  const page = Math.max(1, options.page ?? 1);
+  const pageSize = Math.min(100, Math.max(1, options.pageSize ?? 20));
+  const status: TeacherAuditQueueStatus = options.status ?? 'pending';
+  if (classScope.classIds.length === 0) return ok({ records: [], total: 0, pendingTotal: 0, page, pageSize, status });
 
   const supabase = await createClient();
-  const [messageResult, auditCap] = await Promise.all([
-    supabase
-      .from('conversation_messages')
-      .select('id,conversation_id,content,created_at,conversations!inner(class_id,project_id,source,title,deleted_at,profiles(display_name),text_projects(title),classes(name))')
-      .eq('role', 'assistant')
-      .is('conversations.deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(500),
+  const countScoped = (pendingOnly: boolean) => {
+    const query = supabase
+      .from('conversations')
+      .select('id', { count: 'exact', head: true })
+      .in('class_id', classScope.classIds)
+      .eq('source', 'student_chat')
+      .is('deleted_at', null)
+      .not('project_id', 'is', null);
+    return pendingOnly ? query.is('finalized_at', null) : query;
+  };
+
+  let queueQuery = supabase
+    .from('conversations')
+    .select('id,title,class_id,project_id,updated_at,finalized_at,profiles(display_name),text_projects(title),classes(name)', { count: 'exact' })
+    .in('class_id', classScope.classIds)
+    .eq('source', 'student_chat')
+    .is('deleted_at', null)
+    .not('project_id', 'is', null)
+    .order('updated_at', { ascending: false });
+  if (status === 'pending') queueQuery = queueQuery.is('finalized_at', null);
+
+  const [queueResult, pendingResult, auditCap] = await Promise.all([
+    queueQuery.range((page - 1) * pageSize, page * pageSize - 1),
+    countScoped(true),
     getCapability('audit_assist'),
   ]);
-  if (messageResult.error) return fail('error', `学习记录核实加载失败：${messageResult.error.message}`);
+  if (queueResult.error) return fail('error', `学习记录核实加载失败：${queueResult.error.message}`);
+  if (pendingResult.error) return fail('error', `待核实数量统计失败：${pendingResult.error.message}`);
 
-  const scopedRows = ((messageResult.data ?? []) as CandidateRow[])
-    .filter((row) => {
-      const conversation = firstJoined(row.conversations);
-      return Boolean(
-        conversation?.class_id
-        && classScope.classIds.includes(conversation.class_id)
-        && conversation.source === 'student_chat'
-        && conversation.project_id
-        && conversation.deleted_at === null,
-      );
-    });
+  type QueueConversationRow = {
+    id: string;
+    title: string | null;
+    class_id: string | null;
+    project_id: string | null;
+    updated_at: string;
+    finalized_at: string | null;
+    profiles: { display_name: string | null } | Array<{ display_name: string | null }> | null;
+    text_projects: { title: string | null } | Array<{ title: string | null }> | null;
+    classes: { name: string | null } | Array<{ name: string | null }> | null;
+  };
 
-  const rowsByConversation = new Map<string, CandidateRow[]>();
-  for (const row of scopedRows) {
-    const rows = rowsByConversation.get(row.conversation_id) ?? [];
-    rows.push(row);
-    rowsByConversation.set(row.conversation_id, rows);
-  }
+  const conversationRows = (queueResult.data ?? []) as QueueConversationRow[];
+  const total = queueResult.count ?? 0;
+  const pendingTotal = pendingResult.count ?? 0;
+  if (conversationRows.length === 0) return ok({ records: [], total, pendingTotal, page, pageSize, status });
 
-  const candidateConversations = Array.from(rowsByConversation.entries())
-    .map(([conversationId, rows]) => {
-      const sortedRows = [...rows].sort((left, right) => right.created_at.localeCompare(left.created_at));
-      return { conversationId, latestRow: sortedRows[0] };
-    })
-    .sort((left, right) => right.latestRow.created_at.localeCompare(left.latestRow.created_at))
-    .slice(0, 30);
-
-  if (candidateConversations.length === 0) return ok([]);
-
-  const conversationIds = candidateConversations.map((conversation) => conversation.conversationId);
+  const conversationIds = conversationRows.map((row) => row.id);
   const [transcriptResult, auditResult] = await Promise.all([
     supabase
       .from('conversation_messages')
@@ -447,13 +450,17 @@ export async function getTeacherAuditQueue(): Promise<DataResult<AuditQueueRecor
 
   const auditBlocked = auditCap.ok && auditCap.data.ready ? undefined : auditCap.ok ? auditCap.data.blockedReason : auditCap.message;
 
-  const records = candidateConversations.map(({ conversationId, latestRow }) => {
-    const rawTranscript = transcriptByConversation.get(conversationId) ?? [];
-    const conversationAudits = auditsByConversation.get(conversationId) ?? [];
-    const assistantIds = new Set(rawTranscript.filter((item) => item.role === 'assistant').map((item) => item.id));
-    const assistantMessages = rawTranscript.filter((item) => item.role === 'assistant').map((item) => ({ id: item.id, content: item.content }));
+  const records = conversationRows.flatMap((row) => {
+    const rawTranscript = transcriptByConversation.get(row.id) ?? [];
+    const assistantTranscript = rawTranscript.filter((item) => item.role === 'assistant');
+    // 没有 AI 回答的会话不在核实范围内（无处可核），跳过而非占位。
+    if (assistantTranscript.length === 0) return [];
+
+    const latestAssistant = assistantTranscript[assistantTranscript.length - 1];
+    const conversationAudits = auditsByConversation.get(row.id) ?? [];
+    const assistantIds = new Set(assistantTranscript.map((item) => item.id));
+    const assistantMessages = assistantTranscript.map((item) => ({ id: item.id, content: item.content }));
     const preReviewRow = latestMetadataByAction(conversationAudits, 'conversation_pre_review');
-    const finalizedRow = latestMetadataByAction(conversationAudits, 'conversation_finalized');
     const parsedPreReview = parsePreReview(preReviewRow, assistantMessages);
     const preReviewIssues = parsedPreReview.issues;
     const issuesByMessage = new Map<string, TeacherPreReviewIssue[]>();
@@ -463,12 +470,12 @@ export async function getTeacherAuditQueue(): Promise<DataResult<AuditQueueRecor
       issuesByMessage.set(issue.messageId, issues);
     }
 
-    const assistantStates = rawTranscript
-      .filter((item) => item.role === 'assistant')
-      .map((item) => ({ id: item.id, reviewState: resolveReviewState(auditsByMessage.get(item.id)) }));
+    const assistantStates = assistantTranscript.map((item) => ({ id: item.id, reviewState: resolveReviewState(auditsByMessage.get(item.id)) }));
     const revisedAssistantCount = assistantStates.filter((item) => item.reviewState === 'revised').length;
-    const pendingAssistantCount = finalizedRow ? 0 : assistantStates.length;
-    const conversationReviewState: ReviewState = finalizedRow
+    // 会话是否已核实，读列而不是扫 audit_records 的 JSON。
+    const conversationFinalized = row.finalized_at !== null;
+    const pendingAssistantCount = conversationFinalized ? 0 : assistantStates.length;
+    const conversationReviewState: ReviewState = conversationFinalized
       ? revisedAssistantCount > 0 ? 'revised' : 'confirmed'
       : 'pending';
     const preReviewMetadata = asMetadataObject(preReviewRow?.metadata);
@@ -496,48 +503,45 @@ export async function getTeacherAuditQueue(): Promise<DataResult<AuditQueueRecor
       };
     });
 
-    const latestAssistantIndex = transcript.findIndex((item) => item.id === latestRow.id);
+    const latestAssistantIndex = transcript.findIndex((item) => item.id === latestAssistant.id);
     const prompt = latestAssistantIndex <= 0
       ? '源问题未返回；请先核对完整对话再确认。'
       : [...transcript.slice(0, latestAssistantIndex)].reverse().find((item) => item.role === 'user')?.content ?? '源问题未返回；请先核对完整对话再确认。';
-    const conversation = firstJoined(latestRow.conversations);
-    const profile = firstJoined(conversation?.profiles);
-    const project = firstJoined(conversation?.text_projects);
-    const klass = firstJoined(conversation?.classes);
+    const profile = firstJoined(row.profiles);
+    const project = firstJoined(row.text_projects);
+    const klass = firstJoined(row.classes);
 
-    const finalizedMetadata = asMetadataObject(finalizedRow?.metadata);
-    return {
-      id: conversationId,
-      conversationId,
-      sourceMessageId: latestRow.id,
+    return [{
+      id: row.id,
+      conversationId: row.id,
+      sourceMessageId: latestAssistant.id,
       prompt,
-      answer: latestRow.content,
-      classId: conversation?.class_id ?? null,
+      answer: latestAssistant.content,
+      classId: row.class_id,
       classLabel: klass?.name?.trim() || '未命名班级',
-      studentName: profile?.display_name ?? '学生',
-      projectTitle: project?.title ?? '未关联篇目',
-      sessionLabel: conversation?.title?.trim() || `会话 ${conversationId.slice(0, 8)}`,
-      createdAt: latestRow.created_at,
+      studentName: profile?.display_name?.trim() || '未命名学生',
+      projectTitle: project?.title?.trim() || '未关联篇目',
+      sessionLabel: row.title?.trim() || `会话 ${row.id.slice(0, 8)}`,
+      createdAt: latestAssistant.created_at,
       transcript,
       preReviewIssues,
       preReviewState,
-      preReviewBlocked: preReviewState === 'blocked' ? auditBlocked : preReviewState === 'failed' ? String(preReviewMetadata.error ?? 'AI 辅助审计失败，请手动重新发起。') : undefined,
+      preReviewBlocked: preReviewState === 'blocked' ? auditBlocked : preReviewState === 'failed' ? String(preReviewMetadata.error ?? 'AI 预审失败，请手动重新发起。') : undefined,
       reviewState: conversationReviewState,
-      conversationFinalized: Boolean(finalizedRow),
-      finalizedAt: typeof finalizedMetadata.finalized_at === 'string' ? finalizedMetadata.finalized_at : finalizedRow ? reviewTimestamp(finalizedRow) : undefined,
+      conversationFinalized,
+      finalizedAt: row.finalized_at ?? undefined,
       assistantCount: assistantStates.length,
       preReviewCoveredMessageCount,
       pendingAssistantCount,
       revisedAssistantCount,
       riskAssistantCount: new Set(preReviewIssues.map((issue) => issue.messageId)).size,
-    } satisfies AuditQueueRecord;
-  }).sort((left, right) => {
-    if (left.conversationFinalized !== right.conversationFinalized) return left.conversationFinalized ? 1 : -1;
-    if (left.riskAssistantCount !== right.riskAssistantCount) return right.riskAssistantCount - left.riskAssistantCount;
-    return right.createdAt.localeCompare(left.createdAt);
+    } satisfies AuditQueueRecord];
   });
+  // 不再在 JS 里重排：分页由 SQL 决定（updated_at desc），
+  // 页内再按风险重排会让"第 1 页 / 第 2 页"的边界看起来是乱的。
+  // 待核实过滤（finalized_at is null）已在 SQL 完成，风险排序留给后续需要时再下推到 SQL。
 
-  return ok(records);
+  return ok({ records, total, pendingTotal, page, pageSize, status });
 }
 
 export async function getTeacherAnalytics(): Promise<DataResult<TeacherAnalytics>> {
@@ -601,10 +605,7 @@ export async function getTeacherAnalytics(): Promise<DataResult<TeacherAnalytics
   return ok({
     assignedClasses: classCount ?? 0,
     auditWorkload: auditStates.filter((row) => row.reviewState === 'pending').length,
-    studentsWaitingChallenge: 0,
     reviewedCount: reviewed.length,
     weeklyAuditCoverage: { coveragePercent, audited, pending, eligible },
-    stuckStudents: [] as Array<{ studentId: string; studentName: string; className: string; lowLevelAttempts: number; attempts: number; auditHref: string }>,
-    weakProjects: [] as Array<{ projectId: string; title: string; className: string; notAchieved: number; attempts: number; weakRate: number; auditHref: string }>,
   });
 }
