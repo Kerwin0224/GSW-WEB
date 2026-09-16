@@ -22,20 +22,36 @@ GitHub 是唯一 hub：代码和 schema 都从提交流出，Vercel 和 Supabase
    生成后必须改名成当前本地时间：`mv <生成名> "$(date '+%Y%m%d%H%M%S')_<名称>.sql"`，
    然后确认 `ls supabase/migrations | sort | tail -1` 就是它。
 
-2. **在云端验证，不起本地栈**（本机不维护本地 Supabase 容器栈）：
+2. **在云端验证，不起本地栈**（本机不维护本地 Supabase 容器栈）。
+
+   CLI 的 `--linked` 系列命令走 **Management API**，只需要平台 access token
+   （`~/.supabase/access-token`，本机已登录），**不需要 DB 密码、不需要 Docker、不必开 Studio**：
 
    | 要验什么 | 怎么做 |
    | --- | --- |
-   | 迁移会被推送、依赖顺序对 | `supabase db push --dry-run --linked`（官方文档：只跑只读 SELECT，不做任何变更） |
-   | 本地迁移与云端 schema 的差异 | `supabase db diff --linked` |
-   | **RLS 求值、触发器、`RETURNING` 策略这些运行时行为** | Supabase Studio 的 SQL Editor，把迁移包在 `begin;` … `rollback;` 里执行 |
+   | 迁移会不会被推送、依赖顺序对不对 | `supabase db push --dry-run --linked`（只跑只读 SELECT，不做变更） |
+   | 本地与云端的迁移历史差异 | `supabase migration list --linked` |
+   | **RLS 求值、触发器、`RETURNING` 策略这些运行时行为** | `supabase db query --linked -f <探针.sql>` —— 真跑 SQL |
+   | Supabase 官方的安全/性能体检 | `supabase db advisors --linked --type all --level warn` |
+   | schema / plpgsql 静态错误 | `supabase db lint --linked` |
 
-   前两条都需要平台 access token（`supabase login` 或 `SUPABASE_ACCESS_TOKEN`）。
-   第三条不需要凭据，浏览器里就能做。
+   ⚠️ **`--dry-run` 不执行 SQL**，抓不到求值期错误——策略互相内联子查询造成的
+   `infinite recursion detected in policy`、`INSERT … RETURNING` 被 SELECT 策略按语句
+   开始时的快照误拒，这两类只有真跑一条语句才会暴露。**不要拿它当运行时验证。**
 
-   ⚠️ **`--dry-run` 与 `db diff` 都不执行 SQL**，抓不到求值期错误——策略互相内联子查询
-   造成的 `infinite recursion detected in policy`、`INSERT … RETURNING` 被 SELECT 策略
-   按语句开始时的快照误拒，这两类只有真跑一条语句才会暴露。不要拿它们当运行时验证。
+   `supabase db diff --linked` **本机用不了**：它要起 shadow 库，会挂在 Docker 上
+   （`--use-pg-delta` 也一样）。同理，declarative schemas（`db diff -f` 生成迁移）
+   在不起本地栈的前提下也用不了，迁移只能手写。
+
+   `db query -f` 的两个行为差异，写探针时必须知道：
+
+   - **只回最后一条语句的结果集**，中间的 `select` 与 `raise notice` 都不显示。
+     所以探针要把结论写进 GUC（`set_config`），末尾用一条 `select … union all …` 汇总。
+   - 探针里**不要用临时表**承接中间结果：临时表要额外 grant 给 anon，而 temp schema
+     的名字（`pg_temp_43`）每个会话都不同，按 `pg_temp.x` 授权不生效，anon 一读就 42501。
+
+   现成范例见 `.scratch/multi-space-tenancy/verify-live.sql`：真身份模拟（`request.headers`
+   注入合法 HMAC 签名 + `set local role anon`）、构造第二租户夹具、末尾 `rollback`。
 
 3. 类型：`src/lib/supabase/database.types.ts` 是**手写维护**的（没有 `Relationships` 键、
    `Views` 是占位、含中文业务注释与自定义别名如 `AppRole`/`Vector`/`AvatarKey`）。
