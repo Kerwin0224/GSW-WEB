@@ -1,4 +1,4 @@
--- 回滚存档：20260916044041 之前的 rebuild_scenario_provider_capabilities 原文
+-- 回滚存档：20260916132900 之前的 rebuild_scenario_provider_capabilities 原文
 --
 -- 为什么要存：那个迁移把 rebuild 改成「按作用域分层」，而 rebuild 会 DELETE 再 INSERT
 -- 7 行派生的 provider_capabilities —— 产出为空就是**所有模型调用 503**。

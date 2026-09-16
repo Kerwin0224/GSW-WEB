@@ -207,7 +207,7 @@ create view public.text_projects with (security_invoker = true) as
 grant select, insert, update, delete on public.text_projects to anon, authenticated, service_role;
 
 comment on view public.text_projects is
-  '过渡兼容视图（20260916044039 起）：让改名迁移与代码部署之间的窗口不打断现网。'
+  '过渡兼容视图（20260916132700 起）：让改名迁移与代码部署之间的窗口不打断现网。'
   '新代码一律用 public.projects；本视图由后续一次迁移删除。';
 
 -- ── 6. 自检 ─────────────────────────────────────────────────────────────────
