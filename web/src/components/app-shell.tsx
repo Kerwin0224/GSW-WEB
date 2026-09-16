@@ -44,7 +44,7 @@ function derivedBreadcrumbs(pathname: string, fallback: BreadcrumbSegment[]) {
   if (exact && exact !== root.label) return [root, { label: exact }];
 
   if (pathname.startsWith('/teacher/audit/')) {
-    return [root, { label: '回答审核', href: '/teacher/audit' }, { label: '审核详情' }];
+    return [root, { label: '学习记录核实', href: '/teacher/audit' }, { label: '会话详情' }];
   }
 
   return fallback;

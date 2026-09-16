@@ -42,21 +42,21 @@ const CAPABILITY_LABELS: Record<string, string> = {
   student_chat: '学生会话回答',
   teacher_chat: '备课问答',
   bloom_classification: '学生提问类型判断',
-  project_classification: '篇目识别',
+  project_classification: '项目归属',
   practice_generation: '挑战出题',
   practice_evaluation: '挑战评阅',
-  audit_assist: 'AI 初筛',
+  audit_assist: 'AI 预审',
   embedding: '向量嵌入',
 };
 
 const SCENARIO_ROWS = [
   { role: '学生 /student', scenario: 'student_chat', defaultTier: 'flash', impact: '学习提问的即时会话回答' },
   { role: '学生 /student', scenario: 'bloom_classification', defaultTier: 'flash', impact: '标记学生提问类型' },
-  { role: '学生 /student', scenario: 'project_classification', defaultTier: 'flash', impact: '首问篇目识别与篇目归属' },
+  { role: '学生 /student', scenario: 'project_classification', defaultTier: 'flash', impact: '首问项目归属' },
   { role: '学生 /student/challenge', scenario: 'practice_generation', defaultTier: 'flash', impact: '低成本挑战生成' },
   { role: '教师 /teacher/chat', scenario: 'teacher_chat', defaultTier: 'advanced', impact: '备课问答' },
   { role: '挑战评阅', scenario: 'practice_evaluation', defaultTier: 'advanced', impact: '判断挑战是否通过并给出反馈' },
-  { role: '教师 /teacher/audit', scenario: 'audit_assist', defaultTier: 'advanced', impact: '回答审核前的 AI 初筛' },
+  { role: '教师 /teacher/audit', scenario: 'audit_assist', defaultTier: 'advanced', impact: '学习记录核实前的 AI 预审' },
 ] as const satisfies ReadonlyArray<{ role: string; scenario: AdminScenarioTierBinding['scenario']; defaultTier: ModelTier; impact: string }>;
 
 const EMBEDDING_ROW = { role: 'RAG /student', scenario: 'embedding', impact: '项目检索的独立向量嵌入配置' } as const;

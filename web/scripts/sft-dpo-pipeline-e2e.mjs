@@ -337,13 +337,15 @@ async function main() {
     const sftTrace = await seedInteractionTrace({ admin, studentClient, teacher: fixture.teacher, student: fixture.student, classId: fixture.classId, kind: 'sft' });
     const dpoTrace = await seedInteractionTrace({ admin, studentClient, teacher: fixture.teacher, student: fixture.student, classId: fixture.classId, kind: 'dpo' });
 
-    await expectPageContains(`/teacher/audit?message=${sftTrace.assistantMessageId}`, teacherSession, [
+    // 深链按**会话** id（?session=），不是消息 id：核实的对象是整个会话，
+    // 选中态存在 URL 里，所以这条断言同时守住了「教师看板能点到具体会话」这个交互契约。
+    await expectPageContains(`/teacher/audit?session=${sftTrace.conversationId}`, teacherSession, [
       sftTrace.prompt,
       sftTrace.answer,
       sftTrace.title,
-      // 7be6e13 重构后的现行文案（原 '学习记录核实'/'确认无误或修订回答' 已不存在）
-      // '修订回答' 按钮仅在选中会话后的右侧面板渲染，页面直达断言不适用
-      '回答审核',
+      // 教师可见文案对齐 CONTEXT.md：回答审核 → 学习记录核实。
+      '学习记录核实',
+      '修订回答',
     ]);
 
     await postJson('/api/teacher/audit/sft', teacherSession, {

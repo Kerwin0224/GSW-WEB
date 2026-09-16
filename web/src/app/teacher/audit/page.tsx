@@ -1,20 +1,62 @@
+import { Card, CardContent } from '@/components/ui/card';
+import { AuditWorkspace } from '@/components/workbench/audit/audit-workspace';
 import { ErrorState } from '@/components/workbench/state-surfaces';
-import { TeacherAuditClient } from '@/components/workbench/teacher-audit-client';
 import { parsePageParam } from '@/lib/pagination';
-import { getTeacherAuditQueue, type TeacherAuditQueueStatus } from '@/lib/data/teacher';
+import { getTeacherAuditQueue, getTeacherAuditSession, type AuditSessionDetail, type TeacherAuditQueueStatus } from '@/lib/data/teacher';
 
-type AuditPageSearchParams = { page?: string | string[]; status?: string | string[] };
+type AuditPageSearchParams = { page?: string | string[]; status?: string | string[]; session?: string | string[] };
 
-function parseStatus(value: string | string[] | undefined): TeacherAuditQueueStatus {
+function firstParam(value: string | string[] | undefined): string {
   const raw = Array.isArray(value) ? value[0] : value;
-  return raw === 'all' ? 'all' : 'pending';
+  return typeof raw === 'string' ? raw.trim() : '';
 }
 
+function parseStatus(value: string | string[] | undefined): TeacherAuditQueueStatus {
+  return firstParam(value) === 'all' ? 'all' : 'pending';
+}
+
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * 学习记录核实页。
+ *
+ * 选中哪条会话来自 URL（?session=），不是客户端 state —— 这样教师看板上的
+ * 「需优先核实」卡片才能直接点到具体会话，后退键也正常工作。
+ * 列表与详情各自取值：详情只取被选中的那一条，列表不再顺带把整页会话的正文拉回来。
+ */
 export default async function TeacherAuditPage({ searchParams }: { searchParams?: Promise<AuditPageSearchParams> }) {
   const params = await searchParams;
   const page = parsePageParam(params?.page);
   const status = parseStatus(params?.status);
-  const result = await getTeacherAuditQueue({ page, status });
-  if (!result.ok) return <div className="p-6"><ErrorState title="学习记录核实加载失败" description={result.message} /></div>;
-  return <TeacherAuditClient {...result.data} />;
+  const sessionParam = firstParam(params?.session);
+  const sessionId = uuidPattern.test(sessionParam) ? sessionParam : '';
+
+  const queueResult = await getTeacherAuditQueue({ page, status });
+  if (!queueResult.ok) return <div className="p-6"><ErrorState title="学习记录核实加载失败" description={queueResult.message} /></div>;
+
+  let session: AuditSessionDetail | null = null;
+  let sessionError: string | undefined;
+  if (sessionId) {
+    const result = await getTeacherAuditSession(sessionId);
+    if (!result.ok) {
+      sessionError = result.message;
+    } else if (result.data) {
+      session = result.data;
+    } else {
+      // 查不到一律按「打不开」处理，不区分不存在与无权访问，避免探测他人会话。
+      sessionError = '这条会话不在你的班级范围内，或者已被学生删除。';
+    }
+  }
+
+  // 与学生提问空间、教师问答同一套外框：三者都是整屏工作区，看起来该是同一个产品。
+  return (
+    <div className="mx-auto flex min-h-[calc(100svh-4rem)] max-w-[100rem] flex-col px-3 py-3 sm:px-5 lg:h-[calc(100svh-4rem)] lg:overflow-hidden">
+      <Card className="relative flex min-h-0 flex-1 overflow-hidden border-primary/20 bg-card/92 shadow-ink backdrop-blur-xl">
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-accent to-destructive/70" />
+        <CardContent className="flex min-h-0 flex-1 p-0">
+          <AuditWorkspace queue={queueResult.data} session={session} sessionError={sessionError} />
+        </CardContent>
+      </Card>
+    </div>
+  );
 }

@@ -405,7 +405,8 @@ export function TeacherChatClient({
             {error ? <ErrorState title="备课问答响应失败" description={error.message} /> : null}
           </>
         )}
-        composer={(
+        footer={(
+
           <ChatComposer
             value={input}
             onChange={setInput}

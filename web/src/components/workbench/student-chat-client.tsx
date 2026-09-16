@@ -686,7 +686,8 @@ export function StudentChatClient({
               />
             ) : null}
         </>)}
-      composer={(
+      footer={(
+
         <ChatComposer
           value={composerValue}
           onChange={setInput}

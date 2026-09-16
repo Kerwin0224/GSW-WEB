@@ -14,18 +14,23 @@ import { cn } from '@/lib/utils';
  * 这里把骨架收口到一处，且**保留学生端（参考实现）的原始类名**，使教师端在结构上对齐它。
  *
  * 折叠状态由外壳自己持有（按 storageKey 记忆），两端不必再各自管这份 state。
- * 真正不同的业务（篇目树 / 模板面板 / 消息渲染）仍留在各自客户端，通过 slot 传入。
+ * 真正不同的业务（项目树 / 模板面板 / 消息渲染）仍留在各自客户端，通过 slot 传入。
+ *
+ * 四个槽：sidebar / header / messages / footer。footer 是底部动作区——
+ * 两端放输入框（composer），教师学习记录核实放会话级动作条（AI 预审 + 最终提交）。
+ * 槽名不叫 composer，因为它装的不一定是输入框。
  */
 export function ChatWorkspace({
   storageKey,
   sidebarLabel,
+  sidebarWidth = 'default',
   mainLabel,
   sidebarRef,
   sidebarPrimaryAction,
   sidebar,
   header,
   messages,
-  composer,
+  footer,
   scrollRef,
   mobileComposerFirst = false,
 }: {
@@ -33,6 +38,12 @@ export function ChatWorkspace({
   storageKey: string;
   /** 侧栏的 aria-label。 */
   sidebarLabel: string;
+  /**
+   * 侧栏宽度档位。默认档贴合聊天两端（两级层级：项目 → 会话）；
+   * 学习记录核实的队列是四级（班级 → 学生 → 项目 → 会话），缩进更深，需要更宽的一档。
+   * 用档位而不是让调用方传类名：宽度是外壳的职责，散到调用方就没人知道整体版式长什么样。
+   */
+  sidebarWidth?: 'default' | 'wide';
   /** 主区的 aria-label；不传则沿用 sidebarLabel。 */
   mainLabel?: string;
   sidebarRef?: RefObject<HTMLElement | null>;
@@ -41,14 +52,24 @@ export function ChatWorkspace({
   sidebar: ReactNode;
   header: ReactNode;
   messages: ReactNode;
-  composer: ReactNode;
+  /** 底部动作区。不传则整条底栏不渲染（只读视图不需要它）。 */
+  footer?: ReactNode;
   scrollRef?: RefObject<HTMLDivElement | null>;
   mobileComposerFirst?: boolean;
 }) {
   const { collapsed, toggle } = useSidebarCollapse(storageKey);
 
   return (
-    <div className={cn('grid min-h-0 w-full flex-1 bg-background/35 transition-all duration-300', collapsed ? 'lg:grid-cols-[3.5rem_minmax(0,1fr)]' : 'lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[22rem_minmax(0,1fr)]')}>
+    <div
+      className={cn(
+        'grid min-h-0 w-full flex-1 bg-background/35 transition-all duration-300',
+        collapsed
+          ? 'lg:grid-cols-[3.5rem_minmax(0,1fr)]'
+          : sidebarWidth === 'wide'
+            ? 'lg:grid-cols-[22rem_minmax(0,1fr)] xl:grid-cols-[25rem_minmax(0,1fr)]'
+            : 'lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[22rem_minmax(0,1fr)]',
+      )}
+    >
       <aside
         ref={sidebarRef}
         className={cn(
@@ -87,14 +108,16 @@ export function ChatWorkspace({
           <div className="mx-auto max-w-3xl space-y-6">{messages}</div>
         </div>
 
-        <div
-          className={cn(
-            'border-t border-border/60 bg-card/92 p-4 backdrop-blur sm:px-6',
-            mobileComposerFirst ? 'order-2 lg:order-3' : 'order-3',
-          )}
-        >
-          <div className="mx-auto max-w-2xl">{composer}</div>
-        </div>
+        {footer ? (
+          <div
+            className={cn(
+              'border-t border-border/60 bg-card/92 p-4 backdrop-blur sm:px-6',
+              mobileComposerFirst ? 'order-2 lg:order-3' : 'order-3',
+            )}
+          >
+            <div className="mx-auto max-w-2xl">{footer}</div>
+          </div>
+        ) : null}
       </section>
     </div>
   );
