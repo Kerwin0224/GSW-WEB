@@ -35,14 +35,14 @@ export type ProjectClassificationOutcome =
  * 问答本身走的就是流式，分类与它共用同一条活路。
  * 模型异常不抛出（failure: 'model-error'，附 provider 原文截断），由调用方记日志并降级。
  *
- * 归类口径不再是硬编码：接受本班任课教师配置的提示词规则（见 buildProjectClassificationInstruction）。
+ * 归类口径不再是硬编码：接受老师配在空间里的主题（见 buildProjectClassificationInstruction）。
  * 不传时退回内置默认（按学习主题归类），行为与以前一致。
  */
 export async function classifyProjectFromQuestion(
   model: LanguageModel,
   question: string,
   knownNames: readonly string[] = [],
-  options: { teacherRules?: readonly { teacherName: string; instruction: string }[] } = {},
+  options: { criteria?: readonly { label: string; instruction: string }[] } = {},
 ): Promise<ProjectClassificationOutcome> {
   const knownName = matchKnownProjectName(question, knownNames);
   if (knownName) return { name: knownName, subtitle: null };

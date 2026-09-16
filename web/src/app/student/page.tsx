@@ -2,13 +2,15 @@ import { Card, CardContent } from '@/components/ui/card';
 import { StudentChatClient } from '@/components/workbench/student-chat-client';
 import { ErrorState } from '@/components/workbench/state-surfaces';
 import { getStudentConversation, getStudentProjects, getStudentWorkspace } from '@/lib/data/student';
+import { listStudentSpaces } from '@/lib/data/spaces';
 
-export default async function StudentChatPage({ searchParams }: { searchParams?: Promise<{ projectId?: string; conversationId?: string }> }) {
+export default async function StudentChatPage({ searchParams }: { searchParams?: Promise<{ projectId?: string; conversationId?: string; spaceId?: string }> }) {
   const params = await searchParams;
-  const [workspace, projectsResult, conversationResult] = await Promise.all([
+  const [workspace, projectsResult, conversationResult, spacesResult] = await Promise.all([
     getStudentWorkspace(),
     getStudentProjects(),
     params?.conversationId ? getStudentConversation(params.conversationId) : Promise.resolve(null),
+    listStudentSpaces(),
   ]);
 
   if (!workspace.ok) {
@@ -50,6 +52,8 @@ export default async function StudentChatPage({ searchParams }: { searchParams?:
             dailyArchive={workspace.data.dailyArchive}
             initialActiveProjectId={initialActiveProjectId}
             initialConversation={initialConversation}
+            spaces={spacesResult.ok ? spacesResult.data : []}
+            activeSpaceId={params?.spaceId ?? ''}
           />
         </CardContent>
       </Card>

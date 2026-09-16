@@ -10,6 +10,15 @@ import { getProfile, type Profile } from '@/lib/auth';
 import { decryptSecret, isEncryptedSecret } from '@/lib/crypto/secret-cipher';
 
 export type DataResult<T> = { ok: true; data: T } | { ok: false; reason: 'unauthenticated' | 'forbidden' | 'missing_profile' | 'blocked' | 'password_change_required' | 'error'; message: string };
+/**
+ * Server Action 的通用返回形状，配合 useActionState 使用。
+ *
+ * 仓库此前有 7 个逐字段同构的形状各写各的（AdminActionState / AuditSubmissionState /
+ * AdminActionLike / ProviderActionResult / CreateStudentProjectResult / McpServerTestResult …），
+ * `AdminActionLike` 的注释甚至自称「与 admin.ts 形状一致」。新代码一律用这个，
+ * 旧的在各自被改动时顺带收敛过来，不做一次性大改。
+ */
+export type ActionState = { ok: boolean; message: string; errors?: Record<string, string> };
 export type CapabilityStatus = { capability: ProviderCapability; ready: boolean; modelId?: string; providerName?: string; providerType?: string; baseUrl?: string | null; secretRef?: string | null; blockedReason?: string };
 export type ModelTierStatus = { tier: ModelTier; ready: boolean; modelId?: string; providerId?: string; providerName?: string; providerType?: string; baseUrl?: string | null; secretRef?: string | null; healthStatus?: string; blockedReason?: string };
 

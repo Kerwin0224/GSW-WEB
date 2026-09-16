@@ -55,6 +55,21 @@ export interface Database {
         Insert: { id?: string; class_id: string; profile_id: string; role: 'teacher' | 'student' };
         Update: Partial<Database['public']['Tables']['class_memberships']['Insert']>;
       };
+      /**
+       * 空间：老师自建、拉学生、带主题的学习容器。成员由 space_classes 派生（见该表）。
+       * school_id 不可变、owner 必须是同校教师，两条都由触发器钉住，不靠应用层自觉。
+       */
+      spaces: {
+        Row: { id: string; school_id: string; owner_id: string; name: string; theme: string; status: 'active' | 'archived'; created_at: string; updated_at: string };
+        Insert: { id?: string; school_id: string; owner_id: string; name: string; theme?: string; status?: 'active' | 'archived' };
+        Update: Partial<Database['public']['Tables']['spaces']['Insert']>;
+      };
+      /** 成员关系就是这条边：一行 = 该班全部学生都在这个空间里。 */
+      space_classes: {
+        Row: { space_id: string; class_id: string; created_by: string | null; created_at: string };
+        Insert: { space_id: string; class_id: string; created_by?: string | null };
+        Update: Partial<Database['public']['Tables']['space_classes']['Insert']>;
+      };
       provider_configs: {
         Row: { id: string; school_id: string | null; name: string; provider_type: string; base_url: string | null; secret_ref: string | null; secret_last_four: string | null; secret_created_at: string | null; secret_last_used_at: string | null; secret_rotated_at: string | null; api_models: Json; last_health_check_at: string | null; last_health_latency_ms: number | null; is_enabled: boolean; health_status: string; created_by: string | null; created_at: string; updated_at: string };
         Insert: { id?: string; school_id?: string | null; name: string; provider_type: string; base_url?: string | null; secret_ref?: string | null; secret_last_four?: string | null; secret_created_at?: string | null; secret_last_used_at?: string | null; secret_rotated_at?: string | null; api_models?: Json; last_health_check_at?: string | null; last_health_latency_ms?: number | null; is_enabled?: boolean; health_status?: string; created_by?: string | null };
@@ -138,6 +153,16 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
+      /** 建空间 + 写主题 + 拉一个班，一次调用；同名活跃空间幂等复用。 */
+      create_space: {
+        Args: { p_name: string; p_theme: string; p_class_id?: string | null };
+        Returns: string;
+      };
+      /** 再拉一个班。返回新增边数：0 表示本来就在。 */
+      pull_class_into_space: {
+        Args: { p_space_id: string; p_class_id: string };
+        Returns: number;
+      };
       authenticate_school_account: {
         Args: { p_login_id: string; p_password: string };
         Returns: { id: string; login_id: string; role: AppRole; display_name: string }[];

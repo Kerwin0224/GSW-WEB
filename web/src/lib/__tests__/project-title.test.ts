@@ -73,10 +73,12 @@ test('DB 契约里的占位名名单与应用层逐字一致', () => {
   const migrations = readdirSync(migrationsDir)
     .filter((name) => name.endsWith('.sql'))
     .sort();
-  // 取最后一次定义 sync_project_contract 的那份 —— 后写的覆盖先写的。
+  // 取最后一次**定义** sync_project_contract 的那份 —— 后写的覆盖先写的。
+  // 必须匹配定义语句而不是子串 includes：`revoke execute on function public.sync_project_contract()`
+  // 这类语句同样含 `function public.sync_project_contract`，会把不含名单的迁移误当成最后一次定义。
   const sources = migrations
     .map((name) => readFileSync(resolve(migrationsDir, name), 'utf8'))
-    .filter((sql) => sql.includes('function public.sync_project_contract'));
+    .filter((sql) => /create\s+(or\s+replace\s+)?function\s+public\.sync_project_contract/i.test(sql));
   assert.ok(sources.length > 0, '应能找到 sync_project_contract 的定义');
 
   const functionBody = sources[sources.length - 1];

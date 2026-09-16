@@ -16,8 +16,31 @@ GitHub 是唯一 hub：代码和 schema 都从提交流出，Vercel 和 Supabase
 在 `web/` 下：
 
 1. `supabase migration new <名称>`，在生成的空文件里写 SQL。
-2. `supabase db reset` —— 完成标准：命令零报错跑完（等于本地从零重放全部迁移 + 种子数据）。
-3. `supabase gen types typescript --local > src/lib/supabase/database.types.ts`。
+
+   ⚠️ **CLI 用 UTC 命名，与仓库既有的「本地时间」命名口径不一致**，生成的文件会排到既有迁移
+   **之前**（例如本地 15:25 生成出 `20260916072443_…`，而最新一条是 `20260916132900_…`）。
+   生成后必须改名成当前本地时间：`mv <生成名> "$(date '+%Y%m%d%H%M%S')_<名称>.sql"`，
+   然后确认 `ls supabase/migrations | sort | tail -1` 就是它。
+
+2. **在云端验证，不起本地栈**（本机不维护本地 Supabase 容器栈）：
+
+   | 要验什么 | 怎么做 |
+   | --- | --- |
+   | 迁移会被推送、依赖顺序对 | `supabase db push --dry-run --linked`（官方文档：只跑只读 SELECT，不做任何变更） |
+   | 本地迁移与云端 schema 的差异 | `supabase db diff --linked` |
+   | **RLS 求值、触发器、`RETURNING` 策略这些运行时行为** | Supabase Studio 的 SQL Editor，把迁移包在 `begin;` … `rollback;` 里执行 |
+
+   前两条都需要平台 access token（`supabase login` 或 `SUPABASE_ACCESS_TOKEN`）。
+   第三条不需要凭据，浏览器里就能做。
+
+   ⚠️ **`--dry-run` 与 `db diff` 都不执行 SQL**，抓不到求值期错误——策略互相内联子查询
+   造成的 `infinite recursion detected in policy`、`INSERT … RETURNING` 被 SELECT 策略
+   按语句开始时的快照误拒，这两类只有真跑一条语句才会暴露。不要拿它们当运行时验证。
+
+3. 类型：`src/lib/supabase/database.types.ts` 是**手写维护**的（没有 `Relationships` 键、
+   `Views` 是占位、含中文业务注释与自定义别名如 `AppRole`/`Vector`/`AvatarKey`）。
+   **不要用 `supabase gen types` 覆盖它**；新表新列手工补进去。
+
 4. 迁移文件随功能代码一起 commit、push 到 main。完成标准：Action `supabase-db-push` 的 run 结论为 success（`gh run list --workflow=supabase-db-push.yml`）；失败时按日志提示用 `supabase migration repair` 对齐历史。
 
 注意：pgcrypto 函数在 `extensions` schema 下，SQL 里写 `extensions.crypt(...)` 而非 `crypt(...)`。
@@ -26,7 +49,7 @@ GitHub 是唯一 hub：代码和 schema 都从提交流出，Vercel 和 Supabase
 
 | 数据类型 | 去处 |
 |---|---|
-| 每个环境都该有的演示数据 | `web/supabase/seed.sql`（`db reset` 自动执行；演示账号密码 `demo1234`） |
+| 每个环境都该有的演示数据 | `web/supabase/seed.sql`（演示账号密码 `demo1234`）。注意：本机不起本地栈，所以它只在 CI/远端重放时生效，本地不会自动执行 |
 | 生产一次性数据 | Supabase Studio 的 SQL Editor，执行后把 SQL 留档进仓库 |
 | 可重复生成的批量数据 | `web/scripts/` 下写 node 脚本 |
 

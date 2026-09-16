@@ -11,56 +11,7 @@ import { test } from 'node:test';
  * 这个文件把「谓词必须在」变成可执行的断言。改动那些函数时它会拦住你。
  */
 
-const migrationsDir = resolve(new URL('.', import.meta.url).pathname, '../../../supabase/migrations');
-
-function migrationFiles(): string[] {
-  return readdirSync(migrationsDir)
-    .filter((file) => file.endsWith('.sql'))
-    .sort()
-    .map((file) => readFileSync(resolve(migrationsDir, file), 'utf8'));
-}
-
-/**
- * 取某个函数**最后一次**定义的函数体。
- * 必须切出函数体而不是返回整个迁移文件：一份迁移里有几十条语句，
- * 拿全文做断言会把别的函数的 current_school_id 也算进来，测试就失去意义。
- */
-function newestFunctionBody(name: string): string {
-  // 只认定义语句。`revoke all on function public.X() ...` 含同样子串，
-  // 按它切会把后面几十行别的语句当成「函数体」，断言随之失去意义。
-  const marker = `create or replace function public.${name}(`;
-  let body = '';
-  for (const sql of migrationFiles()) {
-    let cursor = 0;
-    while (true) {
-      const start = sql.indexOf(marker, cursor);
-      if (start < 0) break;
-      const end = sql.indexOf('$$;', start);
-      body = end < 0 ? sql.slice(start) : sql.slice(start, end);
-      cursor = start + marker.length;
-    }
-  }
-  assert.ok(body, `应能找到 ${name} 的函数体`);
-  return body;
-}
-
-/** 取某条策略**最后一次**定义（策略不是函数，用分号切）。 */
-function newestPolicy(name: string): string {
-  const marker = `policy "${name}"`;
-  let body = '';
-  for (const sql of migrationFiles()) {
-    let cursor = 0;
-    while (true) {
-      const start = sql.indexOf(marker, cursor);
-      if (start < 0) break;
-      const end = sql.indexOf(';', start);
-      body = end < 0 ? sql.slice(start) : sql.slice(start, end);
-      cursor = start + marker.length;
-    }
-  }
-  assert.ok(body, `应能找到策略 ${name}`);
-  return body;
-}
+import { migrationFiles, newestFunctionBody, newestPolicy } from './migration-source.ts';
 
 test('能力解析 RPC 按校过滤，本校优先、回退公司级', () => {
   const sql = newestFunctionBody('get_provider_capability_provider');

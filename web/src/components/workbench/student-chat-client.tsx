@@ -24,6 +24,7 @@ import { ChatComposer } from '@/components/workbench/chat-composer';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import type { BloomStatus } from '@/components/workbench/bloom-status-badge';
 import type { DailyArchiveSummary, ProjectSummary, StudentConversationInitial } from '@/lib/data/student';
+import type { StudentSpace } from '@/lib/data/spaces';
 import {
   buildStudentChatRequestBody,
   buildStudentConversationHref,
@@ -55,6 +56,8 @@ export function StudentChatClient({
   dailyArchive,
   initialActiveProjectId,
   initialConversation,
+  spaces = [],
+  activeSpaceId = '',
 }: {
   providerBlocked?: string;
   projectClassificationBlocked?: string;
@@ -63,6 +66,10 @@ export function StudentChatClient({
   dailyArchive: DailyArchiveSummary;
   initialActiveProjectId?: string;
   initialConversation?: StudentConversationInitial;
+  /** 我被拉进去的学习空间。空数组表示没有空间，界面不出切换器。 */
+  spaces?: StudentSpace[];
+  /** 当前选中的空间 id（URL 状态）；空表示没选，归类交给模型在多条口径间自选。 */
+  activeSpaceId?: string;
 }) {
   const router = useRouter();
   const [input, setInput] = useState('');
@@ -82,6 +89,22 @@ export function StudentChatClient({
   const initialConversationSignatureRef = useRef('');
   const conversationIdRef = useRef(conversationId);
 
+  /**
+   * 写 URL 的唯一出口：只增删指定参数，**保留其余**。
+   *
+   * 此前三处各自从零拼 query（`/student?conversationId=…`、`?projectId=…`、裸 `/student`），
+   * 每次都会把 spaceId 抹掉。conversationId / projectId 有服务端回读源（会话 row / 项目），
+   * spaceId 没有——它只活在 URL 里。抹掉它，学生下一次提问就落到「全部口径带出、模型自选」，
+   * 「切到哪个空间就按哪个空间归类」这个核心承诺静默失效。
+   */
+  const replaceStudentUrl = useCallback((mutate: (params: URLSearchParams) => void) => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    mutate(params);
+    const query = params.toString();
+    window.history.replaceState(null, '', query ? `/student?${query}` : '/student');
+  }, []);
+
   const syncConversationRoute = useCallback((nextConversationId: string) => {
     if (!nextConversationId) return;
     if (typeof window === 'undefined') return;
@@ -90,9 +113,12 @@ export function StudentChatClient({
       currentSearch: window.location.search,
       conversationId: nextConversationId,
     })) {
-      window.history.replaceState(null, '', buildStudentConversationHref(nextConversationId));
+      replaceStudentUrl((params) => {
+        params.set('conversationId', nextConversationId);
+        params.delete('projectId');
+      });
     }
-  }, []);
+  }, [replaceStudentUrl]);
 
   const refreshStudentRoute = useCallback((routeConversationId?: string) => {
     if (routeConversationId) syncConversationRoute(routeConversationId);
@@ -152,7 +178,10 @@ export function StudentChatClient({
   const chatTransport = useMemo(() => new DefaultChatTransport<StudentChatMessage>({
     api: '/api/student/chat',
     fetch: chatFetch,
-  }), [chatFetch]);
+    // 当前空间随每次请求带上：服务端只在「新建会话的首问」用它挑归类口径，
+    // 已有会话继承自己的项目，不受它影响。不落库，所以没有需要同步的状态。
+    body: activeSpaceId ? { spaceId: activeSpaceId } : {},
+  }), [chatFetch, activeSpaceId]);
   const initialConversationSignature = useMemo(() => initialConversation
     ? JSON.stringify({
       id: initialConversation.id,
@@ -299,7 +328,10 @@ export function StudentChatClient({
     setUploadError('');
     clearError();
     setMessages([]);
-    window.history.replaceState(null, '', `/student?projectId=${projectId}`);
+    replaceStudentUrl((params) => {
+      params.set('projectId', projectId);
+      params.delete('conversationId');
+    });
   };
 
   const openEmptyContext = () => {
@@ -313,7 +345,10 @@ export function StudentChatClient({
     setUploadError('');
     clearError();
     setMessages([]);
-    window.history.replaceState(null, '', '/student');
+    replaceStudentUrl((params) => {
+      params.delete('conversationId');
+      params.delete('projectId');
+    });
   };
 
   const uploadAttachment = async (file: File) => {
@@ -453,6 +488,17 @@ export function StudentChatClient({
     }
   };
 
+  const switchSpace = useCallback((nextSpaceId: string) => {
+    const params = new URLSearchParams(window.location.search);
+    if (nextSpaceId) params.set('spaceId', nextSpaceId);
+    else params.delete('spaceId');
+    // 切空间要回到空白入口：归类口径只在新会话首问时生效，留在旧会话里切是没意义的。
+    params.delete('conversationId');
+    params.delete('projectId');
+    const query = params.toString();
+    window.location.href = query ? `/student?${query}` : '/student';
+  }, []);
+
   const blocked = conversationLocked ? finalizedConversationBlockedReason : providerBlocked;
 
   return (
@@ -476,6 +522,33 @@ export function StudentChatClient({
         </button>
       )}
       sidebar={(<>
+          {spaces.length > 0 ? (
+            <section className="rounded-2xl border border-border/65 bg-card/86 p-3 shadow-soft">
+              <div className="mb-3 flex items-start justify-between gap-3 px-1">
+                <div>
+                  <p className="font-heading text-lg">学习空间</p>
+                  <p className="mt-1 text-xs text-muted-foreground">切到哪个空间，新会话就按那个空间的归类口径理解你的问题。</p>
+                </div>
+                <Badge variant="outline">{spaces.length}</Badge>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {spaces.map((space) => {
+                  const active = space.id === activeSpaceId;
+                  return (
+                    <button
+                      key={space.id}
+                      type="button"
+                      onClick={() => switchSpace(active ? '' : space.id)}
+                      aria-pressed={active}
+                      className={cn('min-h-11 cursor-pointer rounded-xl border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', active ? 'border-primary/55 bg-primary/10 text-primary' : 'border-border/65 bg-background/76 hover:bg-muted')}
+                    >
+                      {space.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
           <section className="rounded-2xl border border-border/65 bg-card/86 p-3 shadow-soft">
             <div className="mb-3 flex items-start justify-between gap-3 px-1">
               <div>

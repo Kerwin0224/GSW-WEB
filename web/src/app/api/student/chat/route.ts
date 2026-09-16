@@ -75,6 +75,8 @@ const optionalProjectTitleField = z.preprocess(
 
 const bodySchema = z.object({
   messages: z.unknown(),
+  // 学生当前选中的空间。只影响新会话的归类口径，不落库——见 classification-rule.ts 的解析顺序。
+  spaceId: optionalUuidField,
   conversationId: optionalUuidField,
   projectId: optionalProjectIdField,
   projectTitle: optionalProjectTitleField,
@@ -138,20 +140,22 @@ async function resolveProjectAssignment({
   userText,
   projectModel,
   requestId,
+  spaceId,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
   ownerId: string;
   userText: string;
   projectModel: LanguageModel | null;
   requestId: string;
+  spaceId?: string | null;
 }): Promise<ProjectAssignment> {
   const { data: ownedNames } = await supabase.from('projects').select('name').eq('owner_id', ownerId);
   const knownNames = (ownedNames ?? []).map((row) => row.name).filter((title): title is string => Boolean(title));
   // 归类口径来自该班任课教师配置的规则（未配置则用内置默认）。
   // 只在首问归类时解析一次，不进提问热路径。
-  const rule = await resolveClassificationRule(supabase, ownerId);
+  const rule = await resolveClassificationRule(supabase, ownerId, spaceId);
   const classified = projectModel
-    ? await classifyProjectFromQuestion(projectModel, userText, knownNames, { teacherRules: rule.teacherRules })
+    ? await classifyProjectFromQuestion(projectModel, userText, knownNames, { criteria: rule.criteria })
     : { name: null, subtitle: null, failure: 'model-unavailable' as const };
   const name = classified.name ?? null;
 
@@ -164,6 +168,10 @@ async function resolveProjectAssignment({
       route: '/api/student/chat',
       context: {
         reason: classified.failure ?? 'unclassified',
+        // 口径来源与条数：归类出问题时第一个要看的两个数。
+        // 「静默用错主题」这类故障此前在日志里没有痕迹。
+        ruleSource: rule.source,
+        criterionCount: rule.criteria.length,
         ...('detail' in classified && classified.detail ? { detail: classified.detail } : {}),
       },
     });
@@ -284,7 +292,7 @@ export async function POST(req: Request) {
     }
 
     if (shouldClassifyProject) {
-      projectAssignmentPromise = resolveProjectAssignment({ supabase, ownerId: role.data.id, userText, projectModel, requestId })
+      projectAssignmentPromise = resolveProjectAssignment({ supabase, ownerId: role.data.id, userText, projectModel, requestId, spaceId: parsed.data.spaceId ?? null })
         .catch(async (error) => {
           await writeLogEvent({
             level: 'error',

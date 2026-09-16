@@ -98,32 +98,45 @@ export const defaultBloomClassificationInstruction =
   + '只输出以下两行，不要多余文字：第一行是 1 到 6 中的单个数字，第二行是一句不超过 120 字的理由。';
 
 /**
- * 把教师配置的归类规则组装成最终 system instruction。
+ * 把老师提供的**语义部分**与平台的**结构化返回协议**组装成最终 system instruction。
  *
- * 每师每班一条：一个班可能有多位任课教师，各写各的归类口径（通常按学科分，但不止于学科）。
- * 规则文本自带适用范围说明，由模型按问题选用对应一条——因此这里把全部规则并列带出，
- * 而不是替模型选。
+ * 这是本模块唯一的组装点，也是那两部分的接缝所在：
  *
- * 输出协议由系统强制拼接（内置规则也走同一路径），教师改规则不会破坏解析协议。
+ *   语义部分（老师写）——「本班/本空间按什么分类」，随学科和老师而变，系统不解释它。
+ *   协议部分（平台定）——两行输出的格式与「无法归属输出 NULL」的约定，恒定不变。
+ *
+ * 分成两段而不是一段散文，是为了让「老师改口径」这件事在结构上**没有能力**碰到协议：
+ * 老师提供的是内容，格式由系统在末尾强制拼接。解析端（parseClassificationAnswer +
+ * project-title.ts 的归一化）只依赖协议，不依赖任何老师写的字。
+ *
+ * 为什么不用 generateObject 之类的结构化输出把协议变成 schema：所接模型网关只正常服务
+ * SSE，非流式 JSON 会直接抛错（2026-09-11 归类事故根因），问答本身也走流式。
+ * 协议只能留在提示词里，因此更需要在这里被隔离住。
+ *
+ * 多条口径时（学生属于多个空间）把全部并列带出，由模型按问题选用——不替模型选。
  */
 export function buildProjectClassificationInstruction(options: {
-  /** 本班各任课教师配置的归类规则；为空表示用内置默认。 */
-  teacherRules?: readonly { teacherName: string; instruction: string }[];
+  /** 老师提供的归类口径；为空表示用内置默认。 */
+  criteria?: readonly { label: string; instruction: string }[];
 } = {}): string {
-  const rules = (options.teacherRules ?? []).flatMap((rule) => {
-    const instruction = rule.instruction.trim();
-    return instruction ? [{ teacherName: rule.teacherName.trim() || '任课教师', instruction }] : [];
+  const criteria = (options.criteria ?? []).flatMap((criterion) => {
+    const instruction = criterion.instruction.trim();
+    return instruction ? [{ label: criterion.label.trim() || '学习空间', instruction }] : [];
   });
 
-  const head = rules.length === 0
+  // ── 语义部分 ──
+  const semantics = criteria.length === 0
     ? defaultProjectClassificationInstruction
     : [
-      '你是文韵智途的项目归属裁决器。本班各任课教师配置了各自的归类口径，'
-      + '请选用最贴合学生这个问题的那一条来裁决归属；问题跨口径时取最主要的一条：',
-      ...rules.map((rule) => `【${rule.teacherName}】\n${rule.instruction}`),
+      '你是文韵智途的项目归属裁决器。学生所在的各学习空间各有一套归类口径，'
+      + '请选用最贴合学生这个问题的那一套来裁决归属；问题跨口径时取最主要的一套：',
+      ...criteria.map((criterion) => `【${criterion.label}】\n${criterion.instruction}`),
     ].join('\n\n');
 
-  return [head, `以下是必须遵守的输出协议：${projectClassificationProtocol}`].join('\n\n');
+  // ── 协议部分（无论用内置口径还是老师口径，都走同一条拼接路径）──
+  const protocol = `以下是必须遵守的输出协议：${projectClassificationProtocol}`;
+
+  return [semantics, protocol].join('\n\n');
 }
 
 // ─── 布鲁姆判定输出解析 ──────────────────────────────────────────────────────

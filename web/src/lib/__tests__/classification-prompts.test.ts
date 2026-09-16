@@ -90,36 +90,36 @@ test('parseBloomClassificationAnswer：理由超 120 字截断', () => {
 
 // ─── 归类提示词抽象：教师规则不破坏输出协议 ──────────────────────────────────
 
-test('buildProjectClassificationInstruction：无教师规则时用内置规则，且只拼一次协议', () => {
+test('buildProjectClassificationInstruction：无老师口径时用内置规则，且只拼一次协议', () => {
   const text = buildProjectClassificationInstruction();
   assert.ok(text.includes(defaultProjectClassificationInstruction));
   const protocolCount = text.split('无法归属时只输出一行 NULL').length - 1;
   assert.equal(protocolCount, 1, '输出协议不应重复拼接');
 });
 
-test('buildProjectClassificationInstruction：教师规则覆盖内置，协议仍由系统强制带上', () => {
-  const text = buildProjectClassificationInstruction({ teacherRules: [{ teacherName: '王老师', instruction: '本班按数学知识点归类。' }] });
+test('buildProjectClassificationInstruction：老师口径覆盖内置，协议仍由系统强制带上', () => {
+  const text = buildProjectClassificationInstruction({ criteria: [{ label: '王老师', instruction: '本班按数学知识点归类。' }] });
   assert.ok(text.includes('本班按数学知识点归类。'));
-  assert.ok(!text.includes(defaultProjectClassificationInstruction), '教师规则应覆盖内置规则');
+  assert.ok(!text.includes(defaultProjectClassificationInstruction), '老师口径应覆盖内置规则');
   assert.ok(text.includes('无法归属时只输出一行 NULL'), '协议必须保留');
 });
 
-test('buildProjectClassificationInstruction：每师每班一条，多条规则并列带出', () => {
+test('buildProjectClassificationInstruction：多条空间口径并列带出', () => {
   const text = buildProjectClassificationInstruction({
-    teacherRules: [
-      { teacherName: '王老师', instruction: '语文按篇目归类。' },
-      { teacherName: '李老师', instruction: '数学按知识点归类。' },
+    criteria: [
+      { label: '王老师的文言虚词空间', instruction: '语文按篇目归类。' },
+      { label: '李老师的数学空间', instruction: '数学按知识点归类。' },
     ],
   });
-  assert.ok(text.includes('【王老师】') && text.includes('语文按篇目归类。'));
-  assert.ok(text.includes('【李老师】') && text.includes('数学按知识点归类。'));
-  // 两条规则都在，由模型选用最贴合的一条；协议只拼一次。
+  assert.ok(text.includes('【王老师的文言虚词空间】') && text.includes('语文按篇目归类。'));
+  assert.ok(text.includes('【李老师的数学空间】') && text.includes('数学按知识点归类。'));
+  // 两条口径都在，由模型选用最贴合的一条；协议只拼一次。
   assert.equal(text.split('无法归属时只输出一行 NULL').length - 1, 1);
 });
 
-test('buildProjectClassificationInstruction：忽略空规则', () => {
-  const text = buildProjectClassificationInstruction({ teacherRules: [{ teacherName: '王老师', instruction: '   ' }] });
-  assert.ok(text.includes(defaultProjectClassificationInstruction), '空规则应退回内置默认');
+test('buildProjectClassificationInstruction：忽略空口径', () => {
+  const text = buildProjectClassificationInstruction({ criteria: [{ label: '王老师', instruction: '   ' }] });
+  assert.ok(text.includes(defaultProjectClassificationInstruction), '空口径应退回内置默认');
 });
 
 // ─── 定位：系统做判断的提示词不假设学科 ──────────────────────────────────────
