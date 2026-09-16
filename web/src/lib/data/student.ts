@@ -7,6 +7,7 @@ import { canonicalizeUiMessageParts } from '@/lib/chat-message-parts';
 import type { Database } from '@/lib/supabase/database.types';
 import { fail, getCapabilities, ok, requireRole, type DataResult } from './common';
 import { isStudentConversationFinalized } from './conversation-finalization';
+import { loadCatalogPaths } from './classification-rule';
 import type { BloomLevel } from '@/lib/challenge-progression';
 
 export type ProjectSessionSummary = { id: string; title: string; messageCount: number; updatedLabel: string; projectId?: string };
@@ -36,6 +37,8 @@ export type ProjectSummary = {
   id: string;
   title: string;
   author?: string;
+  /** 本校目录归属路径（如 "语文 / 高一 / 文言文"）；未挂目录时 undefined。 */
+  catalogPath?: string;
   questionCount: number;
   practiceCount: number;
   updatedLabel: string;
@@ -224,6 +227,9 @@ export async function getStudentProjects(options: { page?: number; pageSize?: nu
     : await projectsQuery;
   if (error) return fail('error', `项目加载失败：${error.message}`);
 
+  // 目录 id → 可读路径。只在有项目时取（多数页面必有项目），失败也不阻塞列表。
+  const catalogPaths = (projects ?? []).length > 0 ? await loadCatalogPaths(supabase) : new Map<string, string>();
+
   type MessageRow = { id: string; bloom_level: number | null; bloom_state: string; conversations: { project_id: string | null; deleted_at: string | null } | { project_id: string | null; deleted_at: string | null }[] };
 
   // 用户消息统计按当前页的篇目收窄：分页的意义就是不再全量拉取，
@@ -281,6 +287,7 @@ export async function getStudentProjects(options: { page?: number; pageSize?: nu
       id: project.id,
       title: project.title,
       author: project.author ?? undefined,
+      catalogPath: project.catalog_id ? catalogPaths.get(project.catalog_id) : undefined,
       questionCount,
       practiceCount: practices.length,
       updatedLabel: new Date(project.updated_at).toLocaleString('zh-CN'),

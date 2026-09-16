@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { buildCatalogNodes } from '@/lib/catalog-path';
 import { createClient } from '@/lib/supabase/server';
 
 type SupabaseLike = Awaited<ReturnType<typeof createClient>>;
@@ -12,8 +13,8 @@ export type ClassificationRule = {
   teacherRules: Array<{ teacherName: string; instruction: string }>;
   /** 学生所在班级 id；null 表示无班级（无归属规则可用）。 */
   classId: string | null;
-  /** 本校可选归属路径，帮模型对齐本校目录口径。 */
-  catalogPaths: string[];
+  /** 本校可选归属节点（含 id 与路径）：既喂给归类提示词，也用于把归类结果解析回节点。 */
+  catalogNodes: Array<{ id: string; path: string }>;
 };
 
 /**
@@ -33,7 +34,7 @@ export async function resolveClassificationRule(
   supabase: SupabaseLike,
   studentId: string,
 ): Promise<ClassificationRule> {
-  const fallback: ClassificationRule = { teacherRules: [], classId: null, catalogPaths: [] };
+  const fallback: ClassificationRule = { teacherRules: [], classId: null, catalogNodes: [] };
 
   const { data: membership, error: membershipError } = await supabase
     .from('class_memberships')
@@ -73,23 +74,25 @@ export async function resolveClassificationRule(
   return {
     teacherRules,
     classId,
-    catalogPaths: catalogResult.error ? [] : buildCatalogPaths(catalogResult.data ?? []),
+    catalogNodes: catalogResult.error ? [] : buildCatalogNodes(catalogResult.data ?? []),
   };
 }
 
-/** 把扁平的目录行拼成 "语文 / 高一 / 文言文" 形式的路径列表。 */
-function buildCatalogPaths(rows: Array<{ id: string; name: string; parent_id: string | null }>): string[] {
-  const byId = new Map(rows.map((row) => [row.id, row]));
-  const pathOf = (id: string) => {
-    const names: string[] = [];
-    let cursor = byId.get(id);
-    let guard = 0;
-    while (cursor && guard < 16) {
-      names.unshift(cursor.name);
-      cursor = cursor.parent_id ? byId.get(cursor.parent_id) : undefined;
-      guard += 1;
-    }
-    return names.join(' / ');
-  };
-  return rows.map((row) => pathOf(row.id)).filter(Boolean);
+/**
+ * 读本校可见的目录节点（含路径）。供列表页把 project.catalog_id 渲染成可读路径，
+ * 与 resolveClassificationRule 共用同一套节点拼装逻辑。RLS 已限定可见范围。
+ */
+export async function loadCatalogPaths(supabase: SupabaseLike): Promise<Map<string, string>> {
+  const { data, error } = await supabase
+    .from('project_catalogs')
+    .select('id,name,parent_id')
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true });
+  if (error) return new Map();
+  return new Map(buildCatalogNodes(data ?? []).map((node) => [node.id, node.path]));
 }
+
+// 纯函数（拼路径、标题解析回节点）在 lib/catalog-path.ts，便于直接单测；
+// 这里只负责取数，算的部分复用同一份实现。
+export { resolveCatalogIdForTitle } from '@/lib/catalog-path';
+
