@@ -21,7 +21,7 @@ export function AuditSessionHeader({ session }: { session: AuditSessionDetail })
         <Badge variant={session.conversationFinalized ? 'secondary' : 'outline'}>{reviewStateLabel(session.reviewState)}</Badge>
       </div>
       <p className="text-sm text-muted-foreground">
-        《{session.projectTitle}》 · {session.sessionLabel} · 最近一条 AI 回答 {new Date(session.createdAt).toLocaleString('zh-CN')}
+        《{session.projectName}》 · {session.sessionLabel} · 最近一条 AI 回答 {new Date(session.createdAt).toLocaleString('zh-CN')}
       </p>
     </>
   );

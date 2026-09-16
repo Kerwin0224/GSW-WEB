@@ -53,7 +53,7 @@ type PreviewAuditRow = {
   metadata: unknown;
   created_at: string;
   updated_at: string;
-  conversations?: { text_projects?: { title: string | null } | Array<{ title: string | null }> | null } | Array<{ text_projects?: { title: string | null } | Array<{ title: string | null }> | null }> | null;
+  conversations?: { projects?: { name: string | null } | Array<{ name: string | null }> | null } | Array<{ projects?: { name: string | null } | Array<{ name: string | null }> | null }> | null;
 };
 
 async function getPreviewStats(type: DatasetType, filters: DatasetFilters, sampleLimit: number) {
@@ -67,7 +67,7 @@ async function getPreviewStats(type: DatasetType, filters: DatasetFilters, sampl
     );
     if (conversationError) throw new Error(conversationError);
     conversationIdFilter = conversations.map((conversation) => conversation.id);
-    if (conversationIdFilter.length === 0) return { poemDistribution: [], eligibleRecords: 0, validRecords: 0, invalidRecords: 0, sampleLimit };
+    if (conversationIdFilter.length === 0) return { projectDistribution: [], eligibleRecords: 0, validRecords: 0, invalidRecords: 0, sampleLimit };
   }
 
   // metadata 是审阅台账，强制 scope='all'（与 dataset-export.ts 的导出语义一致）。
@@ -85,7 +85,7 @@ async function getPreviewStats(type: DatasetType, filters: DatasetFilters, sampl
       (from, to) => {
         let query = supabase
           .from('audit_records')
-          .select('id, source_message_id, original_answer, corrected_answer, chosen_answer, rejected_answer, metadata, created_at, updated_at, kind, status, conversations(text_projects(title))')
+          .select('id, source_message_id, original_answer, corrected_answer, chosen_answer, rejected_answer, metadata, created_at, updated_at, kind, status, conversations(projects(name))')
           .not('source_message_id', 'is', null);
 
         query = type === 'metadata'
@@ -114,17 +114,17 @@ async function getPreviewStats(type: DatasetType, filters: DatasetFilters, sampl
       : Boolean((row.chosen_answer ?? row.corrected_answer) && (row.rejected_answer ?? row.original_answer));
   });
   const sampledRows = validRows.slice(0, sampleLimit);
-  const poemCounts = new Map<string, number>();
+  const projectCounts = new Map<string, number>();
 
   for (const row of sampledRows) {
     const conversation = firstJoined(row.conversations);
-    const project = firstJoined(conversation?.text_projects);
-    const title = project?.title?.trim() || '未关联项目';
-    poemCounts.set(title, (poemCounts.get(title) ?? 0) + 1);
+    const project = firstJoined(conversation?.projects);
+    const name = project?.name?.trim() || '未关联项目';
+    projectCounts.set(name, (projectCounts.get(name) ?? 0) + 1);
   }
 
   return {
-    poemDistribution: [...poemCounts.entries()].map(([title, itemCount]) => ({ title, count: itemCount })).sort((left, right) => right.count - left.count),
+    projectDistribution: [...projectCounts.entries()].map(([name, itemCount]) => ({ name, count: itemCount })).sort((left, right) => right.count - left.count),
     eligibleRecords: latestRows.length,
     validRecords: validRows.length,
     invalidRecords: Math.max(latestRows.length - validRows.length, 0),
@@ -177,7 +177,7 @@ export async function POST(req: Request) {
         const stats = await getPreviewStats(type, filters as DatasetFilters, previewLimit);
         return Response.json({
           ...result,
-          poemDistribution: stats.poemDistribution,
+          projectDistribution: stats.projectDistribution,
           coverage: {
             eligibleRecords: stats.eligibleRecords,
             validRecords: stats.validRecords,

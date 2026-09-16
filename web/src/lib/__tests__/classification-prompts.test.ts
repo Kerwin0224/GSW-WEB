@@ -5,60 +5,60 @@ import {
   buildProjectClassificationInstruction,
   defaultBloomClassificationInstruction,
   defaultProjectClassificationInstruction,
-  matchKnownProjectTitle,
+  matchKnownProjectName,
   parseBloomClassificationAnswer,
   parseClassificationAnswer,
 } from '../classification-prompts.ts';
 
 // ─── 回归：多标题时曾按长度挑，忽略学生先说哪个 ──────────────────────────────
 
-test('matchKnownProjectTitle：取最早出现的标题，而非最长的', () => {
+test('matchKnownProjectName：取最早出现的标题，而非最长的', () => {
   const known = ['春望', '静夜思'];
-  assert.equal(matchKnownProjectTitle('《春望》和《静夜思》比较一下', known), '春望');
-  assert.equal(matchKnownProjectTitle('《静夜思》和《春望》比较一下', known), '静夜思');
+  assert.equal(matchKnownProjectName('《春望》和《静夜思》比较一下', known), '春望');
+  assert.equal(matchKnownProjectName('《静夜思》和《春望》比较一下', known), '静夜思');
 });
 
-test('matchKnownProjectTitle：同位置取更具体的标题', () => {
+test('matchKnownProjectName：同位置取更具体的标题', () => {
   const known = ['念奴娇', '念奴娇·赤壁怀古'];
-  assert.equal(matchKnownProjectTitle('念奴娇·赤壁怀古上阕怎么理解', known), '念奴娇·赤壁怀古');
+  assert.equal(matchKnownProjectName('念奴娇·赤壁怀古上阕怎么理解', known), '念奴娇·赤壁怀古');
 });
 
-test('matchKnownProjectTitle：未命中或占位名返回 null', () => {
-  assert.equal(matchKnownProjectTitle('今天天气不错', ['春望']), null);
+test('matchKnownProjectName：未命中或占位名返回 null', () => {
+  assert.equal(matchKnownProjectName('今天天气不错', ['春望']), null);
   // 单字标题不参与匹配，避免噪音。
-  assert.equal(matchKnownProjectTitle('这个人是谁', ['人']), null);
-  assert.equal(matchKnownProjectTitle('日常会话归档在哪里', ['日常会话归档', '静夜思']), null);
-  assert.equal(matchKnownProjectTitle('静夜思写得真好', []), null);
+  assert.equal(matchKnownProjectName('这个人是谁', ['人']), null);
+  assert.equal(matchKnownProjectName('日常会话归档在哪里', ['日常会话归档', '静夜思']), null);
+  assert.equal(matchKnownProjectName('静夜思写得真好', []), null);
 });
 
 // ─── 归类输出解析 ────────────────────────────────────────────────────────────
 
 test('parseClassificationAnswer：读两行，第二行是补充标识', () => {
-  assert.deepEqual(parseClassificationAnswer('赤壁赋\n苏轼'), { title: '赤壁赋', author: '苏轼' });
-  assert.deepEqual(parseClassificationAnswer('一次函数\n人教版八年级下'), { title: '一次函数', author: '人教版八年级下' });
-  assert.deepEqual(parseClassificationAnswer('登高\n'), { title: '登高', author: null });
-  assert.deepEqual(parseClassificationAnswer('念奴娇·赤壁怀古\n苏轼\n多余行忽略'), { title: '念奴娇·赤壁怀古', author: '苏轼' });
+  assert.deepEqual(parseClassificationAnswer('赤壁赋\n苏轼'), { name: '赤壁赋', subtitle: '苏轼' });
+  assert.deepEqual(parseClassificationAnswer('一次函数\n人教版八年级下'), { name: '一次函数', subtitle: '人教版八年级下' });
+  assert.deepEqual(parseClassificationAnswer('登高\n'), { name: '登高', subtitle: null });
+  assert.deepEqual(parseClassificationAnswer('念奴娇·赤壁怀古\n苏轼\n多余行忽略'), { name: '念奴娇·赤壁怀古', subtitle: '苏轼' });
 });
 
 test('parseClassificationAnswer：NULL 与占位名判无法归属', () => {
-  assert.deepEqual(parseClassificationAnswer('NULL'), { title: null, author: null });
-  assert.deepEqual(parseClassificationAnswer('null'), { title: null, author: null });
-  assert.deepEqual(parseClassificationAnswer('日常会话归档'), { title: null, author: null });
-  assert.deepEqual(parseClassificationAnswer(''), { title: null, author: null });
-  assert.deepEqual(parseClassificationAnswer('《登高》\n杜甫'), { title: '登高', author: '杜甫' });
+  assert.deepEqual(parseClassificationAnswer('NULL'), { name: null, subtitle: null });
+  assert.deepEqual(parseClassificationAnswer('null'), { name: null, subtitle: null });
+  assert.deepEqual(parseClassificationAnswer('日常会话归档'), { name: null, subtitle: null });
+  assert.deepEqual(parseClassificationAnswer(''), { name: null, subtitle: null });
+  assert.deepEqual(parseClassificationAnswer('《登高》\n杜甫'), { name: '登高', subtitle: '杜甫' });
 });
 
 test('parseClassificationAnswer：行首标签前缀可被剥掉', () => {
-  assert.deepEqual(parseClassificationAnswer('篇目：出塞\n王昌龄'), { title: '出塞', author: '王昌龄' });
-  assert.deepEqual(parseClassificationAnswer('项目：一次函数'), { title: '一次函数', author: null });
-  assert.deepEqual(parseClassificationAnswer('主题：勾股定理'), { title: '勾股定理', author: null });
+  assert.deepEqual(parseClassificationAnswer('篇目：出塞\n王昌龄'), { name: '出塞', subtitle: '王昌龄' });
+  assert.deepEqual(parseClassificationAnswer('项目：一次函数'), { name: '一次函数', subtitle: null });
+  assert.deepEqual(parseClassificationAnswer('主题：勾股定理'), { name: '勾股定理', subtitle: null });
 });
 
 test('parseClassificationAnswer：从散文里捞书名号，捞不到就判无法归属', () => {
   // 小模型不守两行协议、把整段回答当首行输出时的生产失败形态（秦时明月汉时关案）。
   const prose = '这句诗运用了互文的修辞手法。它出自王昌龄的《出塞》，前两句是秦时明月汉时关。';
-  assert.deepEqual(parseClassificationAnswer(prose), { title: '出塞', author: null });
-  assert.deepEqual(parseClassificationAnswer('这句诗运用了比喻和夸张的修辞手法，表达了戍边将士的思乡之情。'), { title: null, author: null });
+  assert.deepEqual(parseClassificationAnswer(prose), { name: '出塞', subtitle: null });
+  assert.deepEqual(parseClassificationAnswer('这句诗运用了比喻和夸张的修辞手法，表达了戍边将士的思乡之情。'), { name: null, subtitle: null });
 });
 
 // ─── 布鲁姆输出解析 ──────────────────────────────────────────────────────────

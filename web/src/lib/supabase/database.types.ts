@@ -85,10 +85,10 @@ export interface Database {
         Insert: { id?: string; title: string; scenario: string; system_instruction: string; user_template?: string | null; variables?: Json; target_role?: AppRole; status?: PromptPresetStatus; version?: number; created_by?: string | null; class_id?: string | null; purpose?: 'chat' | 'project_classification' };
         Update: Partial<Database['public']['Tables']['prompt_presets']['Insert']>;
       };
-      text_projects: {
-        Row: { id: string; owner_id: string; class_id: string | null; title: string; author: string | null; text_type: string; classification_state: 'pending' | 'classified' | 'failed' | 'manual'; highest_bloom_level: number | null; created_at: string; updated_at: string };
-        Insert: { id?: string; owner_id: string; class_id?: string | null; title: string; author?: string | null; text_type?: string; classification_state?: 'pending' | 'classified' | 'failed' | 'manual'; highest_bloom_level?: number | null };
-        Update: Partial<Database['public']['Tables']['text_projects']['Insert']>;
+      projects: {
+        Row: { id: string; owner_id: string; class_id: string | null; name: string; subtitle: string | null; classification_state: 'pending' | 'classified' | 'failed' | 'manual'; highest_bloom_level: number | null; created_at: string; updated_at: string };
+        Insert: { id?: string; owner_id: string; class_id?: string | null; name: string; subtitle?: string | null; classification_state?: 'pending' | 'classified' | 'failed' | 'manual'; highest_bloom_level?: number | null };
+        Update: Partial<Database['public']['Tables']['projects']['Insert']>;
       };
       conversations: {
         Row: { id: string; owner_id: string; class_id: string | null; project_id: string | null; source: InteractionSource; prompt_preset_id: string | null; title: string | null; deleted_at: string | null; created_at: string; updated_at: string };
@@ -101,8 +101,8 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['conversation_messages']['Insert']>;
       };
       documents: {
-        Row: { id: string; owner_id: string; class_id: string | null; project_id: string | null; conversation_id: string | null; title: string; author: string | null; dynasty: string | null; content: string | null; source_uri: string | null; metadata: Json; created_at: string; updated_at: string };
-        Insert: { id?: string; owner_id: string; class_id?: string | null; project_id?: string | null; conversation_id?: string | null; title: string; author?: string | null; dynasty?: string | null; content?: string | null; source_uri?: string | null; metadata?: Json };
+        Row: { id: string; owner_id: string; class_id: string | null; project_id: string | null; conversation_id: string | null; title: string; content: string | null; source_uri: string | null; metadata: Json; created_at: string; updated_at: string };
+        Insert: { id?: string; owner_id: string; class_id?: string | null; project_id?: string | null; conversation_id?: string | null; title: string; content?: string | null; source_uri?: string | null; metadata?: Json };
         Update: Partial<Database['public']['Tables']['documents']['Insert']>;
       };
       document_chunks: {

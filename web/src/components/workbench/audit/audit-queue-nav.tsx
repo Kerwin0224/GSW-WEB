@@ -65,8 +65,8 @@ export function AuditQueueNav({ queue, selectedId }: { queue: TeacherAuditQueueP
                     </p>
 
                     {student.projects.map((project) => (
-                      <div key={`${student.studentName}-${project.projectTitle}`} className="space-y-1 pl-4">
-                        <p className="truncate text-xs font-medium text-muted-foreground">《{project.projectTitle}》</p>
+                      <div key={`${student.studentName}-${project.projectName}`} className="space-y-1 pl-4">
+                        <p className="truncate text-xs font-medium text-muted-foreground">《{project.projectName}》</p>
 
                         <ul className="space-y-1 pl-2">
                           {project.sessions.map((session) => {

@@ -9,16 +9,16 @@
  *
  * 与 chat 路由的关系：chat 路由的 ensureProject 是"识别到归属后自动建"，服务端内部路径；
  * 这里是"学生显式建"，走鉴权 + 校验。两条路径共用同一套标题规范与唯一约束
- * （text_projects_owner_title_normalized_key），不会建出重复项目。
+ * （projects_owner_name_normalized_key），不会建出重复项目。
  */
 
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
-import { normalizeConcreteProjectTitle, normalizeProjectAuthor } from '@/lib/project-title';
+import { normalizeConcreteProjectTitle, normalizeProjectSubtitle } from '@/lib/project-title';
 import { requireRole } from './common';
 
 export type CreateStudentProjectResult =
-  | { ok: true; projectId: string; title: string }
+  | { ok: true; projectId: string; name: string }
   | { ok: false; message: string };
 
 /**
@@ -29,35 +29,35 @@ export async function createStudentProject(formData: FormData): Promise<CreateSt
   const role = await requireRole('student');
   if (!role.ok) return { ok: false, message: role.message };
 
-  const title = normalizeConcreteProjectTitle(String(formData.get('title') ?? ''));
-  if (!title) return { ok: false, message: '请填写有效的项目名称（不超过 80 字，且不能是系统占位名）。' };
-  const author = normalizeProjectAuthor(String(formData.get('author') ?? ''));
+  const name = normalizeConcreteProjectTitle(String(formData.get('name') ?? ''));
+  if (!name) return { ok: false, message: '请填写有效的项目名称（不超过 80 字，且不能是系统占位名）。' };
+  const subtitle = normalizeProjectSubtitle(String(formData.get('subtitle') ?? ''));
 
   const supabase = await createClient();
   // 幂等：同学生同标题复用既有项目，不报"已存在"——学生的意图是"进入这个项目"，不是"建一个记录"。
   const { data: existing, error: existingError } = await supabase
-    .from('text_projects')
-    .select('id,title')
+    .from('projects')
+    .select('id,name')
     .eq('owner_id', role.data.id)
-    .eq('title', title)
+    .eq('name', name)
     .maybeSingle();
   if (existingError) return { ok: false, message: `项目查重失败：${existingError.message}` };
-  if (existing) return { ok: true, projectId: existing.id, title: existing.title };
+  if (existing) return { ok: true, projectId: existing.id, name: existing.name };
 
   const { data: project, error } = await supabase
-    .from('text_projects')
+    .from('projects')
     .insert({
       owner_id: role.data.id,
-      title,
-      author,
+      name,
+      subtitle,
       // manual：明确是学生自建，不是 AI 识别结果，教师核实页可据此区分来源。
       classification_state: 'manual',
     })
-    .select('id,title')
+    .select('id,name')
     .single();
   if (error || !project) return { ok: false, message: `项目创建失败：${error?.message ?? 'unknown'}` };
 
   revalidatePath('/student/me');
   revalidatePath('/student');
-  return { ok: true, projectId: project.id, title: project.title };
+  return { ok: true, projectId: project.id, name: project.name };
 }

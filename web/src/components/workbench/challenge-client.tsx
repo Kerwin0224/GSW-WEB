@@ -81,7 +81,7 @@ function LevelRoute({ currentLevel, targetLevel }: { currentLevel?: number | nul
 export function ChallengeClient({
   projectId,
   projectTitle,
-  projectAuthor,
+  projectSubtitle,
   confirmedLevel,
   initialPractice,
   challengeBlocked,
@@ -90,7 +90,7 @@ export function ChallengeClient({
 }: {
   projectId: string;
   projectTitle: string;
-  projectAuthor?: string | null;
+  projectSubtitle?: string | null;
   confirmedLevel?: BloomLevel | null;
   initialPractice?: PracticeRecord;
   challengeBlocked?: string;
@@ -196,7 +196,7 @@ export function ChallengeClient({
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <CardTitle className="font-heading">《{projectTitle}》{projectAuthor ? ` · ${projectAuthor}` : ''}挑战进度</CardTitle>
+              <CardTitle className="font-heading">《{projectTitle}》{projectSubtitle ? ` · ${projectSubtitle}` : ''}挑战进度</CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">已通过到：{localConfirmedLevel ? `L${localConfirmedLevel}` : '尚未通过挑战'}</p>
             </div>
             <Badge variant="outline">目标 L{targetLevel}</Badge>

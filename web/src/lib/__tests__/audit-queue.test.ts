@@ -31,7 +31,7 @@ function entry(overrides: Partial<AuditQueueEntry> & { conversationId: string })
     classId: 'class-a',
     classLabel: '高一（1）班',
     studentName: '学生甲',
-    projectTitle: '赤壁赋',
+    projectName: '赤壁赋',
     session: session(conversationId),
     ...rest,
   };
@@ -64,12 +64,12 @@ test('buildAuditQueueGroups：同一班级下不同学生/项目各自成节点'
   const groups = buildAuditQueueGroups([
     entry({ conversationId: 'c1' }),
     entry({ conversationId: 'c2', studentName: '学生乙' }),
-    entry({ conversationId: 'c3', projectTitle: '静夜思' }),
+    entry({ conversationId: 'c3', projectName: '静夜思' }),
   ]);
 
   assert.equal(groups.length, 1);
   assert.deepEqual(groups[0].students.map((student) => student.studentName), ['学生甲', '学生乙']);
-  assert.deepEqual(groups[0].students[0].projects.map((project) => project.projectTitle), ['赤壁赋', '静夜思']);
+  assert.deepEqual(groups[0].students[0].projects.map((project) => project.projectName), ['赤壁赋', '静夜思']);
 });
 
 test('buildAuditQueueGroups：保持入参顺序（调用方已按 updated_at desc 取数）', () => {

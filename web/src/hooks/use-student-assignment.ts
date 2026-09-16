@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 import type { ProjectSummary, StudentConversationInitial } from '@/lib/data/student';
 import { parseAssignmentFromHeaders, type AssignmentHeaderReader, type StudentAssignmentData } from '@/lib/student-chat-contract';
 
-export type AssignmentNotice = { kind: 'project'; title: string } | { kind: 'archive' };
+export type AssignmentNotice = { kind: 'project'; name: string } | { kind: 'archive' };
 
 const NOTICE_TTL_MS = 4000;
 const ARCHIVE_HIGHLIGHT_TTL_MS = 3500;
@@ -49,11 +49,11 @@ export function useStudentAssignment({
 
   // buildRequestBody / 排队出列在异步回调里读取当前项目，用 ref 避免闭包过期。
   const activeProjectIdRef = useRef(initialProjectId);
-  const activeProjectTitleRef = useRef<string | undefined>(initialProjectId ? projects.find((project) => project.id === initialProjectId)?.title : undefined);
+  const activeProjectTitleRef = useRef<string | undefined>(initialProjectId ? projects.find((project) => project.id === initialProjectId)?.name : undefined);
 
   useEffect(() => {
     activeProjectIdRef.current = activeProjectId;
-    activeProjectTitleRef.current = projects.find((project) => project.id === activeProjectId)?.title;
+    activeProjectTitleRef.current = projects.find((project) => project.id === activeProjectId)?.name;
   }, [activeProjectId, projects]);
 
   useEffect(() => {
@@ -87,7 +87,7 @@ export function useStudentAssignment({
         expandProject(assignment.projectId);
       } else {
         // 服务端只给标题（新建项目场景）：按标题在现有项目里对号。
-        const matchedProject = projects.find((project) => project.title === assignment.title);
+        const matchedProject = projects.find((project) => project.name === assignment.name);
         if (matchedProject) {
           nextProjectId = matchedProject.id;
           setActiveProjectId(matchedProject.id);
@@ -96,8 +96,8 @@ export function useStudentAssignment({
       }
       const alreadyInProjectContext = Boolean(nextProjectId) && activeProjectIdRef.current === nextProjectId;
       if (!alreadyInProjectContext) {
-        setAssignmentNotice({ kind: 'project', title: assignment.title });
-        toast.success(`已归入《${assignment.title}》`, {
+        setAssignmentNotice({ kind: 'project', name: assignment.name });
+        toast.success(`已归入《${assignment.name}》`, {
           description: '本次提问已进入左侧项目，可随时回看。',
           duration: 5000,
         });
@@ -130,7 +130,7 @@ export function useStudentAssignment({
   const enterProject = useCallback((projectId: string) => {
     setActiveProjectId(projectId);
     activeProjectIdRef.current = projectId;
-    activeProjectTitleRef.current = projects.find((project) => project.id === projectId)?.title;
+    activeProjectTitleRef.current = projects.find((project) => project.id === projectId)?.name;
     expandProject(projectId);
     setAssignmentNotice(null);
   }, [expandProject, projects]);
@@ -148,7 +148,7 @@ export function useStudentAssignment({
     const nextProjectId = conversation?.projectId ?? initialActiveProjectId ?? '';
     setActiveProjectId(nextProjectId);
     activeProjectIdRef.current = nextProjectId;
-    activeProjectTitleRef.current = nextProjectId ? projectsArg.find((project) => project.id === nextProjectId)?.title : undefined;
+    activeProjectTitleRef.current = nextProjectId ? projectsArg.find((project) => project.id === nextProjectId)?.name : undefined;
     expandProject(nextProjectId);
     setAssignmentNotice(null);
   }, [expandProject, projects]);

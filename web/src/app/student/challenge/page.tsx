@@ -37,7 +37,7 @@ function normalizeFilter(value: string | undefined): ChallengeFilter {
 
 function matchesQuery(project: ChallengeProjectSummary, query: string) {
   if (!query) return true;
-  const haystack = `${project.title} ${project.author ?? ''}`.toLowerCase();
+  const haystack = `${project.name} ${project.subtitle ?? ''}`.toLowerCase();
   return haystack.includes(query.toLowerCase());
 }
 
@@ -182,8 +182,8 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="truncate font-medium">《{project.title}》</p>
-                            <p className="mt-1 truncate text-xs text-muted-foreground">{project.author ?? '作者未标注'} · {project.questionCount} 条提问记录</p>
+                            <p className="truncate font-medium">《{project.name}》</p>
+                            <p className="mt-1 truncate text-xs text-muted-foreground">{project.subtitle ?? '作者未标注'} · {project.questionCount} 条提问记录</p>
                           </div>
                           {project.challengeProgress.confirmedLevel ? <BloomBadge level={project.challengeProgress.confirmedLevel} /> : <Badge variant="outline">尚未通过</Badge>}
                         </div>
@@ -216,7 +216,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <SectionHeader
                       eyebrow="当前项目"
-                      title={`《${selectedProject.title}》挑战`}
+                      title={`《${selectedProject.name}》挑战`}
                       description="提交作答后查看是否通过以及下一步学习建议。"
                     />
                     <div className="flex flex-wrap gap-2">
@@ -248,8 +248,8 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                   <ChallengeClient
                     key={selectedProject.id}
                     projectId={selectedProject.id}
-                    projectTitle={selectedProject.title}
-                    projectAuthor={selectedProject.author}
+                    projectTitle={selectedProject.name}
+                    projectSubtitle={selectedProject.subtitle}
                     confirmedLevel={selectedProgress.confirmedLevel}
                     initialPractice={initialPractice}
                     challengeBlocked={workspace.data.challengeBlocked}

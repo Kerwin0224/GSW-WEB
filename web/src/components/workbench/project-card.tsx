@@ -46,9 +46,9 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
       <CardHeader className="pb-3 pt-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 space-y-1.5">
-            <CardTitle className="truncate font-heading text-2xl leading-8 tracking-tight">《{project.title}》</CardTitle>
+            <CardTitle className="truncate font-heading text-2xl leading-8 tracking-tight">《{project.name}》</CardTitle>
             <p className="truncate text-xs text-muted-foreground">
-              {project.author ? <span>{project.author} · </span> : null}
+              {project.subtitle ? <span>{project.subtitle} · </span> : null}
               {project.updatedLabel ?? '最近学习时间待同步'}
             </p>
           </div>

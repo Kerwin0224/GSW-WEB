@@ -145,7 +145,7 @@ async function fetchAuditRecords(
 
   const conversationResults = await Promise.all(chunk(conversationIds, IN_CLAUSE_CHUNK).map(async (chunkIds) => {
     const { rows, error } = await fetchAllPagedRows<ConversationLike>(
-      (from, to) => supabase.from('conversations').select('id, owner_id, project_id, title, text_projects(title)').in('id', chunkIds).range(from, to),
+      (from, to) => supabase.from('conversations').select('id, owner_id, project_id, title, projects(name)').in('id', chunkIds).range(from, to),
       '查询会话上下文失败',
     );
     return { rows, error };

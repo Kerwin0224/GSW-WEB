@@ -14,7 +14,7 @@ export type ProjectLevelSummary = { level: BloomLevel; pathQuestionCount: number
 export type StudentConversationInitial = { id: string; title: string; projectId?: string; conversationFinalized: boolean; messages: UIMessage[] };
 export type ProjectBloomMatrixRow = {
   id: string;
-  title: string;
+  name: string;
   confirmedLevel?: BloomLevel;
   statusLabel: string;
   levels: Array<{ level: BloomLevel; state: 'achieved' | 'current' | 'locked' }>;
@@ -34,8 +34,8 @@ export type ProjectChallengeProgress = {
 };
 export type ProjectSummary = {
   id: string;
-  title: string;
-  author?: string;
+  name: string;
+  subtitle?: string;
   questionCount: number;
   practiceCount: number;
   updatedLabel: string;
@@ -45,7 +45,7 @@ export type ProjectSummary = {
 };
 export type DailyArchiveSummary = { sessions: ProjectSessionSummary[]; updatedLabel?: string };
 export type StudentWorkspace = { providerBlocked?: string; projectClassificationBlocked?: string; bloomClassificationBlocked?: string; classificationBlocked?: string; challengeBlocked?: string; dailyArchive: DailyArchiveSummary };
-export type ProjectDetail = { project: Database['public']['Tables']['text_projects']['Row']; questions: Database['public']['Tables']['conversation_messages']['Row'][]; practices: Database['public']['Tables']['practice_records']['Row'][]; challengeProgress: ProjectChallengeProgress };
+export type ProjectDetail = { project: Database['public']['Tables']['projects']['Row']; questions: Database['public']['Tables']['conversation_messages']['Row'][]; practices: Database['public']['Tables']['practice_records']['Row'][]; challengeProgress: ProjectChallengeProgress };
 
 type PracticeSummaryRow = Pick<Database['public']['Tables']['practice_records']['Row'], 'target_bloom_level' | 'achieved' | 'evaluation_state'> & { created_at?: string };
 type ConversationSummaryRow = {
@@ -206,7 +206,7 @@ export async function getStudentProjects(options: { page?: number; pageSize?: nu
   // 单次查询：通过嵌套 select 拉取项目 + 关联会话 + 挑战记录，
   // 消除原来 N 个项目 × 4 次查询的 N+1 问题。
   const projectsQuery = supabase
-    .from('text_projects')
+    .from('projects')
     .select(`
       *,
       conversations!conversations_project_id_fkey(id,title,updated_at,project_id,deleted_at,conversation_messages(id)),
@@ -246,7 +246,7 @@ export async function getStudentProjects(options: { page?: number; pageSize?: nu
     }
   }
 
-  type ProjectRow = Database['public']['Tables']['text_projects']['Row'] & {
+  type ProjectRow = Database['public']['Tables']['projects']['Row'] & {
     conversations: Array<ConversationSummaryRow & { deleted_at: string | null }>;
     practice_records: PracticeSummaryRow[];
   };
@@ -275,8 +275,8 @@ export async function getStudentProjects(options: { page?: number; pageSize?: nu
 
     return {
       id: project.id,
-      title: project.title,
-      author: project.author ?? undefined,
+      name: project.name,
+      subtitle: project.subtitle ?? undefined,
       questionCount,
       practiceCount: practices.length,
       updatedLabel: new Date(project.updated_at).toLocaleString('zh-CN'),
@@ -295,7 +295,7 @@ export async function getStudentProjects(options: { page?: number; pageSize?: nu
  * 只取挑战进度所需的三张表的窄列。挑战页要的是"哪些项目能挑战、挑战到什么程度"，
  * 之前复用了学习记录页那套带嵌套会话的重量查询，属于口径错配。
  */
-export type ChallengeProjectSummary = Pick<ProjectSummary, 'id' | 'title' | 'author' | 'questionCount' | 'challengeProgress'>;
+export type ChallengeProjectSummary = Pick<ProjectSummary, 'id' | 'name' | 'subtitle' | 'questionCount' | 'challengeProgress'>;
 
 export async function getStudentChallengeProjects(): Promise<DataResult<ChallengeProjectSummary[]>> {
   const role = await requireRole('student');
@@ -303,7 +303,7 @@ export async function getStudentChallengeProjects(): Promise<DataResult<Challeng
   const supabase = await createClient();
 
   const [{ data: projects, error }, { data: practices, error: practiceError }, { data: messages, error: messageError }] = await Promise.all([
-    supabase.from('text_projects').select('id,title,author,updated_at').eq('owner_id', role.data.id).order('updated_at', { ascending: false }),
+    supabase.from('projects').select('id,name,subtitle,updated_at').eq('owner_id', role.data.id).order('updated_at', { ascending: false }),
     supabase.from('practice_records').select('project_id,target_bloom_level,achieved,evaluation_state,created_at').eq('student_id', role.data.id),
     supabase
       .from('conversation_messages')
@@ -331,10 +331,10 @@ export async function getStudentChallengeProjects(): Promise<DataResult<Challeng
     questionCountByProject.set(conv.project_id, (questionCountByProject.get(conv.project_id) ?? 0) + 1);
   }
 
-  return ok(((projects ?? []) as Array<{ id: string; title: string; author: string | null }>).map((project) => ({
+  return ok(((projects ?? []) as Array<{ id: string; name: string; subtitle: string | null }>).map((project) => ({
     id: project.id,
-    title: project.title,
-    author: project.author ?? undefined,
+    name: project.name,
+    subtitle: project.subtitle ?? undefined,
     questionCount: questionCountByProject.get(project.id) ?? 0,
     challengeProgress: buildChallengeProgress(
       (practicesByProject.get(project.id) ?? []).sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '')),
@@ -384,7 +384,7 @@ export async function getStudentProject(projectId: string): Promise<DataResult<P
   const role = await requireRole('student');
   if (!role.ok) return role;
   const supabase = await createClient();
-  const { data: project, error } = await supabase.from('text_projects').select('*').eq('id', projectId).eq('owner_id', role.data.id).maybeSingle();
+  const { data: project, error } = await supabase.from('projects').select('*').eq('id', projectId).eq('owner_id', role.data.id).maybeSingle();
   if (error) return fail('error', `项目详情加载失败：${error.message}`);
   if (!project) return ok(null);
   const [{ data: questions, error: qError }, { data: practices, error: pError }] = await Promise.all([
@@ -415,7 +415,7 @@ export async function getStudentProjectStats(): Promise<DataResult<{
 
   const [projectsResult, questionsResult, practicesResult] = await Promise.all([
     // highest_bloom_level 由 practice_records 触发器维护，读它即可得到"已通过最高层级"。
-    supabase.from('text_projects').select('highest_bloom_level').eq('owner_id', role.data.id),
+    supabase.from('projects').select('highest_bloom_level').eq('owner_id', role.data.id),
     supabase
       .from('conversation_messages')
       .select('id, conversations!inner(owner_id,project_id,deleted_at)', { count: 'exact', head: true })
@@ -456,7 +456,7 @@ export async function getStudentProfileSummary(options: { page?: number; pageSiz
   if (!stats.ok) return stats;
   const projectBloomMatrix: ProjectBloomMatrixRow[] = projects.data.map((project) => ({
     id: project.id,
-    title: project.title,
+    name: project.name,
     confirmedLevel: project.challengeProgress.confirmedLevel,
     statusLabel: project.challengeProgress.statusLabel,
     levels: project.challengeProgress.levels,

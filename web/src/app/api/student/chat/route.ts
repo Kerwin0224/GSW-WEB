@@ -23,14 +23,14 @@ export const dynamic = 'force-dynamic';
 async function ensureProject(
   supabase: Awaited<ReturnType<typeof createClient>>,
   ownerId: string,
-  title: string,
-  author: string | null,
+  name: string,
+  subtitle: string | null,
 ) {
   const { data: existingProject, error: existingError } = await supabase
-    .from('text_projects')
-    .select('id,title')
+    .from('projects')
+    .select('id,name')
     .eq('owner_id', ownerId)
-    .eq('title', title)
+    .eq('name', name)
     .maybeSingle();
 
   if (existingError) {
@@ -40,9 +40,9 @@ async function ensureProject(
   if (existingProject) return existingProject;
 
   const { data: project, error } = await supabase
-    .from('text_projects')
-    .insert({ owner_id: ownerId, title, author, classification_state: 'classified' })
-    .select('id,title')
+    .from('projects')
+    .insert({ owner_id: ownerId, name, subtitle, classification_state: 'classified' })
+    .select('id,name')
     .single();
 
   if (error || !project) {
@@ -81,11 +81,11 @@ const bodySchema = z.object({
   messageId: z.string().trim().min(1).optional(),
 });
 type AssignmentKind = 'project' | 'archive';
-type ProjectAssignment = { kind: AssignmentKind; projectId: string | null; title: string | null };
+type ProjectAssignment = { kind: AssignmentKind; projectId: string | null; name: string | null };
 type StudentChatData = {
   'student-assignment':
-    | { kind: 'project'; projectId: string; title: string }
-    | { kind: 'archive'; projectId: null; title: null };
+    | { kind: 'project'; projectId: string; name: string }
+    | { kind: 'archive'; projectId: null; name: null };
   'student-bloom':
     | { messageId: string; state: 'pending' }
     | { messageId: string; state: 'classified'; level: 1 | 2 | 3 | 4 | 5 | 6 }
@@ -96,7 +96,7 @@ type StudentChatMessage = UIMessage<unknown, StudentChatData>;
 type ConversationContext = {
   id: string;
   project_id: string | null;
-  text_projects?: { title: string } | { title: string }[] | null;
+  projects?: { name: string } | { name: string }[] | null;
 };
 type StoredConversationMessage = {
   id: string;
@@ -107,8 +107,8 @@ type StoredConversationMessage = {
 };
 
 function getConversationProjectTitle(conversation: ConversationContext | null) {
-  const project = conversation ? (Array.isArray(conversation.text_projects) ? conversation.text_projects[0] : conversation.text_projects) : null;
-  return normalizeConcreteProjectTitle(project?.title);
+  const project = conversation ? (Array.isArray(conversation.projects) ? conversation.projects[0] : conversation.projects) : null;
+  return normalizeConcreteProjectTitle(project?.name);
 }
 
 function toStudentChatMessage(row: StoredConversationMessage): StudentChatMessage {
@@ -144,17 +144,17 @@ async function resolveProjectAssignment({
   projectModel: LanguageModel | null;
   requestId: string;
 }): Promise<ProjectAssignment> {
-  const { data: ownedTitles } = await supabase.from('text_projects').select('title').eq('owner_id', ownerId);
-  const knownTitles = (ownedTitles ?? []).map((row) => row.title).filter((title): title is string => Boolean(title));
+  const { data: ownedNames } = await supabase.from('projects').select('name').eq('owner_id', ownerId);
+  const knownNames = (ownedNames ?? []).map((row) => row.name).filter((title): title is string => Boolean(title));
   // 归类口径来自该班任课教师配置的规则（未配置则用内置默认）。
   // 只在首问归类时解析一次，不进提问热路径。
   const rule = await resolveClassificationRule(supabase, ownerId);
   const classified = projectModel
-    ? await classifyProjectFromQuestion(projectModel, userText, knownTitles, { teacherRules: rule.teacherRules })
-    : { title: null, author: null, failure: 'model-unavailable' as const };
-  const title = classified.title ?? null;
+    ? await classifyProjectFromQuestion(projectModel, userText, knownNames, { teacherRules: rule.teacherRules })
+    : { name: null, subtitle: null, failure: 'model-unavailable' as const };
+  const name = classified.name ?? null;
 
-  if (!title) {
+  if (!name) {
     await writeLogEvent({
       level: 'warn',
       area: 'api',
@@ -166,19 +166,19 @@ async function resolveProjectAssignment({
         ...('detail' in classified && classified.detail ? { detail: classified.detail } : {}),
       },
     });
-    return { kind: 'archive', projectId: null, title: null };
+    return { kind: 'archive', projectId: null, name: null };
   }
 
-  const project = await ensureProject(supabase, ownerId, title, classified.author ?? null);
-  return { kind: 'project', projectId: project.id, title: project.title };
+  const project = await ensureProject(supabase, ownerId, name, classified.subtitle ?? null);
+  return { kind: 'project', projectId: project.id, name: project.name };
 }
 
 function assignmentHeaders(response: Response, assignment: ProjectAssignment | null) {
   if (!assignment) return;
   response.headers.set('x-assignment-kind', assignment.kind);
-  if (assignment.kind === 'project' && assignment.projectId && assignment.title) {
+  if (assignment.kind === 'project' && assignment.projectId && assignment.name) {
     response.headers.set('x-project-id', assignment.projectId);
-    response.headers.set('x-project-title', encodeURIComponent(assignment.title));
+    response.headers.set('x-project-name', encodeURIComponent(assignment.name));
   }
 }
 
@@ -210,7 +210,7 @@ export async function POST(req: Request) {
     const requestedProjectId = parsed.data.projectId;
     let projectId = normalizeUuid(requestedProjectId);
     if (!parsed.data.conversationId && requestedProjectId && !projectId) return Response.json({ error: '项目 ID 无效' }, { status: 400 });
-    let classifiedProjectTitle = normalizeConcreteProjectTitle(parsed.data.projectTitle);
+    let classifiedProjectName = normalizeConcreteProjectTitle(parsed.data.projectTitle);
     const isRegeneration = parsed.data.trigger === 'regenerate-message';
     let conversation: ConversationContext | null = null;
     let immediateAssignment: ProjectAssignment | null = null;
@@ -218,7 +218,7 @@ export async function POST(req: Request) {
     if (parsed.data.conversationId) {
       const { data: existingConversation, error: existingConversationError } = await supabase
         .from('conversations')
-        .select('id,project_id,text_projects(title)')
+        .select('id,project_id,projects(name)')
         .eq('id', parsed.data.conversationId)
         .eq('owner_id', role.data.id)
         .eq('source', 'student_chat')
@@ -239,7 +239,7 @@ export async function POST(req: Request) {
         return Response.json({ error: error instanceof Error ? error.message : '教师核实状态检查失败' }, { status: 500 });
       }
       projectId = conversation.project_id ?? undefined;
-      classifiedProjectTitle = getConversationProjectTitle(conversation) ?? null;
+      classifiedProjectName = getConversationProjectTitle(conversation) ?? null;
     }
 
     const shouldClassifyProject = shouldClassifyProjectForStudentTurn({
@@ -256,15 +256,15 @@ export async function POST(req: Request) {
 
     if (!hadConversation && projectId) {
       const { data: ownedProject, error: ownedProjectError } = await supabase
-        .from('text_projects')
-        .select('id,title')
+        .from('projects')
+        .select('id,name')
         .eq('id', projectId)
         .eq('owner_id', role.data.id)
         .maybeSingle();
       if (ownedProjectError) return Response.json({ error: `项目校验失败：${ownedProjectError.message}` }, { status: 500 });
       if (!ownedProject) return Response.json({ error: '项目不存在或不可访问' }, { status: 404 });
       projectId = ownedProject.id;
-      classifiedProjectTitle = classifiedProjectTitle ?? normalizeConcreteProjectTitle(ownedProject.title);
+      classifiedProjectName = classifiedProjectName ?? normalizeConcreteProjectTitle(ownedProject.name);
     }
 
     if (!conversation) {
@@ -273,12 +273,12 @@ export async function POST(req: Request) {
         .insert({ owner_id: role.data.id, project_id: projectId ?? null, source: 'student_chat', title: userText.slice(0, 80) })
         // 见 attachments route：与 deleted-at 守护测试形式一致，不影响 insert 本身。
         .is('deleted_at', null)
-        .select('id,project_id,text_projects(title)')
+        .select('id,project_id,projects(name)')
         .single();
       if (conversationError) return Response.json({ error: `会话创建失败：${conversationError.message}` }, { status: 500 });
       conversation = newConversation as ConversationContext;
       if (projectId) {
-        immediateAssignment = { kind: 'project', projectId, title: classifiedProjectTitle ?? getConversationProjectTitle(conversation) };
+        immediateAssignment = { kind: 'project', projectId, name: classifiedProjectName ?? getConversationProjectTitle(conversation) };
       }
     }
 
@@ -293,12 +293,12 @@ export async function POST(req: Request) {
             route: '/api/student/chat',
             message: error instanceof Error ? error.message : 'project assignment failed',
           });
-          return { kind: 'archive', projectId: null, title: null };
+          return { kind: 'archive', projectId: null, name: null };
         });
     }
 
     projectId = conversation.project_id ?? projectId;
-    classifiedProjectTitle = classifiedProjectTitle ?? getConversationProjectTitle(conversation);
+    classifiedProjectName = classifiedProjectName ?? getConversationProjectTitle(conversation);
     const bloomModel = caps.bloom_classification.ready
       ? resolveLanguageModel(caps.bloom_classification)
       : null;
@@ -385,8 +385,8 @@ export async function POST(req: Request) {
       }
     };
     const systemPrompt = buildStudentSystemPrompt(
-      classifiedProjectTitle
-        ? { kind: 'project', projectTitle: classifiedProjectTitle, attachmentPrompt }
+      classifiedProjectName
+        ? { kind: 'project', projectTitle: classifiedProjectName, attachmentPrompt }
         : projectAssignmentPromise
           ? { kind: 'classifying', attachmentPrompt }
           : { kind: 'archive', attachmentPrompt },
@@ -413,7 +413,7 @@ export async function POST(req: Request) {
             if (projectLinkError) throw new Error(`会话归入项目失败：${projectLinkError.message}`);
             assignedProjectId = assignment.projectId;
             projectId = assignment.projectId;
-            classifiedProjectTitle = assignment.title;
+            classifiedProjectName = assignment.name;
             if (userMessage && bloomModel) {
               await supabase.from('conversation_messages').update({ bloom_state: 'pending' }).eq('id', userMessage.id);
               writer.write({
@@ -426,7 +426,7 @@ export async function POST(req: Request) {
             writer.write({
               type: 'data-student-assignment',
               id: conversation.id,
-              data: { kind: 'project', projectId: assignment.projectId, title: assignment.title ?? '对应项目' },
+              data: { kind: 'project', projectId: assignment.projectId, name: assignment.name ?? '对应项目' },
               transient: true,
             });
             return assignment;
@@ -435,7 +435,7 @@ export async function POST(req: Request) {
           writer.write({
             type: 'data-student-assignment',
             id: conversation.id,
-            data: { kind: 'archive', projectId: null, title: null },
+            data: { kind: 'archive', projectId: null, name: null },
             transient: true,
           });
           return assignment;
@@ -515,7 +515,7 @@ export async function POST(req: Request) {
     const response = createUIMessageStreamResponse({ stream });
     response.headers.set('x-conversation-id', conversation.id);
     assignmentHeaders(response, immediateAssignment);
-    if (!immediateAssignment && classifiedProjectTitle) response.headers.set('x-project-title', encodeURIComponent(classifiedProjectTitle));
+    if (!immediateAssignment && classifiedProjectName) response.headers.set('x-project-name', encodeURIComponent(classifiedProjectName));
     if (!immediateAssignment && projectId) response.headers.set('x-project-id', projectId);
     return response;
   });

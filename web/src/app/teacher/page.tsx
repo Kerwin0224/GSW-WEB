@@ -31,10 +31,10 @@ export default async function TeacherChatPage() {
   const reviewedCount = analytics.reviewedCount;
 
   // 分组在服务端已经算好，看板直接复用——此前这一页自己又推了一遍三层嵌套。
-  type Row = { classLabel: string; projectTitle: string; sessionLabel: string; conversationId: string; issueLabels: string[] };
+  type Row = { classLabel: string; projectName: string; sessionLabel: string; conversationId: string; issueLabels: string[] };
   const rows: Row[] = groups.flatMap((group) => group.students.flatMap((student) => student.projects.flatMap((project) => project.sessions
     .filter((session) => session.issueLabels.length > 0)
-    .map((session) => ({ classLabel: group.classLabel, projectTitle: project.projectTitle, sessionLabel: session.sessionLabel, conversationId: session.conversationId, issueLabels: session.issueLabels })))));
+    .map((session) => ({ classLabel: group.classLabel, projectName: project.projectName, sessionLabel: session.sessionLabel, conversationId: session.conversationId, issueLabels: session.issueLabels })))));
   const highRiskRows = rows.slice(0, 3);
 
   const classSummaries = groups.map((group) => {
@@ -83,7 +83,7 @@ export default async function TeacherChatPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate font-medium">{row.classLabel} · {row.sessionLabel}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">《{row.projectTitle}》</p>
+                    <p className="mt-1 text-xs text-muted-foreground">《{row.projectName}》</p>
                   </div>
                   <span className="shrink-0 rounded-md bg-destructive px-2 py-1 text-xs font-medium text-destructive-foreground">{row.issueLabels.length} 处疑点</span>
                 </div>

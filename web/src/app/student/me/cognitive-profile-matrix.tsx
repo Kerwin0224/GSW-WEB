@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 type ProjectBloomMatrixRow = {
   id: string;
-  title: string;
+  name: string;
   confirmedLevel?: BloomLevel;
   statusLabel: string;
   levels: Array<{ level: BloomLevel; state: 'achieved' | 'current' | 'locked' }>;
@@ -20,7 +20,7 @@ function levelCellCopy(row: ProjectBloomMatrixRow, level: BloomLevel) {
   if (state === 'achieved') {
     return {
       label: '已通过',
-      ariaLabel: `《${row.title}》L${level} ${info.name} 已通过挑战`,
+      ariaLabel: `《${row.name}》L${level} ${info.name} 已通过挑战`,
       icon: CheckCircle2,
       className: 'border-transparent shadow-sm',
       style: { backgroundColor: `var(--bloom-${level})`, color: `var(--bloom-${level}-fg)` },
@@ -30,7 +30,7 @@ function levelCellCopy(row: ProjectBloomMatrixRow, level: BloomLevel) {
   if (state === 'current') {
     return {
       label: '待挑战',
-      ariaLabel: `《${row.title}》L${level} ${info.name} 待挑战`,
+      ariaLabel: `《${row.name}》L${level} ${info.name} 待挑战`,
       icon: Circle,
       className: 'border-primary/55 bg-primary/10 text-primary ring-1 ring-primary/20',
       style: undefined,
@@ -39,7 +39,7 @@ function levelCellCopy(row: ProjectBloomMatrixRow, level: BloomLevel) {
 
   return {
     label: '未开放',
-    ariaLabel: `《${row.title}》L${level} ${info.name} 未开放`,
+    ariaLabel: `《${row.name}》L${level} ${info.name} 未开放`,
     icon: Lock,
     className: 'border-border/45 bg-muted/40 text-muted-foreground',
     style: undefined,
@@ -68,7 +68,7 @@ export function CognitiveProfileMatrix({ rows }: { rows: ProjectBloomMatrixRow[]
             {rows.map((row) => (
               <tr key={row.id} className="border-b last:border-b-0">
                 <th scope="row" className="px-4 py-3 text-left align-middle font-medium">
-                  <span className="line-clamp-2">《{row.title}》</span>
+                  <span className="line-clamp-2">《{row.name}》</span>
                   <span className="mt-1 block text-xs font-normal text-muted-foreground">
                     {row.confirmedLevel ? `已通过到 L${row.confirmedLevel}` : '尚未通过挑战'}
                   </span>

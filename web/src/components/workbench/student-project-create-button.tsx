@@ -19,7 +19,7 @@ export function StudentProjectCreateButton() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
-  const [author, setAuthor] = useState('');
+  const [subtitle, setSubtitle] = useState('');
   const [error, setError] = useState('');
   const [pending, startTransition] = useTransition();
 
@@ -27,17 +27,17 @@ export function StudentProjectCreateButton() {
     setError('');
     startTransition(async () => {
       const formData = new FormData();
-      formData.set('title', title);
-      formData.set('author', author);
+      formData.set('name', title);
+      formData.set('subtitle', subtitle);
       const result = await createStudentProject(formData);
       if (!result.ok) {
         setError(result.message);
         return;
       }
-      toast.success(`已创建项目《${result.title}》`);
+      toast.success(`已创建项目《${result.name}》`);
       setOpen(false);
       setTitle('');
-      setAuthor('');
+      setSubtitle('');
       router.refresh();
     });
   };
@@ -77,11 +77,11 @@ export function StudentProjectCreateButton() {
             <p className="text-xs text-muted-foreground">不超过 80 字。已有的同名项目会直接复用，不会重复创建。</p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="student-project-author">作者 / 出处（可选）</Label>
+            <Label htmlFor="student-project-author">补充标识（可选）</Label>
             <Input
               id="student-project-author"
-              value={author}
-              onChange={(event) => setAuthor(event.target.value)}
+              value={subtitle}
+              onChange={(event) => setSubtitle(event.target.value)}
               placeholder="例如：苏轼、人教版必修一"
               maxLength={60}
             />

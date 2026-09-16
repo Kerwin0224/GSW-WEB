@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     const supabase = await createClient();
     const { data: practice, error: practiceError } = await supabase
       .from('practice_records')
-      .select('*, text_projects(id,title,author)')
+      .select('*, projects(id,name,subtitle)')
       .eq('id', parsed.data.practiceId)
       .eq('student_id', role.data.id)
       .maybeSingle();
@@ -56,15 +56,15 @@ export async function POST(req: Request) {
     if (!practice.project_id) return Response.json({ state: 'error', error: '挑战记录缺少项目，不能更新项目认知状态。' }, { status: 422 });
     if (!practice.prompt) return Response.json({ state: 'error', error: '挑战记录缺少题目，不能评估。' }, { status: 422 });
 
-    const project = Array.isArray(practice.text_projects) ? practice.text_projects[0] : practice.text_projects;
+    const project = Array.isArray(practice.projects) ? practice.projects[0] : practice.projects;
     let evaluation: z.infer<typeof evaluationSchema>;
     try {
       const result = await generateObject({
         model,
         schema: evaluationSchema,
         prompt: buildChallengeEvaluationPrompt({
-          projectTitle: project?.title ?? '未知项目',
-          projectAuthor: project?.author,
+          projectName: project?.name ?? '未知项目',
+          projectSubtitle: project?.subtitle,
           targetBloomLevel: practice.target_bloom_level,
           challengePrompt: practice.prompt,
           studentAnswer: parsed.data.answer,

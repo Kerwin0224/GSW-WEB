@@ -12,11 +12,11 @@
  */
 
 import { formatBloomLevelCriteria } from './bloom-levels.ts';
-import { looksLikeTitleLine, normalizeConcreteProjectTitle, normalizeProjectAuthor } from './project-title.ts';
+import { looksLikeTitleLine, normalizeConcreteProjectTitle, normalizeProjectSubtitle } from './project-title.ts';
 
 // ─── 项目标题规范化（已迁至 project-title.ts，此处重导出保持调用点稳定）────────
 
-export { normalizeConcreteProjectTitle, normalizeProjectAuthor } from './project-title.ts';
+export { normalizeConcreteProjectTitle, normalizeProjectSubtitle } from './project-title.ts';
 
 // ─── 已知标题直查 ────────────────────────────────────────────────────────────
 
@@ -26,20 +26,20 @@ export { normalizeConcreteProjectTitle, normalizeProjectAuthor } from './project
  * （"《春望》和《静夜思》比较"= 以《春望》为主，与先说哪篇无关的排序是错的）。
  * 同一位置再取更长的标题，因为它更具体（"念奴娇·赤壁怀古" 优先于 "念奴娇"）。
  */
-export function matchKnownProjectTitle(question: string, knownTitles: readonly string[]): string | null {
+export function matchKnownProjectName(question: string, knownNames: readonly string[]): string | null {
   const haystack = question.replace(/[《》\s]/g, '');
   if (!haystack) return null;
-  let best: { title: string; index: number } | null = null;
-  for (const raw of knownTitles) {
-    const title = normalizeConcreteProjectTitle(raw);
-    if (!title || title.length < 2) continue;
-    const index = haystack.indexOf(title);
+  let best: { name: string; index: number } | null = null;
+  for (const raw of knownNames) {
+    const name = normalizeConcreteProjectTitle(raw);
+    if (!name || name.length < 2) continue;
+    const index = haystack.indexOf(name);
     if (index < 0) continue;
-    if (!best || index < best.index || (index === best.index && title.length > best.title.length)) {
-      best = { title, index };
+    if (!best || index < best.index || (index === best.index && name.length > best.name.length)) {
+      best = { name, index };
     }
   }
-  return best?.title ?? null;
+  return best?.name ?? null;
 }
 
 // ─── 归类输出解析 ────────────────────────────────────────────────────────────
@@ -49,18 +49,18 @@ export function matchKnownProjectTitle(question: string, knownTitles: readonly s
  * 标题走归一化（去书名号、拒占位与拒绝语）。首行不像标题时，从全文的书名号里捞一个
  * （如"这句出自王昌龄的《出塞》，……"→ 出塞）；全文无书名号则判无法归属。
  */
-export function parseClassificationAnswer(text: string): { title: string; author: string | null } | { title: null; author: null } {
-  const [rawFirst = '', rawAuthor] = text.trim().split('\n');
-  const rawTitle = rawFirst.replace(/^(?:项目|主题|标题|篇目)\s*[:：]\s*/u, '');
-  const title = normalizeConcreteProjectTitle(rawTitle);
-  if (title && title.toUpperCase() !== 'NULL' && looksLikeTitleLine(rawTitle)) {
-    return { title, author: normalizeProjectAuthor(rawAuthor) };
+export function parseClassificationAnswer(text: string): { name: string; subtitle: string | null } | { name: null; subtitle: null } {
+  const [rawFirst = '', rawSubtitle] = text.trim().split('\n');
+  const rawName = rawFirst.replace(/^(?:项目|主题|标题|篇目)\s*[:：]\s*/u, '');
+  const name = normalizeConcreteProjectTitle(rawName);
+  if (name && name.toUpperCase() !== 'NULL' && looksLikeTitleLine(rawName)) {
+    return { name, subtitle: normalizeProjectSubtitle(rawSubtitle) };
   }
   for (const match of text.matchAll(/《([^《》]{1,40})》/g)) {
     const salvaged = normalizeConcreteProjectTitle(match[1]);
-    if (salvaged) return { title: salvaged, author: null };
+    if (salvaged) return { name: salvaged, subtitle: null };
   }
-  return { title: null, author: null };
+  return { name: null, subtitle: null };
 }
 
 // ─── 归类提示词 ──────────────────────────────────────────────────────────────

@@ -441,7 +441,7 @@ export async function addClassMember(formData: FormData): Promise<void> {
   if (error) return;
   // 迁班后同步历史项目和会话的 class_id，使新班教师可见所有历史核实记录。
   if (targetRole === 'student') {
-    await supabase.from('text_projects').update({ class_id: classId }).eq('owner_id', profileId);
+    await supabase.from('projects').update({ class_id: classId }).eq('owner_id', profileId);
     await supabase.from('conversations').update({ class_id: classId }).eq('owner_id', profileId).eq('source', 'student_chat').is('deleted_at', null);
   }
   revalidatePath('/admin/users');
@@ -926,7 +926,7 @@ export async function importUsersFromCsv(csvText: string): Promise<{ ok: true; i
       if (membershipError) return { ok: false, message: `第 ${row.rowNumber} 行班级关系导入失败：${membershipError.message}`, preview };
       // 迁班后同步历史项目和会话的 class_id，使新班教师可见所有历史核实记录。
       if (row.role === 'student') {
-        await supabase.from('text_projects').update({ class_id: classRow.id }).eq('owner_id', profileIdText);
+        await supabase.from('projects').update({ class_id: classRow.id }).eq('owner_id', profileIdText);
         await supabase.from('conversations').update({ class_id: classRow.id }).eq('owner_id', profileIdText).eq('source', 'student_chat').is('deleted_at', null);
       }
     }

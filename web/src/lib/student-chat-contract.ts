@@ -5,8 +5,8 @@
  * 两条路都汇入 useStudentAssignment 的同一处理函数。
  */
 export type StudentAssignmentData =
-  | { kind: 'project'; projectId: string; title: string }
-  | { kind: 'archive'; projectId: null; title: null };
+  | { kind: 'project'; projectId: string; name: string }
+  | { kind: 'archive'; projectId: null; name: null };
 
 /** 可测试的 header 读取面：传 Response.headers 或任意 { get(name) } 形状。 */
 export type AssignmentHeaderReader = { get: (name: string) => string | null };
@@ -17,14 +17,14 @@ export type AssignmentHeaderReader = { get: (name: string) => string | null };
  */
 export function parseAssignmentFromHeaders(headers: AssignmentHeaderReader): StudentAssignmentData | null {
   const kind = headers.get('x-assignment-kind');
-  if (kind === 'archive') return { kind: 'archive', projectId: null, title: null };
+  if (kind === 'archive') return { kind: 'archive', projectId: null, name: null };
   if (kind !== 'project') return null;
-  const projectTitle = headers.get('x-project-title');
-  if (!projectTitle) return null;
+  const projectName = headers.get('x-project-name');
+  if (!projectName) return null;
   return {
     kind: 'project',
     projectId: headers.get('x-project-id') ?? '',
-    title: decodeURIComponent(projectTitle),
+    name: decodeURIComponent(projectName),
   };
 }
 

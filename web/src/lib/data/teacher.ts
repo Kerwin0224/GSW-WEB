@@ -53,7 +53,7 @@ type QueueConversationRow = {
   updated_at: string;
   finalized_at: string | null;
   profiles: { display_name: string | null } | Array<{ display_name: string | null }> | null;
-  text_projects: { title: string | null } | Array<{ title: string | null }> | null;
+  projects: { name: string | null } | Array<{ name: string | null }> | null;
   classes: { name: string | null } | Array<{ name: string | null }> | null;
 };
 
@@ -345,7 +345,7 @@ export type AuditSessionDetail = {
   classId: string | null;
   classLabel: string;
   studentName: string;
-  projectTitle: string;
+  projectName: string;
   sessionLabel: string;
   createdAt: string;
   transcript: TeacherAuditMessage[];
@@ -439,7 +439,7 @@ export async function getTeacherAuditQueue(options: TeacherAuditQueueOptions = {
 
   let queueQuery = supabase
     .from('conversations')
-    .select('id,title,class_id,project_id,updated_at,finalized_at,profiles(display_name),text_projects(title),classes(name)', { count: 'exact' })
+    .select('id,title,class_id,project_id,updated_at,finalized_at,profiles(display_name),projects(name),classes(name)', { count: 'exact' })
     .in('class_id', classScope.classIds)
     .eq('source', 'student_chat')
     .is('deleted_at', null)
@@ -503,7 +503,7 @@ export async function getTeacherAuditQueue(options: TeacherAuditQueueOptions = {
       classId: row.class_id,
       classLabel: firstJoined(row.classes)?.name?.trim() || '未命名班级',
       studentName: firstJoined(row.profiles)?.display_name?.trim() || '未命名学生',
-      projectTitle: firstJoined(row.text_projects)?.title?.trim() || '未关联项目',
+      projectName: firstJoined(row.projects)?.name?.trim() || '未关联项目',
       session: {
         conversationId: row.id,
         sessionLabel: row.title?.trim() || `会话 ${row.id.slice(0, 8)}`,
@@ -535,7 +535,7 @@ export async function getTeacherAuditSession(conversationId: string): Promise<Da
   const supabase = await createClient();
   const { data: conversationRow, error: conversationError } = await supabase
     .from('conversations')
-    .select('id,title,class_id,updated_at,finalized_at,profiles(display_name),text_projects(title),classes(name)')
+    .select('id,title,class_id,updated_at,finalized_at,profiles(display_name),projects(name),classes(name)')
     .eq('id', conversationId)
     .eq('source', 'student_chat')
     .is('deleted_at', null)
@@ -621,7 +621,7 @@ export async function getTeacherAuditSession(conversationId: string): Promise<Da
     classId: row.class_id,
     classLabel: firstJoined(row.classes)?.name?.trim() || '未命名班级',
     studentName: firstJoined(row.profiles)?.display_name?.trim() || '未命名学生',
-    projectTitle: firstJoined(row.text_projects)?.title?.trim() || '未关联项目',
+    projectName: firstJoined(row.projects)?.name?.trim() || '未关联项目',
     sessionLabel: row.title?.trim() || `会话 ${row.id.slice(0, 8)}`,
     createdAt: latestAssistant.created_at,
     transcript,

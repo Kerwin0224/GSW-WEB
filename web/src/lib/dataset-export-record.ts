@@ -112,7 +112,7 @@ export type ConversationLike = {
   owner_id: string;
   project_id: string | null;
   title: string | null;
-  text_projects?: { title: string | null } | Array<{ title: string | null }> | null;
+  projects?: { name: string | null } | Array<{ name: string | null }> | null;
 };
 
 export type TranscriptMessageLike = {
@@ -208,7 +208,7 @@ export function includesDpo(record: Pick<ExportableAuditRow, 'kind' | 'chosen_an
 }
 
 export function buildMetadata(context: DatasetContext): ExportSampleMetadata {
-  const project = firstJoined(context.conversation?.text_projects);
+  const project = firstJoined(context.conversation?.projects);
   return {
     sampleId: getSampleId(context.record),
     sourceRecordId: context.record.id,
@@ -216,7 +216,7 @@ export function buildMetadata(context: DatasetContext): ExportSampleMetadata {
     sourceConversationId: context.record.source_conversation_id,
     classId: context.record.class_id,
     projectId: context.conversation?.project_id ?? null,
-    projectTitle: project?.title?.trim() || context.conversation?.title?.trim() || null,
+    projectTitle: project?.name?.trim() || context.conversation?.title?.trim() || null,
     studentAnonId: anonymizeStudentId(context.conversation?.owner_id),
     teacherId: context.record.auditor_id,
     reviewStatus: context.record.status,

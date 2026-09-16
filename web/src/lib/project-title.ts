@@ -12,8 +12,14 @@
  * 纯函数、无 'server-only'、无网络，可直接单元测试（沿用仓库既有的纯逻辑/副作用分层约定）。
  */
 
-/** 系统占位名：它们看起来像标题，但只代表「还没定」，绝不能被建成项目。 */
-const nonConcreteProjectTitles = new Set([
+/**
+ * 系统占位名：它们看起来像名字，但只代表「还没定」，绝不能被建成项目。
+ *
+ * DB 触发器 `sync_project_contract()` 里有一份同样的名单，是纵深防御的第二道。
+ * 两份必须一致——此前已漂移过（DB 那份少了「附件会话」），
+ * 由 project-title.test.ts 的源码契约断言守住。
+ */
+export const nonConcreteProjectTitles = new Set([
   '自动识别中的篇目', '未定篇目', '待自动归属', '待归属篇目',
   '未知篇目', '未识别篇目', '默认篇目', '示例篇目', '篇目标题',
   '篇目项目', '日常会话归档', '附件会话',
@@ -39,9 +45,9 @@ export function normalizeConcreteProjectTitle(value?: string | null): string | n
   return title;
 }
 
-export function normalizeProjectAuthor(value?: string | null): string | null {
-  const author = value?.trim();
-  return author ? author : null;
+export function normalizeProjectSubtitle(value?: string | null): string | null {
+  const subtitle = value?.trim();
+  return subtitle ? subtitle : null;
 }
 
 /**

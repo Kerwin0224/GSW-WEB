@@ -188,11 +188,11 @@ export function StudentChatClient({
   const busy = status === 'submitted' || status === 'streaming';
   const activeProject = useMemo(() => projects.find((project) => project.id === activeProjectId), [activeProjectId, projects]);
   const inProjectContext = Boolean(activeProjectId);
-  const projectDisplayName = activeProject?.title ? `《${activeProject.title}》` : '当前项目';
+  const projectDisplayName = activeProject?.name ? `《${activeProject.name}》` : '当前项目';
   const promptChips = !inProjectContext
     ? globalPromptChips
-    : activeProject?.title
-      ? [`《${activeProject.title}》里这句怎么翻译？`, '这处字词是什么意思？', '作者为什么这样写？', '帮我换一个分析角度追问']
+    : activeProject?.name
+      ? [`《${activeProject.name}》里这句怎么翻译？`, '这处字词是什么意思？', '作者为什么这样写？', '帮我换一个分析角度追问']
       : ['这句怎么翻译？', '这处字词是什么意思？', '作者为什么这样写？', '帮我换一个分析角度追问'];
   const classificationRequired = shouldClassifyProjectForStudentTurn({
     hasConversation: Boolean(conversationId),
@@ -230,9 +230,9 @@ export function StudentChatClient({
   const buildRequestBody = useCallback((fallback?: Record<string, unknown>) => buildStudentChatRequestBody({
     conversationId: conversationIdRef.current || conversationId,
     projectId: activeProjectIdRef.current || activeProjectId,
-    projectTitle: activeProjectTitleRef.current || activeProject?.title,
+    projectTitle: activeProjectTitleRef.current || activeProject?.name,
     fallback,
-  }), [activeProject?.title, activeProjectId, activeProjectIdRef, activeProjectTitleRef, conversationId]);
+  }), [activeProject?.name, activeProjectId, activeProjectIdRef, activeProjectTitleRef, conversationId]);
 
   const handleDequeue = useCallback((next: QueuedStudentMessage) => {
     setLastSubmittedInput(next.text);
@@ -328,7 +328,7 @@ export function StudentChatClient({
       : {
           workspace: 'student',
           projectId: activeProjectId || undefined,
-          projectTitle: activeProject?.title,
+          projectTitle: activeProject?.name,
         }));
     try {
       const response = await fetch('/api/attachments', { method: 'POST', body: form });
@@ -343,7 +343,7 @@ export function StudentChatClient({
         enterProject(payload.projectId);
         setAssignmentNotice({
           kind: 'project',
-          title: matchedProject?.title ?? activeProject?.title ?? '对应项目',
+          name: matchedProject?.name ?? activeProject?.name ?? '对应项目',
         });
       } else {
         setAssignmentNotice({ kind: 'archive' });
@@ -510,7 +510,7 @@ export function StudentChatClient({
                             <FolderOpen className="size-4" aria-hidden="true" />
                           </span>
                           <span className="min-w-0">
-                            <span className="block truncate font-heading text-base">《{project.title}》</span>
+                            <span className="block truncate font-heading text-base">《{project.name}》</span>
                             <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs leading-5 text-muted-foreground">
                               <span>{project.questionCount} 条提问</span>
                               <span>{project.challengeProgress.statusLabel}</span>
@@ -527,7 +527,7 @@ export function StudentChatClient({
                             className="flex min-h-10 w-full cursor-pointer items-center gap-2 rounded-lg border border-primary/25 bg-primary/8 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             <Plus className="size-3.5 shrink-0" aria-hidden="true" />
-                            在《{project.title}》下提问
+                            在《{project.name}》下提问
                           </button>
                           {project.sessions.length === 0 ? <p className="rounded-lg border border-dashed bg-background/55 px-3 py-2 text-xs text-muted-foreground">暂无会话，可继续提问。</p> : null}
                           {project.sessions.map((session) => {
@@ -557,7 +557,7 @@ export function StudentChatClient({
                             className="mt-1 flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-accent/45 bg-accent/8 px-2 py-2 text-xs text-accent-foreground/85 transition-colors hover:border-accent/70 hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             <Swords className="size-3.5 shrink-0" aria-hidden="true" />
-                            挑战《{project.title}》
+                            挑战《{project.name}》
                           </Link>
                         </div>
                       ) : null}
@@ -634,7 +634,7 @@ export function StudentChatClient({
             ) : null}
             {messages.length === 0 ? (
               <EmptyState
-                title={inProjectContext ? `继续提问${activeProject?.title ? `《${activeProject.title}》` : '当前项目'}` : '把正在学的问题直接问出来'}
+                title={inProjectContext ? `继续提问${activeProject?.name ? `《${activeProject.name}》` : '当前项目'}` : '把正在学的问题直接问出来'}
                 description={inProjectContext
                   ? '这条新会话已归入当前项目。'
                   : conversationId
@@ -666,7 +666,7 @@ export function StudentChatClient({
               <div className={cn('animate-in fade-in rounded-lg border px-4 py-3 text-sm duration-200', assignmentNotice.kind === 'project' ? 'border-primary/20 bg-primary/5' : 'bg-muted/50 text-muted-foreground')} aria-live="polite">
                 <BookOpen className={cn('mr-2 inline size-4', assignmentNotice.kind === 'project' ? 'text-primary' : 'text-muted-foreground')} aria-hidden="true" />
                 {assignmentNotice.kind === 'project'
-                  ? `已归入《${assignmentNotice.title}》。`
+                  ? `已归入《${assignmentNotice.name}》。`
                   : '暂未识别到具体归属，已保存到其他会话。'}
               </div>
             ) : null}

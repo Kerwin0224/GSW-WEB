@@ -50,8 +50,8 @@ export async function POST(req: Request) {
 
     const supabase = await createClient();
     const { data: project, error: projectError } = await supabase
-      .from('text_projects')
-      .select('id,title,author,highest_bloom_level')
+      .from('projects')
+      .select('id,name,subtitle,highest_bloom_level')
       .eq('id', parsed.data.projectId)
       .eq('owner_id', role.data.id)
       .maybeSingle();
@@ -84,8 +84,8 @@ export async function POST(req: Request) {
         model,
         schema: challengeSchema,
         prompt: buildChallengeGenerationPrompt({
-          projectTitle: project.title,
-          projectAuthor: project.author,
+          projectName: project.name,
+          projectSubtitle: project.subtitle,
           targetBloomLevel,
           priorQuestions: priorQuestions ?? [],
         }),

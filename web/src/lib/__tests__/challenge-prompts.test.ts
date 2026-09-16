@@ -11,18 +11,18 @@ import {
 // ─── buildChallengeGenerationPrompt ──────────────────────────────────────────
 
 const baseCtx = {
-  projectTitle: '水调歌头',
-  projectAuthor: '苏轼',
+  projectName: '水调歌头',
+  projectSubtitle: '苏轼',
   targetBloomLevel: 3,
   priorQuestions: [
     { bloom_level: 2, content: '这首词的主旨是什么？' },
   ],
 };
 
-test('generation prompt contains project title and author', () => {
+test('generation prompt contains project name and subtitle', () => {
   const result = buildChallengeGenerationPrompt(baseCtx);
   assert.ok(result.includes('《水调歌头》'), 'should embed title with marks');
-  assert.ok(result.includes('（苏轼）'), 'should embed author');
+  assert.ok(result.includes('（苏轼）'), 'should embed subtitle');
 });
 
 test('generation prompt does not instruct model to output backend data formats', () => {
@@ -59,17 +59,17 @@ test('generation prompt includes the target bloom level task description', () =>
   assert.ok(result.includes('判断'), 'should include L5 task description');
 });
 
-test('generation prompt works without author', () => {
-  const result = buildChallengeGenerationPrompt({ ...baseCtx, projectAuthor: null });
-  assert.ok(!result.includes('《水调歌头》（'), 'should omit author when not provided');
+test('generation prompt works without subtitle', () => {
+  const result = buildChallengeGenerationPrompt({ ...baseCtx, projectSubtitle: null });
+  assert.ok(!result.includes('《水调歌头》（'), 'should omit subtitle when not provided');
   assert.ok(result.includes('《水调歌头》'), 'should still include title');
 });
 
 // ─── buildChallengeEvaluationPrompt ──────────────────────────────────────────
 
 const evalCtx = {
-  projectTitle: '静夜思',
-  projectAuthor: '李白',
+  projectName: '静夜思',
+  projectSubtitle: '李白',
   targetBloomLevel: 2,
   challengePrompt: '请用自己的话说出这首诗描绘的场景。',
   studentAnswer: '这首诗描绘的是一个月光明亮的夜晚，诗人在床前看到月光思念故乡。',
@@ -105,7 +105,7 @@ test('evaluation prompt includes the target level', () => {
   assert.ok(result.includes('目标层级：L2'), 'should embed target level');
 });
 
-test('evaluation prompt works without author', () => {
-  const result = buildChallengeEvaluationPrompt({ ...evalCtx, projectAuthor: null });
-  assert.ok(!result.includes('《静夜思》（'), 'should omit author when not provided');
+test('evaluation prompt works without subtitle', () => {
+  const result = buildChallengeEvaluationPrompt({ ...evalCtx, projectSubtitle: null });
+  assert.ok(!result.includes('《静夜思》（'), 'should omit subtitle when not provided');
 });

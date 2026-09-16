@@ -23,7 +23,7 @@ interface DatasetFilters {
 }
 
 type DatasetPreview = Extract<PreviewResult, { totalCount: number }> & {
-  poemDistribution: Array<{ title: string; count: number }>;
+  projectDistribution: Array<{ name: string; count: number }>;
   coverage: {
     eligibleRecords: number;
     validRecords: number;
@@ -210,12 +210,12 @@ export default function DatasetExportClient() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {preview.poemDistribution.length === 0 ? (
+                  {preview.projectDistribution.length === 0 ? (
                     <TableRow><TableCell colSpan={2}>暂无项目分布</TableCell></TableRow>
                   ) : (
-                    preview.poemDistribution.map((item) => (
-                      <TableRow key={item.title}>
-                        <TableCell>{item.title}</TableCell>
+                    preview.projectDistribution.map((item) => (
+                      <TableRow key={item.name}>
+                        <TableCell>{item.name}</TableCell>
                         <TableCell>{item.count}</TableCell>
                       </TableRow>
                     ))

@@ -67,7 +67,7 @@ function makeContext(overrides: {
       owner_id: 'a0000000-0000-0000-0000-000000000011',
       project_id: 'proj-1',
       title: null,
-      text_projects: [{ title: '静夜思' }],
+      projects: [{ name: '静夜思' }],
     },
     transcript: overrides.transcript ?? [],
   };

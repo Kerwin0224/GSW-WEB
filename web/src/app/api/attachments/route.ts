@@ -90,10 +90,10 @@ async function ensureConversation({
   const concreteProjectTitle = normalizeConcreteProjectTitle(projectTitle);
   if (workspace === 'student' && !resolvedProjectId && concreteProjectTitle) {
     const { data: existingProject, error: existingError } = await supabase
-      .from('text_projects')
+      .from('projects')
       .select('id')
       .eq('owner_id', profileId)
-      .eq('title', concreteProjectTitle)
+      .eq('name', concreteProjectTitle)
       .maybeSingle();
     if (existingError) return { ok: false as const, message: `附件项目查重失败：${existingError.message}` };
     resolvedProjectId = existingProject?.id;
@@ -101,8 +101,8 @@ async function ensureConversation({
 
   if (workspace === 'student' && !resolvedProjectId && concreteProjectTitle) {
     const { data: project, error } = await supabase
-      .from('text_projects')
-      .insert({ owner_id: profileId, title: concreteProjectTitle, author: null, classification_state: 'manual' })
+      .from('projects')
+      .insert({ owner_id: profileId, name: concreteProjectTitle, classification_state: 'manual' })
       .select('id')
       .single();
     if (error) return { ok: false as const, message: `附件项目创建失败：${error.message}` };

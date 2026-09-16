@@ -128,8 +128,8 @@ describe('student classifiers against an SSE-only gateway', () => {
       // 已有项目标题不含该篇目，强制走模型裁决，复现生产请求形态。
       ['静夜思', '赤壁赋'],
     );
-    assert.equal(outcome.title, '孔雀东南飞');
-    assert.equal(outcome.author, '佚名');
+    assert.equal(outcome.name, '孔雀东南飞');
+    assert.equal(outcome.subtitle, '佚名');
   });
 
   it('篇目归属请求必须走流式补全', async () => {

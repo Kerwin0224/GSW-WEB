@@ -17,7 +17,7 @@ import { streamText, type LanguageModel } from 'ai';
 import {
   buildProjectClassificationInstruction,
   defaultBloomClassificationInstruction,
-  matchKnownProjectTitle,
+  matchKnownProjectName,
   parseBloomClassificationAnswer,
   parseClassificationAnswer,
 } from './classification-prompts.ts';
@@ -25,8 +25,8 @@ import {
 // ─── 项目归属裁决 ────────────────────────────────────────────────────────────
 
 export type ProjectClassificationOutcome =
-  | { title: string; author: string | null; failure?: undefined; detail?: undefined }
-  | { title: null; author: null; failure: 'model-error' | 'model-unavailable' | 'unclassified'; detail?: string };
+  | { name: string; subtitle: string | null; failure?: undefined; detail?: undefined }
+  | { name: null; subtitle: null; failure: 'model-error' | 'model-unavailable' | 'unclassified'; detail?: string };
 
 /**
  * 项目归属裁决：仅在全局空白入口首问时调用。
@@ -41,11 +41,11 @@ export type ProjectClassificationOutcome =
 export async function classifyProjectFromQuestion(
   model: LanguageModel,
   question: string,
-  knownTitles: readonly string[] = [],
+  knownNames: readonly string[] = [],
   options: { teacherRules?: readonly { teacherName: string; instruction: string }[] } = {},
 ): Promise<ProjectClassificationOutcome> {
-  const knownTitle = matchKnownProjectTitle(question, knownTitles);
-  if (knownTitle) return { title: knownTitle, author: null };
+  const knownName = matchKnownProjectName(question, knownNames);
+  if (knownName) return { name: knownName, subtitle: null };
   try {
     const result = streamText({
       model,
@@ -55,14 +55,14 @@ export async function classifyProjectFromQuestion(
     });
     const text = await result.text;
     const parsed = parseClassificationAnswer(text);
-    if (!parsed.title) {
+    if (!parsed.name) {
       // 原文进 detail，生产日志（project_classification_fallback）可回查模型到底吐了什么。
-      return { title: null, author: null, failure: 'unclassified', detail: text.slice(0, 200) };
+      return { name: null, subtitle: null, failure: 'unclassified', detail: text.slice(0, 200) };
     }
-    return { title: parsed.title, author: parsed.author };
+    return { name: parsed.name, subtitle: parsed.subtitle };
   } catch (error) {
     const detail = error instanceof Error ? error.message.slice(0, 200) : 'unknown classification error';
-    return { title: null, author: null, failure: 'model-error', detail };
+    return { name: null, subtitle: null, failure: 'model-error', detail };
   }
 }
 // ─── 布鲁姆认知路径判定 ──────────────────────────────────────────────────────

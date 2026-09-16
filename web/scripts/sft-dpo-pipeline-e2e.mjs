@@ -185,13 +185,12 @@ async function seedInteractionTrace({ admin, studentClient, teacher, student, cl
   const prompt = `${RUN_ID} ${kind.toUpperCase()}：请解释“芳草鲜美，落英缤纷”的审美层次。`;
   const answer = `${RUN_ID} ${kind.toUpperCase()} 原始回答：这句话通过视觉意象写出桃花源入口的明丽与静谧。`;
 
-  await assertOk(await studentClient.from('text_projects').insert({
+  await assertOk(await studentClient.from('projects').insert({
     id: projectId,
     owner_id: student.id,
     class_id: classId,
-    title,
-    author: '陶渊明',
-    text_type: 'prose',
+    name: title,
+    subtitle: '陶渊明',
     classification_state: 'classified',
     highest_bloom_level: 4,
   }).select('id').single(), `${kind} project insert`);
@@ -308,7 +307,7 @@ async function cleanup(admin) {
   if (created.auditRecordIds.length) await admin.from('audit_records').delete().in('id', created.auditRecordIds);
   if (created.messageIds.length) await admin.from('conversation_messages').delete().in('id', created.messageIds);
   if (created.conversationIds.length) await admin.from('conversations').delete().in('id', created.conversationIds);
-  if (created.projectIds.length) await admin.from('text_projects').delete().in('id', created.projectIds);
+  if (created.projectIds.length) await admin.from('projects').delete().in('id', created.projectIds);
 }
 
 async function main() {
