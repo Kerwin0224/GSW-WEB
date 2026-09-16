@@ -1,6 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { test } from 'node:test';
 
 /**
@@ -105,4 +103,59 @@ test('没有靠 create or replace 改函数返回类型（那会直接炸迁移�
   }
 
   assert.deepEqual(violations, [], '改返回类型必须先 drop function');
+});
+
+/**
+ * 不许 `revoke` / `grant` 一个自己早已 drop 或改名掉的函数。
+ *
+ * 这条线上炸过一次：160943 写死了
+ *   revoke execute on function public.sync_text_project_contract() ...
+ * 而它早在 132700 就被 `alter function ... rename to sync_project_contract` 改掉了，
+ * 同组的 project_catalog_path 也在 132600 被 drop。`revoke` **没有** IF EXISTS 语法，
+ * 于是整条迁移在 statement 5 上 42883 失败、整体回滚——`--dry-run` 不执行 SQL，
+ * 看不出来；只有真推一次才知道。
+ *
+ * 判据只盯「已经被移走的那些名字」，不要求函数必须由迁移创建：
+ * Supabase 自己的 rls_auto_enable 之类不在迁移里，不该被这条规则误伤。
+ */
+test('不 revoke/grant 一个更早的迁移已 drop 或改名的函数', () => {
+  const removed = new Set<string>();
+  const violations: string[] = [];
+
+  // 注释要先剥掉：迁移文件里大量注释在**解释**某条 revoke 为什么危险，
+  // 直接扫全文会把那些说明文字当成真的 revoke。剥注释不改同一文件内的相对顺序。
+  const stripComments = (sql: string) => sql.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '');
+
+  for (const raw of migrationFiles()) {
+    const sql = stripComments(raw);
+    const events: Array<{ at: number; kind: 'remove' | 'restore' | 'use'; name: string }> = [];
+
+    for (const match of sql.matchAll(/drop\s+function\s+(?:if\s+exists\s+)?(?:public\.)?"?(\w+)"?/gi)) {
+      events.push({ at: match.index ?? 0, kind: 'remove', name: match[1].toLowerCase() });
+    }
+    for (const match of sql.matchAll(/alter\s+function\s+(?:public\.)?"?(\w+)"?\s*(?:\([^)]*\))?\s*rename\s+to\s+"?(\w+)"?/gi)) {
+      // 改名 = 旧名移走 + 新名出现，两个位置相差 1 以保证旧名先于新名结算。
+      events.push({ at: match.index ?? 0, kind: 'remove', name: match[1].toLowerCase() });
+      events.push({ at: (match.index ?? 0) + 1, kind: 'restore', name: match[2].toLowerCase() });
+    }
+    for (const match of sql.matchAll(/create\s+(?:or\s+replace\s+)?function\s+(?:public\.)?"?(\w+)"?/gi)) {
+      events.push({ at: match.index ?? 0, kind: 'restore', name: match[1].toLowerCase() });
+    }
+    for (const match of sql.matchAll(/(?:grant|revoke)[^;]*?\bon\s+function\s+(?:public\.)?"?(\w+)"?/gi)) {
+      events.push({ at: match.index ?? 0, kind: 'use', name: match[1].toLowerCase() });
+    }
+
+    events.sort((left, right) => left.at - right.at);
+    for (const event of events) {
+      if (event.kind === 'remove') removed.add(event.name);
+      else if (event.kind === 'restore') removed.delete(event.name);
+      else if (removed.has(event.name)) violations.push(event.name);
+    }
+  }
+
+  assert.deepEqual(
+    [...new Set(violations)],
+    [],
+    '这些函数在本条迁移之前就被 drop/改名了，revoke/grant 会在生产上 42883；按名字查存在性再执行',
+  );
 });

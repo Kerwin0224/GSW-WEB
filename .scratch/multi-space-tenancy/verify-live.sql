@@ -80,7 +80,7 @@ select 'A3 KEEP 缺 anon EXECUTE' as 检查项,
  where n.nspname = 'public'
    and p.proname = any(array[
      'current_app_user_id','current_school_id','current_profile_role','is_admin','is_org_admin',
-     'has_valid_app_session_signature','can_admin_class','can_admin_profile','can_admin_school_scope',
+     'can_admin_class','can_admin_profile','can_admin_school_scope',
      'can_read_school_scope','teacher_can_access_class','is_my_space','can_manage_space',
      'can_manage_space_row','space_class_same_school','can_read_conversation',
      'authenticate_school_account_v3','change_own_password','update_own_avatar',
@@ -99,6 +99,7 @@ select 'A4 REVOKE 仍对 anon 开放' as 检查项,
      'refresh_project_highest_bloom_level','get_profile','rls_auto_enable',
      'authenticate_school_account','authenticate_school_account_v2','authenticate_user',
      'rebuild_scenario_provider_capabilities','clear_school_model_tier_binding',
+     'has_valid_app_session_signature',
      'sync_project_contract','validate_conversation_contract','validate_space_contract'])
    and has_function_privilege('anon', p.oid, 'execute');
 
