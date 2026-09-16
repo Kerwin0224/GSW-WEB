@@ -1,0 +1,43 @@
+-- 收尾：删除过渡视图 public.text_projects（表改名的兼容层）
+--
+-- 缘起：迁移 20260916132700 把 text_projects 改名为 projects（连同 title→name、
+-- author→subtitle）。表改名不是向后兼容变更，而迁移经 CI **先于代码生效**——
+-- 改名瞬间到新代码构建完成之间，旧代码查 text_projects 会全站 500。
+-- 那时建了这个视图把旧名字接回去，消除那个窗口。
+--
+-- 现在新代码已上线（Vercel 部署 success，生产域名 200），应用层全仓已无 text_projects
+-- 引用，视图是惰性的。**但先别急着删**：它同时是回滚路径——
+-- 若新代码出问题需要 Vercel Instant Rollback 回旧版本，旧代码仍要查 text_projects。
+-- 删了它，回滚就不是「秒回」而是「先补一条迁移」。
+--
+-- ── 什么时候跑 ──────────────────────────────────────────────────────────────
+-- 人工把这轮改动验收通过之后再跑（清单见本次交付说明：学生提问归类、教师核实提交、
+-- 导出 JSONL、校 A 管理员看不到校 B 预设、校 admin 配本校 Provider 生效、MCP 工具气泡可见）。
+-- 验收通过 = 不再需要回滚路径 = 可以收尾。
+--
+-- ── 怎么跑 ──────────────────────────────────────────────────────────────────
+-- 更稳妥的做法是新增一条迁移文件（CI 会自动推），而不是在 Studio 手跑——
+-- 迁移是 schema-as-code，手跑会让云端与仓库不一致。
+-- 新建 web/supabase/migrations/<用 supabase migration new 生成的名字>.sql，内容：
+
+-- drop view if exists public.text_projects;
+--
+-- do $$
+-- begin
+--   if exists (select 1 from information_schema.views where table_schema='public' and table_name='text_projects') then
+--     raise exception 'compatibility view text_projects still exists';
+--   end if;
+--   if not exists (select 1 from information_schema.tables where table_schema='public' and table_name='projects') then
+--     raise exception 'projects table missing — refusing to confirm cleanup';
+--   end if;
+--   raise notice '过渡视图已删除；projects 就位';
+-- end $$;
+
+-- ── 若删了之后又需要回滚旧代码 ───────────────────────────────────────────────
+-- 重建视图即可（注意 security_invoker 不是可选项：默认以属主权限执行会绕过 RLS）：
+--
+-- create view public.text_projects with (security_invoker = true) as
+--   select id, owner_id, class_id, name as title, subtitle as author,
+--          classification_state, highest_bloom_level, created_at, updated_at
+--   from public.projects;
+-- grant select, insert, update, delete on public.text_projects to anon, authenticated, service_role;
