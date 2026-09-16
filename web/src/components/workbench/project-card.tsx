@@ -47,7 +47,6 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
           <div className="min-w-0 space-y-1.5">
             <CardTitle className="truncate font-heading text-2xl leading-8 tracking-tight">《{project.title}》</CardTitle>
             <p className="truncate text-xs text-muted-foreground">
-              {project.catalogPath ? <span title={project.catalogPath}>{project.catalogPath} · </span> : null}
               {project.author ? <span>{project.author} · </span> : null}
               {project.updatedLabel ?? '最近学习时间待同步'}
             </p>

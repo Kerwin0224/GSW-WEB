@@ -5,14 +5,12 @@ import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { writeLogEvent } from '@/lib/observability/server-log-store';
 import { extractTextFromParts, getCapabilities, jsonForDatabase, requireRole, resolveEnvSecret, resolveLanguageModel } from '@/lib/data/common';
 import { isStudentConversationFinalized } from '@/lib/data/conversation-finalization';
-import { resolveClassificationRule, resolveCatalogIdForTitle } from '@/lib/data/classification-rule';
+import { resolveClassificationRule } from '@/lib/data/classification-rule';
 import { retrieveConversationDocumentChunks } from '@/lib/data/retrieval';
 import { getRoleMcpTools } from '@/lib/mcp-runtime';
 import { shouldClassifyProjectForStudentTurn } from '@/lib/student-chat-contract';
-import {
-  buildStudentSystemPrompt,
-  normalizeConcreteProjectTitle,
-} from '@/lib/student-chat-prompts';
+import { buildStudentSystemPrompt } from '@/lib/student-chat-prompts';
+import { normalizeConcreteProjectTitle } from '@/lib/project-title';
 import {
   classifyBloomLevel,
   classifyProjectFromQuestion,
@@ -27,7 +25,6 @@ async function ensureProject(
   ownerId: string,
   title: string,
   author: string | null,
-  catalogId: string | null = null,
 ) {
   const { data: existingProject, error: existingError } = await supabase
     .from('text_projects')
@@ -44,9 +41,7 @@ async function ensureProject(
 
   const { data: project, error } = await supabase
     .from('text_projects')
-    // catalog_id 来自把归类标题解析到本校目录的结果；解析不到就是 null，
-    // 目录是可选增强，不影响建项目。
-    .insert({ owner_id: ownerId, title, author, catalog_id: catalogId, classification_state: 'classified' })
+    .insert({ owner_id: ownerId, title, author, classification_state: 'classified' })
     .select('id,title')
     .single();
 
@@ -155,10 +150,7 @@ async function resolveProjectAssignment({
   // 只在首问归类时解析一次，不进提问热路径。
   const rule = await resolveClassificationRule(supabase, ownerId);
   const classified = projectModel
-    ? await classifyProjectFromQuestion(projectModel, userText, knownTitles, {
-      teacherRules: rule.teacherRules,
-      catalogPaths: rule.catalogNodes.map((node) => node.path),
-    })
+    ? await classifyProjectFromQuestion(projectModel, userText, knownTitles, { teacherRules: rule.teacherRules })
     : { title: null, author: null, failure: 'model-unavailable' as const };
   const title = classified.title ?? null;
 
@@ -177,9 +169,7 @@ async function resolveProjectAssignment({
     return { kind: 'archive', projectId: null, title: null };
   }
 
-  // 把归类标题解析回本校目录节点：能对上就落 catalog_id，对不上就是未挂目录（不阻塞）。
-  const catalogId = resolveCatalogIdForTitle(title, rule.catalogNodes);
-  const project = await ensureProject(supabase, ownerId, title, classified.author ?? null, catalogId);
+  const project = await ensureProject(supabase, ownerId, title, classified.author ?? null);
   return { kind: 'project', projectId: project.id, title: project.title };
 }
 

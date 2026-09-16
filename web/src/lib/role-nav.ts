@@ -15,7 +15,6 @@ import {
   Download,
   FileSearch,
   FileText,
-  FolderTree,
   MessageSquare,
   Puzzle,
   School,
@@ -59,7 +58,7 @@ const teacherNavGroups: RoleNavGroup[] = [
     items: [
       { icon: BarChart3, label: '教学总览', href: '/teacher', description: '班级学情与待办', primary: true },
       { icon: MessageSquare, label: '备课问答', href: '/teacher/chat', description: '讨论讲解思路与课堂练习', primary: true },
-      { icon: FileSearch, label: '回答审核', href: '/teacher/audit', description: '核验 AI 回答与教学标签', primary: true },
+      { icon: FileSearch, label: '学习记录核实', href: '/teacher/audit', description: '核验 AI 回答与教学标签', primary: true },
     ],
   },
 ];
@@ -71,7 +70,6 @@ const adminNavGroups: RoleNavGroup[] = [
       { icon: ShieldCheck, label: '运行概览', href: '/admin', description: '账号规模与服务配置', primary: true },
       { icon: Users, label: '用户管理', href: '/admin/users', description: '创建和管理全校账号', primary: true },
       { icon: School, label: '班级管理', href: '/admin/classes', description: '分配任课教师与学生' },
-      { icon: FolderTree, label: '项目目录', href: '/admin/catalogs', description: '配置项目归属规则（学科/年级/专题）' },
     ],
   },
   {

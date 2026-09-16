@@ -58,9 +58,14 @@ function systemText(value: unknown): string {
   return '';
 }
 
+/**
+ * 按 system 里的**输出协议**分发，而不是按人设文案。
+ * 协议由系统强制拼接（见 classification-prompts.ts 的 projectClassificationProtocol），
+ * 是这两个分类器真正稳定的身份标志；人设句会随定位调整而变，绑它等于每次改文案都要改夹具。
+ */
 function streamTextForRequest(system: string): string {
   if (system.includes('布鲁姆认知路径判定器')) return BLOOM_ANSWER;
-  if (system.includes('篇目归属裁决器')) return PROJECT_ANSWER;
+  if (system.includes('无法归属时只输出一行 NULL')) return PROJECT_ANSWER;
   return '好的，我们来一起看这个问题。';
 }
 

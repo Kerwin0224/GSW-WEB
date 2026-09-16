@@ -6,12 +6,10 @@
  * 两个分类都走流式累积的两行纯文本协议（不依赖结构化输出能力）：
  * 所接模型网关只正常服务 SSE，非流式 JSON 会直接抛错（2026-09-11 归类事故根因）。
  * 两个都是副作用性操作（网络请求 + token 消耗）。
- * 它们从 student-chat-prompts.ts 分离出来，使后者只保留纯函数（提示词构建 + 规范化），
- * 让接缝更清晰：
- *   - student-chat-prompts.ts → 纯函数，可直接单元测试，无 import 'ai'
+ * 纯函数层（提示词构建 + 输出解析 + 标题规范化）在 classification-prompts.ts，
+ * 使接缝清晰：
+ *   - classification-prompts.ts → 纯函数，可直接单元测试，无 import 'ai'
  *   - student-chat-classifiers.ts → 副作用层，接受 LanguageModel 参数，调用方负责编排时序
- *
- * 两个函数的类型签名和行为与原来完全一致，只是换了文件位置。
  */
 
 import { streamText, type LanguageModel } from 'ai';
@@ -22,29 +20,29 @@ import {
   matchKnownProjectTitle,
   parseBloomClassificationAnswer,
   parseClassificationAnswer,
-} from './student-chat-prompts.ts';
+} from './classification-prompts.ts';
 
-// ─── 篇目归属裁决 ────────────────────────────────────────────────────────────
+// ─── 项目归属裁决 ────────────────────────────────────────────────────────────
 
 export type ProjectClassificationOutcome =
   | { title: string; author: string | null; failure?: undefined; detail?: undefined }
   | { title: null; author: null; failure: 'model-error' | 'model-unavailable' | 'unclassified'; detail?: string };
 
 /**
- * 篇目归属裁决：仅在全局空白入口首问时调用。
- * 已知篇目直查（学生已有项目，零模型调用）→ 模型直判 → 无法裁决进日常会话归档。
+ * 项目归属裁决：仅在全局空白入口首问时调用。
+ * 已知标题直查（学生已有项目，零模型调用）→ 模型直判 → 无法裁决进日常会话归档。
  * 直判走流式累积：所接模型网关只正常服务 SSE，非流式 JSON 会直接抛错；
  * 问答本身走的就是流式，分类与它共用同一条活路。
  * 模型异常不抛出（failure: 'model-error'，附 provider 原文截断），由调用方记日志并降级。
  *
- * 归类规则不再是硬编码：接受教师配置的规则与本校目录路径（见 project-classification-prompt）。
- * 不传时退回内置默认，行为与以前一致。
+ * 归类口径不再是硬编码：接受本班任课教师配置的提示词规则（见 buildProjectClassificationInstruction）。
+ * 不传时退回内置默认（按学习主题归类），行为与以前一致。
  */
 export async function classifyProjectFromQuestion(
   model: LanguageModel,
   question: string,
   knownTitles: readonly string[] = [],
-  options: { teacherRules?: readonly { teacherName: string; instruction: string }[]; catalogPaths?: readonly string[] } = {},
+  options: { teacherRules?: readonly { teacherName: string; instruction: string }[] } = {},
 ): Promise<ProjectClassificationOutcome> {
   const knownTitle = matchKnownProjectTitle(question, knownTitles);
   if (knownTitle) return { title: knownTitle, author: null };

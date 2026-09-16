@@ -455,9 +455,9 @@ async function runPreReview(model: LanguageModel, transcript: ConversationContex
 - 预审对象是整个会话里的所有学生提问与 AI 回答；判断某条 AI 回答时，可以参考它前后的学生提问和上下文。
 - 必须返回 results 数组，并且每条 AI 回答都必须有且仅有一项结果；不要只返回有问题的回答。
 - results.messageId 必须逐字使用下面清单中的 messageId；没有明显教学正确性疑点的回答也要返回 issues: []。
-- 只定位可能误导学生学习古诗文的教学正确性风险，供教师核实；不要替教师做最终判错、评分、批改或数据打标。
+- 只定位可能误导学生学习的教学正确性风险，供教师核实；不要替教师做最终判错、评分、批改或数据打标。
 - quote 必须逐字复制对应 AI 回答中的连续原文片段，不得改写、概括、翻译或拼接不连续文本；如果无法在该回答原文中找到连续片段，就不要返回该 issue。
-- 优先关注误解字词句意、误引原文、错判作者/背景、情感脉络或表达手法解释牵强、把无依据推测说成定论、与学生问题明显不匹配的教学引导。
+- 优先关注讲错概念或术语、误引材料或依据、事实性错误、解释牵强、把无依据推测说成定论、与学生问题明显不匹配的教学引导。
 - 不要因为回答简短、风格普通、没有扩展讲解、没有使用固定教学步骤或没有给出标准答案就标红。
 - severity 使用要克制：high 只给会直接误导学生理解篇目或事实的风险；medium 给需要教师重点核实的可疑解释；low 给轻微但值得定位的表述。
 - 每条 AI 回答最多返回 4 个最需要教师定位的 issue；不要再做会话级全局截断。
@@ -486,8 +486,8 @@ ${transcriptText}`,
 要求：
 - 只检查 messageId=${message.id} 这条 AI 回答，其他内容只作为上下文。
 - quote 必须逐字复制这条 AI 回答中的连续原文片段，不得改写、概括、翻译或拼接不连续文本；如果无法在该回答原文中找到连续片段，就不要返回该 issue。
-- 只关注可能误导学生学习古诗文的教学正确性风险，供教师核实；不要替教师做最终判错、评分、批改或数据打标。
-- 优先关注误解字词句意、误引原文、错判作者/背景、情感脉络或表达手法解释牵强、把无依据推测说成定论、与学生问题明显不匹配的教学引导。
+- 只关注可能误导学生学习的教学正确性风险，供教师核实；不要替教师做最终判错、评分、批改或数据打标。
+- 优先关注讲错概念或术语、误引材料或依据、事实性错误、解释牵强、把无依据推测说成定论、与学生问题明显不匹配的教学引导。
 - 不要因为回答简短、风格普通、没有扩展讲解、没有使用固定教学步骤或没有给出标准答案就标红。
 - 没有明显教学正确性疑点时返回空 issues。
 - 最多返回 4 个最需要教师定位的 issue。
@@ -535,19 +535,19 @@ export async function runConversationPreReview(conversationId: string, _previous
   }
 
   const assistantMessages = contextResult.data.transcript.filter((row) => row.role === 'assistant');
-  if (assistantMessages.length === 0) return { ok: false, message: '这个会话还没有 AI 回答，不能发起 AI 辅助审计。' };
+  if (assistantMessages.length === 0) return { ok: false, message: '这个会话还没有 AI 回答，不能发起 AI 预审。' };
 
   const capability = await getCapability('audit_assist');
   if (!capability.ok) return { ok: false, message: capability.message };
-  if (!capability.data.ready) return { ok: false, message: capability.data.blockedReason ?? 'AI 辅助审计能力未就绪。' };
+  if (!capability.data.ready) return { ok: false, message: capability.data.blockedReason ?? 'AI 预审能力未就绪。' };
   const model = resolveLanguageModel(capability.data);
-  if (!model) return { ok: false, message: `${capability.data.providerName ?? 'Provider'} 的 secret_ref 未在服务端环境中解析成功，不能发起 AI 辅助审计。` };
+  if (!model) return { ok: false, message: `${capability.data.providerName ?? 'Provider'} 的 secret_ref 未在服务端环境中解析成功，不能发起 AI 预审。` };
 
   let preReview: Awaited<ReturnType<typeof runPreReview>>;
   try {
     preReview = await runPreReview(model, contextResult.data.transcript);
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? `AI 辅助审计失败：${error.message}` : 'AI 辅助审计失败：Provider 返回未知错误。' };
+    return { ok: false, message: error instanceof Error ? `AI 预审失败：${error.message}` : 'AI 预审失败：Provider 返回未知错误。' };
   }
 
   const latestAssistant = assistantMessages[assistantMessages.length - 1];
@@ -560,10 +560,10 @@ export async function runConversationPreReview(conversationId: string, _previous
     kind: 'metadata',
     status: 'approved',
     quality: 'pre_review',
-    prompt: 'AI 辅助审计：完整学生会话',
+    prompt: 'AI 预审：完整学生会话',
     original_answer: null,
     corrected_answer: null,
-    rationale: preReview.issues.length ? 'AI 辅助审计返回疑点，等待教师核实。' : 'AI 辅助审计未发现明显教学正确性疑点。',
+    rationale: preReview.issues.length ? 'AI 预审返回疑点，等待教师核实。' : 'AI 预审未发现明显教学正确性疑点。',
     metadata: {
       teacher_action: 'conversation_pre_review',
       reviewed_at: new Date().toISOString(),
@@ -578,13 +578,13 @@ export async function runConversationPreReview(conversationId: string, _previous
     },
   });
 
-  if (error) return { ok: false, message: `AI 辅助审计结果保存失败：${error.message}` };
+  if (error) return { ok: false, message: `AI 预审结果保存失败：${error.message}` };
   revalidatePath('/teacher');
   revalidatePath('/teacher/audit');
   if (preReview.missingMessageIds.length > 0) {
-    return { ok: true, message: `AI 辅助审计已保存，但当前只覆盖 ${preReview.reviewedMessageIds.length}/${assistantMessages.length} 条 AI 回答；请再次点击补审以补齐缺失结果。` };
+    return { ok: true, message: `AI 预审已保存，但当前只覆盖 ${preReview.reviewedMessageIds.length}/${assistantMessages.length} 条 AI 回答；请再次点击补审以补齐缺失结果。` };
   }
-  return { ok: true, message: preReview.issues.length ? `AI 辅助审计完成，已覆盖 ${preReview.reviewedMessageIds.length} 条 AI 回答，发现 ${preReview.issues.length} 处需教师定位核实的疑点。` : `AI 辅助审计完成，已覆盖 ${preReview.reviewedMessageIds.length} 条 AI 回答，未发现明显教学正确性疑点。` };
+  return { ok: true, message: preReview.issues.length ? `AI 预审完成，已覆盖 ${preReview.reviewedMessageIds.length} 条 AI 回答，发现 ${preReview.issues.length} 处需教师定位核实的疑点。` : `AI 预审完成，已覆盖 ${preReview.reviewedMessageIds.length} 条 AI 回答，未发现明显教学正确性疑点。` };
 }
 
 export async function finalizeLearningConversation(conversationId: string, _previousState: AuditSubmissionState, _formData: FormData): Promise<AuditSubmissionState> {

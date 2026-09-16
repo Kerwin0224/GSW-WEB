@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { embedText } from '@/lib/data/retrieval';
 import { jsonForDatabase, requireRole } from '@/lib/data/common';
+import { normalizeConcreteProjectTitle } from '@/lib/project-title';
 import type { AppRole, Database, Json } from '@/lib/supabase/database.types';
 
 export const runtime = 'nodejs';
@@ -18,8 +19,6 @@ const CHUNK_SIZE = 900;
 const CHUNK_OVERLAP = 120;
 const ALLOWED_TYPES = new Set(['text/plain', 'text/markdown', 'application/json']);
 const ALLOWED_EXTENSIONS = ['.txt', '.md', '.json'];
-const nonConcreteProjectTitles = new Set(['自动识别中的篇目', '未定篇目', '待自动归属', '待归属篇目', '未知篇目', '未识别篇目', '默认篇目', '示例篇目', '篇目标题', '篇目项目', '日常会话归档', '附件会话']);
-
 const metadataSchema = z.object({
   conversationId: z.string().uuid().optional(),
   workspace: z.enum(['student', 'teacher']),
@@ -29,12 +28,6 @@ const metadataSchema = z.object({
 });
 
 type ConversationRow = Database['public']['Tables']['conversations']['Row'];
-
-function normalizeConcreteProjectTitle(value?: string | null) {
-  const title = value?.trim().replace(/^《(.+)》$/, '$1').trim();
-  if (!title || nonConcreteProjectTitles.has(title)) return null;
-  return title;
-}
 
 function jsonError(message: string, status = 400) {
   return Response.json({ ok: false, message }, { status });
