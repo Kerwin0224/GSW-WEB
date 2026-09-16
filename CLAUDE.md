@@ -61,3 +61,20 @@ This repo uses a single-context domain docs layout. See `docs/agents/domain.md`.
 ### 部署与后端工作流
 
 涉及 Vercel 部署、Supabase 数据库（迁移、种子数据、schema 变更）、环境变量或部署链路验证时，先读 `docs/agents/deployment.md`：里面有免费档硬性约束、标准流程、造数据分流和工具/凭据缺失的补救方法。
+
+**下面四条是硬约束，不用先读文档，直接照做：**
+
+1. **Supabase 就是云端开发，永不起本地栈。** 不 `supabase start` / `db reset` / `test db`，
+   不 Docker，不 `npm run dev` 去验后端。数据库唯一真源是云端项目 `fxlfjwlwvsnjbgxmjtog`。
+2. **要跑 SQL 就跑云端**：`supabase db query --linked -f <file>`。
+   **不要**让用户去 Studio 里粘 SQL —— 该 agent 自己跑完的验证，不要推给用户。
+   同族的还有 `db advisors --linked`（安全体检）、`db lint --linked`、`migration list --linked`、
+   `db push --dry-run --linked`。
+3. **迁移落地只有一条路**：push main → CI `supabase-db-push`。本地推不动（缺 DB 密码）。
+4. **动了 RLS 策略就必须在真实身份下读一次。** `db push` 成功只说明 DDL 跑通，
+   策略递归、租户谓词收窄过头在 CI 全绿时照样存在。探针写法（立身份 → 自证身份 →
+   造正反两面 → rollback）见 `docs/agents/deployment.md`，范例
+   `.scratch/multi-space-tenancy/verify-live.sql`。
+
+**动手前先 `supabase <命令> --help` 看当下有哪些子命令**——本仓踩过一次：
+没看 `db query` 就以为「云端只能开 Studio 点」，绕了一大圈。

@@ -5,11 +5,14 @@
 -- 免费档没有 Branching，迁移不可回滚；出事后唯一的恢复手段是换回旧函数体并重跑。
 -- 事到临头再从 git 历史里翻旧文件太慢，所以原文存这里。
 --
--- 用法（确认派生能力行数异常时）：
---   1. 在 Studio SQL Editor 执行下面整个函数定义；
---   2. select public.rebuild_scenario_provider_capabilities();
---   3. select capability, count(*) from public.provider_capabilities group by 1 order by 1;
+-- 用法（确认派生能力行数异常时，在 `web/` 下）：
+--   1. supabase db query --linked "select public.rebuild_scenario_provider_capabilities()";
+--   2. 把下面整个函数定义喂进去（恢复旧函数体，然后重跑上一步）：
+--      supabase db query --linked -f ../docs/prod-data-fixes/2026-09-16-rebuild-capabilities-rollback.sql
+--   3. 校验：
+--      supabase db query --linked "select capability, count(*) from public.provider_capabilities group by 1 order by 1"
 --      期望 7 个对话类能力各 1 行（学校自带 Provider 生效时会有额外的学校行）。
+--   不要开 Studio 手粘，也不要在本地起栈。
 -- 注意：旧函数体不认 school_id，回滚后学校自带的 Provider 不会生效（回退到公司级），
 -- 但不会报错 —— 这正是回滚该有的行为。
 

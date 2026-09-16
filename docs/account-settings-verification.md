@@ -27,4 +27,6 @@
 - TypeScript 类型检查通过。
 - ESLint 无错误；保留 17 条既有未使用符号警告。
 - `supabase db reset` 与 `supabase db lint --local --level error` 通过。
+  ⚠️ 历史记录，**不是可照做的步骤**：这两条依赖本地 Docker 栈，此后本仓改为纯云端开发
+  （见 `docs/agents/deployment.md` 硬性约束），已在本地跑不了，也不该为了它起 Docker。
 - 无效日志签名被拒绝；有效签名首次写入成功，同一 UUID 与签名重放被主键拒绝。

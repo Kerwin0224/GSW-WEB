@@ -5,7 +5,9 @@
 -- 那个迁移同时把**所有已启用的 Server 置为未启用**，所以现在没有任何 Server 会生效，
 -- 直到有人显式打开。
 --
--- 这份 SQL 是打开前的审计台账。在 Supabase Studio 的 SQL Editor 里跑，逐行确认后再启用。
+-- 这份 SQL 是打开前的审计台账。在 `web/` 下 `supabase db query --linked -f
+-- ../docs/prod-data-fixes/2026-09-16-mcp-enable-audit.sql` 跑，逐行确认后再启用。
+-- 不要开 Studio 手粘。
 
 -- ── 1. 待审清单 ─────────────────────────────────────────────────────────────
 -- 重点看三列：
