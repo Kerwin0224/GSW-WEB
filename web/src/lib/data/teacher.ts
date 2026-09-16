@@ -37,6 +37,12 @@ export type TeacherAuditMessage = {
   reviewState?: ReviewState;
   preReviewChecked: boolean;
   preReviewIssues: TeacherPreReviewIssue[];
+  /**
+   * 这条消息落库时保存的 parts（正文 + 工具调用）。
+   * 教师核实时要看「这个结论是查来的还是编的」，所以工具调用必须带出来，
+   * 不能只给正文。已由 toPersistedAssistantParts 裁剪过（不含工具返回值）。
+   */
+  parts: unknown[];
 };
 type ReviewAuditRow = AuditRowBase & {
   source_message_id?: string | null;
@@ -380,7 +386,7 @@ function summarizePreReview(row: ReviewAuditRow | undefined, assistantCount: num
     const messageId = typeof issue.messageId === 'string' ? issue.messageId : typeof issue.message_id === 'string' ? issue.message_id : '';
     if (messageId) riskMessageIds.add(messageId);
     const label = typeof issue.label === 'string' ? issue.label.trim() : '';
-    const key = `${messageId} ${label}`;
+    const key = `${messageId}\u0000${label}`;
     if (!label || issueKeys.has(key)) continue;
     issueKeys.add(key);
     if (issueLabels.length < 4) issueLabels.push(label);
@@ -548,7 +554,7 @@ export async function getTeacherAuditSession(conversationId: string): Promise<Da
   const [transcriptResult, auditResult, auditCap] = await Promise.all([
     supabase
       .from('conversation_messages')
-      .select('id,conversation_id,role,content,created_at')
+      .select('id,conversation_id,role,content,parts,created_at')
       .eq('conversation_id', row.id)
       .order('created_at', { ascending: true }),
     supabase
@@ -561,7 +567,7 @@ export async function getTeacherAuditSession(conversationId: string): Promise<Da
   if (transcriptResult.error) return fail('error', `会话记录加载失败：${transcriptResult.error.message}`);
   if (auditResult.error) return fail('error', `核实记录加载失败：${auditResult.error.message}`);
 
-  const rawTranscript = (transcriptResult.data ?? []) as Array<{ id: string; conversation_id: string; role: TeacherAuditMessage['role']; content: string; created_at: string }>;
+  const rawTranscript = (transcriptResult.data ?? []) as Array<{ id: string; conversation_id: string; role: TeacherAuditMessage['role']; content: string; parts: unknown; created_at: string }>;
   const assistantTranscript = rawTranscript.filter((item) => item.role === 'assistant');
   if (assistantTranscript.length === 0) return ok(null);
 
@@ -602,6 +608,7 @@ export async function getTeacherAuditSession(conversationId: string): Promise<Da
       reviewState: isAssistant ? resolveReviewState(messageAudits) : undefined,
       preReviewChecked: isAssistant && parsedPreReview.reviewedMessageIds.has(transcriptRow.id),
       preReviewIssues: issuesByMessage.get(transcriptRow.id) ?? [],
+      parts: Array.isArray(transcriptRow.parts) ? transcriptRow.parts : [],
     };
   });
 

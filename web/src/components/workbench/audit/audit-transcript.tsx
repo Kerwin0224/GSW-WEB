@@ -2,8 +2,10 @@ import { CheckCircle2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { MarkdownContent } from '@/components/workbench/markdown-content';
+import { ToolCallPart } from '@/components/workbench/tool-call-part';
 import { AuditAnswerEditor } from '@/components/workbench/audit/audit-answer-editor';
 import { assistantStateLabel } from '@/components/workbench/audit/presentation';
+import { describeToolPart } from '@/lib/tool-call-view';
 import type { TeacherAuditMessage } from '@/lib/data/teacher';
 import { cn } from '@/lib/utils';
 
@@ -40,6 +42,8 @@ export function AuditTranscript({ transcript, locked, preReviewPartial }: {
                 </div>
                 {isAssistant ? (
                   <>
+                    {/* 工具调用放在正文之前：教师要先知道这条回答查了什么，再判断它说得对不对。 */}
+                    {item.parts.filter((part) => describeToolPart(part) !== null).map((part, index) => <ToolCallPart key={`${item.id}-tool-${index}`} part={part} />)}
                     <MarkdownContent content={assistantContent} highlights={item.preReviewIssues} />
                     {hasRevision ? (
                       <div className="mt-3 rounded-lg border border-primary/25 bg-primary/6 p-3">

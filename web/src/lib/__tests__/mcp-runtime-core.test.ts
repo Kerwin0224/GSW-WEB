@@ -8,28 +8,17 @@ function makeTool(name: string) {
   return { description: name, inputSchema: z.object({}), execute: async () => name };
 }
 
+function server(name: string, enabledTools: unknown) {
+  return { id: `id-${name}`, name, connection_ref: `http-mcp:https://example.test/${name}`, secret_ref: null, enabled_tools: enabledTools, health_status: 'healthy' };
+}
+
 function makeSupabase(rows: Array<{ name: string; enabled_tools: unknown }>) {
   const calls: unknown[] = [];
   return {
     calls,
-    from(table: 'mcp_servers') {
-      calls.push(['from', table]);
-      return {
-        select(columns: string) {
-          calls.push(['select', columns]);
-          return {
-            eq(column: string, value: boolean) {
-              calls.push(['eq', column, value]);
-              return {
-                async contains(column: string, value: string[]) {
-                  calls.push(['contains', column, value]);
-                  return { data: rows, error: null };
-                },
-              };
-            },
-          };
-        },
-      };
+    async rpc(fn: string, args: { p_role: string }) {
+      calls.push(['rpc', fn, args]);
+      return { data: rows.map((row) => server(row.name, row.enabled_tools)), error: null };
     },
   };
 }
@@ -54,12 +43,8 @@ test('role MCP lookup queries enabled servers for the selected runtime role', as
   });
 
   assert.equal(mcp.tools, undefined);
-  assert.deepEqual(supabase.calls, [
-    ['from', 'mcp_servers'],
-    ['select', '*'],
-    ['eq', 'is_enabled', true],
-    ['contains', 'allowed_roles', ['teacher']],
-  ]);
+  // 必须是 RPC：直接查表会被 mcp_servers 的 admin-only RLS 挡成 0 行（功能从未通电的根因）。
+  assert.deepEqual(supabase.calls, [['rpc', 'get_role_mcp_servers', { p_role: 'teacher' }]]);
 });
 
 test('role MCP lookup returns explicitly enabled tools and closes clients', async () => {
@@ -74,7 +59,7 @@ test('role MCP lookup returns explicitly enabled tools and closes clients', asyn
   }));
 
   assert.deepEqual(Object.keys(mcp.tools ?? {}), ['search']);
-  assert.deepEqual(supabase.calls.at(-1), ['contains', 'allowed_roles', ['student']]);
+  assert.deepEqual(supabase.calls.at(-1), ['rpc', 'get_role_mcp_servers', { p_role: 'student' }]);
   await mcp.close();
   assert.equal(closed, 1);
 });

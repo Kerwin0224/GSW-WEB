@@ -2,21 +2,30 @@ import type { ToolSet } from 'ai';
 
 export type RuntimeMcpRole = 'teacher' | 'student';
 export type RuntimeMcpServer = {
+  id: string;
   name: string;
+  connection_ref: string | null;
+  secret_ref: string | null;
   enabled_tools: unknown;
+  health_status: string;
 };
 export type RuntimeMcpClient = {
   tools(): Promise<ToolSet>;
   close(): Promise<void>;
 };
+/**
+ * 取值面收窄成一个 RPC。
+ *
+ * 此前是直接 `.from('mcp_servers').select('*')`，而该表只有 `is_admin()` 一条 SELECT 策略
+ * ——运行时是教师/学生身份，查询永远返回 0 行，MCP 从未通电且不报错。
+ * 改用 security definer 的 `get_role_mcp_servers`：跨行条件（启用中 + 角色匹配）与凭据列
+ * 都留在函数体里，不必给学生开放含 secret_ref 的表。
+ */
 export type RuntimeMcpSupabase = {
-  from(table: 'mcp_servers'): {
-    select(columns: string): {
-      eq(column: string, value: boolean): {
-        contains(column: string, value: RuntimeMcpRole[]): Promise<{ data: RuntimeMcpServer[] | null; error: { message: string } | null }>;
-      };
-    };
-  };
+  rpc(
+    fn: 'get_role_mcp_servers',
+    args: { p_role: RuntimeMcpRole },
+  ): Promise<{ data: RuntimeMcpServer[] | null; error: { message: string } | null }>;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -48,11 +57,7 @@ export async function getRoleMcpToolsFromSupabase(
   role: RuntimeMcpRole,
   createClientForServer: (server: RuntimeMcpServer) => Promise<RuntimeMcpClient>,
 ) {
-  const { data, error } = await supabase
-    .from('mcp_servers')
-    .select('*')
-    .eq('is_enabled', true)
-    .contains('allowed_roles', [role]);
+  const { data, error } = await supabase.rpc('get_role_mcp_servers', { p_role: role });
   if (error) throw new Error(`MCP Server 加载失败：${error.message}`);
 
   const clients: RuntimeMcpClient[] = [];

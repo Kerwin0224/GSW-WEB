@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { writeLogEvent } from '@/lib/observability/server-log-store';
 import { extractTextFromParts, getCapabilities, jsonForDatabase, requireRole, resolveEnvSecret, resolveLanguageModel } from '@/lib/data/common';
+import { toPersistedAssistantParts } from '@/lib/chat-message-parts';
 import { isStudentConversationFinalized } from '@/lib/data/conversation-finalization';
 import { resolveClassificationRule } from '@/lib/data/classification-rule';
 import { retrieveConversationDocumentChunks } from '@/lib/data/retrieval';
@@ -448,7 +449,8 @@ export async function POST(req: Request) {
           tools: mcp.tools,
           stopWhen: stepCountIs(5),
           abortSignal: req.signal,
-          onFinish: async ({ text }) => {
+          // 落库不在这里：组装好的 UI 消息（含工具调用 part）只在 toUIMessageStream.onFinish 拿得到。
+          onFinish: async () => {
             await assignmentTask;
             if (assignedProjectId && userMessage && bloomModel) {
               try {
@@ -471,7 +473,6 @@ export async function POST(req: Request) {
                 });
               }
             }
-            await supabase.from('conversation_messages').insert({ conversation_id: conversation.id, role: 'assistant', content: text, parts: jsonForDatabase([{ type: 'text', text }]), model_id: modelId, bloom_state: 'unclassified' });
             await closeMcpOnce();
           },
           onError: async (error) => {
@@ -497,7 +498,29 @@ export async function POST(req: Request) {
           },
         });
 
-        writer.merge(result.toUIMessageStream<StudentChatMessage>({ originalMessages: messages }));
+        writer.merge(result.toUIMessageStream<StudentChatMessage>({
+          originalMessages: messages,
+          // 落库放在这里而不是 streamText.onFinish：只有组装好的 responseMessage 才带工具调用 part。
+          // 放 onFinish 的话工具调用只存在于流里，学生一刷新、「调用过联网搜索」这条依据就没了，
+          // 而这恰恰是教师核实时要看的。
+          onFinish: async ({ responseMessage, isAborted }) => {
+            // 中断的流不落库：保留原行为——半截回答不该变成一条可核实的「AI 回答」。
+            if (isAborted) return;
+            const persistedParts = toPersistedAssistantParts(responseMessage.parts);
+            const text = persistedParts
+              .filter((part): part is { type: 'text'; text: string } => Boolean(part) && (part as { type?: string }).type === 'text')
+              .map((part) => part.text)
+              .join('');
+            await supabase.from('conversation_messages').insert({
+              conversation_id: conversation.id,
+              role: 'assistant',
+              content: text,
+              parts: jsonForDatabase(persistedParts),
+              model_id: modelId,
+              bloom_state: 'unclassified',
+            });
+          },
+        }));
 
         if (!projectAssignmentPromise) {
           return;

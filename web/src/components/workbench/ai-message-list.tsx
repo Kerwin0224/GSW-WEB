@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { BloomStatusBadge, type BloomStatus } from '@/components/workbench/bloom-status-badge';
 import { MarkdownContent } from '@/components/workbench/markdown-content';
+import { ToolCallPart } from '@/components/workbench/tool-call-part';
 
 interface MessageLike {
   id: string;
@@ -41,8 +42,11 @@ export function AIMessagePart({ part, markdown = false }: { part: unknown; markd
   }
 
   const type = partType(part);
-  if (type.startsWith('tool-')) {
-    return <div className="rounded-lg border border-border/60 bg-muted/70 px-3 py-2 text-xs text-muted-foreground">工具调用状态：{type.replace('tool-', '')}</div>;
+  // 工具调用：MCP 工具是运行时定义的，走 dynamic-tool；编译期已知的走 tool-<name>。
+  // 两者都由 describeToolPart 解析，认不出来时它返回 null，这里再落到下面的兜底。
+  if (type === 'dynamic-tool' || type.startsWith('tool-')) {
+    const toolCall = <ToolCallPart part={part} />;
+    if (toolCall) return toolCall;
   }
   if (type.includes('citation') || type.includes('retrieval')) {
     return <Badge variant="outline">检索 / 引用状态</Badge>;
@@ -64,10 +68,15 @@ export function AIMessagePart({ part, markdown = false }: { part: unknown; markd
 function keyedParts(parts: unknown[]) {
   const occurrences = new Map<string, number>();
   return parts.map((part) => {
+    // 工具 part 优先用 toolCallId 做键：同一个工具可能被调用多次，
+    // 用「类型 + 序号」当键时，流式追加会让 React 复用错节点，把上一条的结果渲染到新调用上。
+    const record = part && typeof part === 'object' ? part as Record<string, unknown> : null;
+    const toolCallId = typeof record?.toolCallId === 'string' ? record.toolCallId : '';
     const type = partType(part);
-    const occurrence = occurrences.get(type) ?? 0;
-    occurrences.set(type, occurrence + 1);
-    return { key: `${type}-${occurrence}`, part };
+    const seed = toolCallId || type;
+    const occurrence = occurrences.get(seed) ?? 0;
+    occurrences.set(seed, occurrence + 1);
+    return { key: toolCallId ? `${seed}` : `${type}-${occurrence}`, part };
   });
 }
 
