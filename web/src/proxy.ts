@@ -1,23 +1,20 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
+import { ROLE_HOME } from '@/lib/role-home';
 import { CWB_SESSION_COOKIE, parseSessionToken } from '@/lib/session';
+// 必须 import type：proxy 跑在 Edge runtime，值导入会把 database.types.ts 拖进 edge bundle。
+import type { AppRole } from '@/lib/supabase/database.types';
 
 const publicPaths = ['/login', '/api/auth'];
-const roleHome = {
-  student: '/student',
-  teacher: '/teacher',
-  admin: '/admin',
-  org_admin: '/org',
-} as const;
-
-type AppRole = keyof typeof roleHome;
 
 function isPublic(pathname: string) {
   return publicPaths.some((path) => pathname.startsWith(path));
 }
 
 function matchRequiredRole(pathname: string): AppRole | null {
-  const entry = Object.entries(roleHome).find(([, home]) => pathname.startsWith(home));
+  // 此前这里是 `type AppRole = keyof typeof roleHome` + 本地那份 roleHome：类型被收窄回自己的表，
+  // 永远不会和 APP_ROLES 比对，新角色拿不到守卫。现在键来自 ROLE_HOME，穷尽性由它保证。
+  const entry = Object.entries(ROLE_HOME).find(([, home]) => pathname.startsWith(home));
   return entry ? (entry[0] as AppRole) : null;
 }
 

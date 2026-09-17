@@ -7,7 +7,7 @@ import { transportForConnectionRef } from '@/lib/mcp-runtime';
 import { assertStdioMcpDisabled, requireAllowedMcpRemoteUrl } from '@/lib/mcp-runtime-policy';
 import { createDatabaseSessionSignature } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
-import type { AppRole, Database, Json, ModelTier, ProviderCapability } from '@/lib/supabase/database.types';
+import { APP_ROLES, type AppRole, type Database, type Json, type ModelTier, type ProviderCapability } from '@/lib/supabase/database.types';
 import { fail, getModelTiers, ok, requireAnyRole, requireRole, scenarioModelTiers, type DataResult, type ModelTierStatus } from './common';
 import { asMetadataObject } from './audit-record';
 
@@ -70,8 +70,6 @@ const providerCapabilities = [
 ] as const satisfies readonly ProviderCapability[];
 
 const configurableScenarios = providerCapabilities.filter((capability) => capability !== 'embedding');
-
-const appRoles = ['org_admin', 'admin', 'teacher', 'student'] as const satisfies readonly AppRole[];
 
 type ProviderConfigRow = Database['public']['Tables']['provider_configs']['Row'];
 type ProviderCapabilityRow = Database['public']['Tables']['provider_capabilities']['Row'];
@@ -196,7 +194,7 @@ function isProviderCapability(value: string): value is ProviderCapability {
 }
 
 function isAppRole(value: string): value is AppRole {
-  return appRoles.includes(value as AppRole);
+  return APP_ROLES.includes(value as AppRole);
 }
 
 async function getScenarioTierBindingsFromDb(supabase: Awaited<ReturnType<typeof createClient>>): Promise<AdminScenarioTierBinding[]> {

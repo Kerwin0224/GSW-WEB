@@ -103,7 +103,7 @@ export async function requireRole(role: AppRole): Promise<DataResult<Profile>> {
  * 例如项目归属目录——公司可下发模板，学校可维护自有目录。
  * 语义与 requireRole 完全一致，只是允许集合而非单值。
  */
-export async function requireAnyRole(roles: AppRole[]): Promise<DataResult<Profile>> {
+export async function requireAnyRole(roles: readonly AppRole[]): Promise<DataResult<Profile>> {
   try {
     const profile = await getProfile();
     if (!profile) return fail('missing_profile', '当前账号缺少 Supabase profile，无法猜测角色。');

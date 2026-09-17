@@ -1,6 +1,8 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
-export type AppRole = 'org_admin' | 'admin' | 'teacher' | 'student';
+/** 角色的唯一真源：类型与运行时校验（zod 枚举）都从这里派生，避免第二处手抄枚举漏角色。 */
+export const APP_ROLES = ['org_admin', 'admin', 'teacher', 'student'] as const;
+export type AppRole = (typeof APP_ROLES)[number];
 export type AvatarKey = 'ink' | 'pine' | 'cinnabar' | 'moon' | 'bamboo' | 'plum';
 export type ModelTier = 'flash' | 'advanced';
 export type ProviderCapability =

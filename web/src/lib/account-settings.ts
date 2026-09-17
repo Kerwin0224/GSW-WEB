@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+// 相对路径带 .ts 扩展名：npm test 裸跑 node --experimental-strip-types，没有 @/ 别名映射。
+import { APP_ROLES } from './supabase/database.types.ts';
+
 export const AVATAR_KEYS = ['ink', 'pine', 'cinnabar', 'moon', 'bamboo', 'plum'] as const;
 
 export type AvatarKey = (typeof AVATAR_KEYS)[number];
@@ -45,7 +48,7 @@ const postgresUuidSchema = z.string().regex(
 export const accountRpcProfileSchema = z.object({
   id: postgresUuidSchema,
   login_id: z.string(),
-  role: z.enum(['org_admin', 'admin', 'teacher', 'student']),
+  role: z.enum(APP_ROLES),
   display_name: z.string(),
   avatar_key: avatarKeySchema,
   session_version: z.number().int().nonnegative(),

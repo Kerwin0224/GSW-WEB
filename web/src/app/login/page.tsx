@@ -8,13 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-
-const roleHome: Record<string, string> = {
-  student: '/student',
-  teacher: '/teacher',
-  admin: '/admin',
-  org_admin: '/org',
-};
+import { ROLE_HOME } from '@/lib/role-home';
+import type { AppRole } from '@/lib/supabase/database.types';
 
 type LoginCandidate = {
   schoolId: string | null;
@@ -63,14 +58,17 @@ export default function LoginPage() {
         return;
       }
 
-      if (typeof data.role !== 'string' || !(data.role in roleHome)) {
+      // 账号未开通/角色未知的防线：data 是不可信 JSON，这条 in 判断必须留着。
+      // TS 的 in 只收窄右侧对象、不收窄左侧的键，所以下面索引处要收一次 AppRole；
+      // 它不掩盖类型错位——「每个角色都有首页」由 ROLE_HOME 的穷尽 Record 保证。
+      if (typeof data.role !== 'string' || !(data.role in ROLE_HOME)) {
         setError('账号暂未开通，请联系学校管理员。');
         setLoading(false);
         return;
       }
 
       // 初始密码=学号/工号的账号首登会被引导到 /settings?required=1 强制改密。
-      window.location.assign(data.redirectTo ?? roleHome[data.role]);
+      window.location.assign(data.redirectTo ?? ROLE_HOME[data.role as AppRole]);
     } catch {
       setError('当前服务暂不可用，请稍后再试。');
       setLoading(false);

@@ -1,14 +1,19 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
-import type { AppRole } from '@/lib/supabase/database.types';
+// 用相对路径而非 @/ 别名：这行现在是值导入（原先只有类型导入会被 strip 掉），
+// npm test 直接跑 node --experimental-strip-types，别名在那里无法解析。
+import { APP_ROLES, type AppRole } from './supabase/database.types.ts';
 
 export const SESSION_TTL_SECONDS = 60 * 60 * 8;
 
 const sessionTokenPayloadSchema = z.object({
   sub: z.string().min(1),
   loginId: z.string().min(1),
-  role: z.enum(['admin', 'teacher', 'student']),
+  // 必须从 APP_ROLES 派生：这里曾手抄一份三成员枚举，漏掉 org_admin，导致公司级管理员登录后
+  // cookie 解析成 null、被 proxy 静默弹回 /login（TypeScript 抓不到，SessionPayload.role 是含
+  // org_admin 的 AppRole，只有运行时 schema 少了它）。
+  role: z.enum(APP_ROLES),
   displayName: z.string().min(1),
   sessionVersion: z.number().int().nonnegative().default(0),
   mustChangePassword: z.boolean().default(false),

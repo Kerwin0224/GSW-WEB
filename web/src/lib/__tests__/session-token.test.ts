@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import test from 'node:test';
 
+import { APP_ROLES } from '../supabase/database.types.ts';
 import {
   createDatabaseSignatureSubject,
   createSessionTokenWithSecret,
@@ -29,6 +30,30 @@ test('round-trips a versioned school account session', () => {
   // Then
   assert.deepEqual(parsed, { ...session, exp: NOW_SECONDS + 60 * 60 * 8 });
 });
+
+// 唯一能抓住「schema 少写一个角色」的测试：类型检查看不到运行时 zod 枚举。
+// 遍历 APP_ROLES 而非写死角色名，否则下次加角色时这条照样绿。
+for (const role of APP_ROLES) {
+  test(`round-trips a session for role ${role}`, () => {
+    // Given
+    const session = {
+      sub: 'a0000000-0000-0000-0000-000000000001',
+      loginId: '20000101',
+      role,
+      displayName: '测试账号',
+      sessionVersion: 0,
+      mustChangePassword: false,
+    };
+
+    // When
+    const token = createSessionTokenWithSecret(session, SECRET, NOW_SECONDS);
+    const parsed = parseSessionTokenWithSecret(token, SECRET, NOW_SECONDS);
+
+    // Then
+    assert.notEqual(parsed, null);
+    assert.equal(parsed?.role, role);
+  });
+}
 
 test('parses an existing unversioned session as version zero', () => {
   // Given
