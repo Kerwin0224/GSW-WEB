@@ -26,7 +26,7 @@ export function AppSidebar({ role }: AppSidebarProps) {
   const toggleLabel = isMobile ? '关闭导航' : collapsed ? '展开侧边栏' : '收起侧边栏';
 
   return (
-    <Sidebar collapsible="icon" variant="sidebar">
+    <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border p-2">
         <div className="flex min-h-12 items-center gap-2 group-data-[collapsible=icon]:justify-center">
           {!collapsed ? <Link href={`/${role}`} onClick={() => setOpenMobile(false)} className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring">

@@ -3,18 +3,17 @@ import { AlertTriangle, ClipboardCheck, FileSearch } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
-import { ClassRulePanel } from '@/components/workbench/class-rule-panel';
 import { SpacePanel } from '@/components/workbench/space-panel';
 import { buildAuditHref } from '@/components/workbench/audit/presentation';
 import { WorkspaceHero } from '@/components/workbench/workspace-hero';
-import { getTeacherAnalytics, getTeacherAuditQueue, getTeacherClassRules } from '@/lib/data/teacher';
+import { getTeacherAnalytics, getTeacherAuditQueue, getTeacherClasses } from '@/lib/data/teacher';
 import { listTeacherSpaces } from '@/lib/data/spaces';
 
 export default async function TeacherChatPage() {
-  const [analyticsResult, auditResult, classRulesResult, spacesResult] = await Promise.all([
+  const [analyticsResult, auditResult, teacherClassesResult, spacesResult] = await Promise.all([
     getTeacherAnalytics(),
     getTeacherAuditQueue(),
-    getTeacherClassRules(),
+    getTeacherClasses(),
     listTeacherSpaces(),
   ]);
 
@@ -135,16 +134,10 @@ export default async function TeacherChatPage() {
 
       <section className="space-y-4">
         {spacesResult.ok ? (
-          <SpacePanel spaces={spacesResult.data} classes={classRulesResult.ok ? classRulesResult.data : []} />
+          <SpacePanel spaces={spacesResult.data} classes={teacherClassesResult.ok ? teacherClassesResult.data : []} />
         ) : (
           <ErrorState title="学习空间加载失败" description={spacesResult.message} />
         )}
-        {/* 过渡期并存。**不要**按「我有没有建空间」来显隐：判据会错位——别人建了空间
-            拉了你的班，你的规则对全班失效但面板照常显示「已生效」；你建了空间只拉 D 班，
-            自己还教 C 班，C 班学生仍在用这套规则而入口已经没了。
-            面板的可见性只该取决于它自己加载成没成。
-            空间铺开后由一次独立迁移删掉这条回退路径，届时本面板一并移除。 */}
-        {classRulesResult.ok ? <ClassRulePanel classes={classRulesResult.data} /> : null}
       </section>
     </div>
   );

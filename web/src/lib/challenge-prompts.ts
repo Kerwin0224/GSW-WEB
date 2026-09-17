@@ -42,7 +42,7 @@ function formatPriorQuestions(questions: PriorQuestion[]): string {
 }
 
 /**
- * 构建挑战生成的 AI 提示词（用于 `generateObject` 的 `prompt` 字段）。
+ * 构建挑战生成的 AI 提示词（用于结构化输出调用的 `prompt` 字段）。
  *
  * 包含 CONTEXT.md 中挑战的核心约束：
  * - 目标层级只由后端传入，不因学生问题而改变
@@ -102,7 +102,7 @@ export type ChallengeEvaluationContext = {
 };
 
 /**
- * 构建挑战确认的 AI 提示词（用于 `generateObject` 的 `prompt` 字段）。
+ * 构建挑战确认的 AI 提示词（用于结构化输出调用的 `prompt` 字段）。
  *
  * 严格体现 CONTEXT.md 的挑战确认约束：
  * - 目标层级严格来自本条挑战记录，不参考项目最高层级、AI 回答或教师修订

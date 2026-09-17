@@ -7,9 +7,7 @@ import { jsonForDatabase, requireRole } from '@/lib/data/common';
 import { normalizeConcreteProjectTitle } from '@/lib/project-title';
 import type { AppRole, Database, Json } from '@/lib/supabase/database.types';
 
-export const runtime = 'nodejs';
 export const maxDuration = 60;
-export const dynamic = 'force-dynamic';
 
 const MAX_FILES_PER_CONVERSATION = 3;
 const MAX_FILE_BYTES = 512 * 1024;

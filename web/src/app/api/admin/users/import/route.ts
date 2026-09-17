@@ -4,9 +4,6 @@ import { importUsersFromCsv, previewUserCsv } from '@/lib/data/admin';
 import { requireRole } from '@/lib/data/common';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
 const bodySchema = z.object({
   csvText: z.string().min(1),
   commit: z.boolean().optional(),

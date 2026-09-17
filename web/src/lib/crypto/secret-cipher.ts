@@ -65,12 +65,3 @@ export function decryptSecret(payload: string | null | undefined): string | null
     return null;
   }
 }
-
-/**
- * 判断字符串是否符合本工具加密产物的格式（用于鉴别旧 env: 引用与新加密值）。
- */
-export function isEncryptedSecret(payload: string | null | undefined): boolean {
-  if (!payload || typeof payload !== 'string') return false;
-  const parts = payload.split('.');
-  return parts.length === 4 && parts[0] === FORMAT_VERSION;
-}

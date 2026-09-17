@@ -2,13 +2,13 @@ import 'server-only';
 
 import {
   DEFAULT_EXPORT_SCOPE,
+  isExportableRecord,
   keepLatestApprovedExports,
   toDpoRecord,
   toMetadataRecord,
   toSftRecord,
   type ConversationLike,
   type DatasetFilters,
-  type DatasetExportScope,
   type DatasetType,
   type DpoRecord,
   type ExportableAuditRow,
@@ -18,19 +18,8 @@ import {
   type SftRecord,
   type TranscriptMessageLike,
 } from '@/lib/dataset-export-record';
+import { firstJoined } from '@/lib/data/audit-record';
 import { createClient } from '@/lib/supabase/server';
-
-export type {
-  DatasetType,
-  DatasetExportScope,
-  DatasetFilters,
-  SftRecord,
-  MetadataRecord,
-  DpoRecord,
-  ExportResult,
-  PreviewResult,
-} from '@/lib/dataset-export-record';
-export type { DatasetError } from '@/lib/dataset-export-record';
 
 // 托管版 PostgREST 默认 max-rows=1000：任何一次全量查询不翻页都会静默截断，
 // 曾导致导出totalCount失真、transcript 缺失后样本静默退化为单条 prompt。
@@ -42,7 +31,7 @@ const IN_CLAUSE_CHUNK = 100;
  * 翻页取尽一个查询：每页 PAGE_SIZE 行，直到返回不足一页。
  * buildPage 必须每次构造全新查询（supabase builder 是可变对象，不能复用已执行过的实例）。
  */
-export async function fetchAllPagedRows<T>(
+async function fetchAllPagedRows<T>(
   buildPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
   label: string,
 ): Promise<{ rows: T[]; error?: string }> {
@@ -69,9 +58,6 @@ function applySharedFilters(
   type: DatasetType,
   filters: DatasetFilters,
 ) {
-  // metadata 是审阅台账：SFT 导出后记录会被标 exported，若按 unexported 过滤，
-  // 台账里的历史样本会立即消失，与台账直觉相悖，因此 metadata 强制 scope='all'。
-  const scope: DatasetExportScope = type === 'metadata' ? 'all' : (filters.scope ?? DEFAULT_EXPORT_SCOPE);
   query = type === 'metadata'
     ? query.in('kind', ['sft', 'dpo']).in('status', ['approved', 'exported'])
     : query.eq('kind', type).in('status', ['approved', 'exported']);
@@ -81,7 +67,7 @@ function applySharedFilters(
   if (filters.classId) query = query.eq('class_id', filters.classId);
   if (filters.quality) query = query.eq('quality', filters.quality);
   if (filters.auditorIds && filters.auditorIds.length > 0) query = query.in('auditor_id', filters.auditorIds);
-  return { query, scope };
+  return query;
 }
 
 type DatasetRecordContext = {
@@ -90,11 +76,18 @@ type DatasetRecordContext = {
   transcript: TranscriptMessageLike[];
 };
 
+/** 导出与预览共用同一份「按类型转样本」判断，避免两处三元表达式各自漂移。 */
+function toDatasetRecord(type: DatasetType, context: DatasetRecordContext): SftRecord | MetadataRecord | DpoRecord | null {
+  if (type === 'sft') return toSftRecord(context);
+  if (type === 'dpo') return toDpoRecord(context);
+  return toMetadataRecord(context);
+}
+
 async function fetchAuditRecords(
   type: DatasetType,
   filters: DatasetFilters,
   limit?: number,
-): Promise<{ records: DatasetRecordContext[]; totalCount: number; error?: string }> {
+): Promise<{ records: DatasetRecordContext[]; latestRecords: ExportableAuditRow[]; error?: string }> {
   const supabase = await createClient();
 
   let conversationIdFilter: string[] | undefined;
@@ -103,10 +96,10 @@ async function fetchAuditRecords(
       (from, to) => supabase.from('conversations').select('id').in('project_id', filters.projectIds!).range(from, to),
       '查询关联会话失败',
     );
-    if (convError) return { records: [], totalCount: 0, error: convError };
+    if (convError) return { records: [], latestRecords: [], error: convError };
 
     conversationIdFilter = conversations.map((conversation) => conversation.id);
-    if (conversationIdFilter.length === 0) return { records: [], totalCount: 0 };
+    if (conversationIdFilter.length === 0) return { records: [], latestRecords: [] };
   }
 
   // 项目筛选命中大量会话时，.in() 按 URL 上限分块；各块结果合并后再去重取 latest。
@@ -115,7 +108,7 @@ async function fetchAuditRecords(
   for (const chunkIds of conversationChunks) {
     const { rows, error } = await fetchAllPagedRows<ExportableAuditRow>(
       (from, to) => {
-        const { query, scope: _scope } = applySharedFilters(
+        const query = applySharedFilters(
           supabase.from('audit_records').select(
             'id, source_message_id, kind, status, prompt, original_answer, corrected_answer, chosen_answer, rejected_answer, quality, class_id, auditor_id, source_conversation_id, metadata, created_at, updated_at',
           ),
@@ -127,10 +120,12 @@ async function fetchAuditRecords(
       },
       '查询审计记录失败',
     );
-    if (error) return { records: [], totalCount: 0, error };
+    if (error) return { records: [], latestRecords: [], error };
     auditRows.push(...rows);
   }
 
+  // metadata 是审阅台账：SFT 导出后记录会被标 exported，若按 unexported 过滤，
+  // 台账里的历史样本会立即消失，与台账直觉相悖，因此 metadata 强制 scope='all'。
   const scope = type === 'metadata' ? 'all' : (filters.scope ?? DEFAULT_EXPORT_SCOPE);
   const latestRecords = keepLatestApprovedExports(auditRows, scope);
   const slicedRecords = limit === undefined ? latestRecords : latestRecords.slice(0, limit);
@@ -139,7 +134,7 @@ async function fetchAuditRecords(
   if (conversationIds.length === 0) {
     return {
       records: slicedRecords.map((record) => ({ record, conversation: null, transcript: [] })),
-      totalCount: latestRecords.length,
+      latestRecords,
     };
   }
 
@@ -151,7 +146,7 @@ async function fetchAuditRecords(
     return { rows, error };
   }));
   const conversationsError = conversationResults.find((result) => result.error)?.error;
-  if (conversationsError) return { records: [], totalCount: 0, error: conversationsError };
+  if (conversationsError) return { records: [], latestRecords: [], error: conversationsError };
   const conversationsById = new Map(conversationResults.flatMap((result) => result.rows).map((conversation) => [conversation.id, conversation]));
 
   // transcript 按会话分块翻页取尽：任何一页截断都会让 buildPromptMessages
@@ -165,7 +160,7 @@ async function fetchAuditRecords(
     return { rows, error };
   }));
   const transcriptError = transcriptResults.find((result) => result.error)?.error;
-  if (transcriptError) return { records: [], totalCount: 0, error: transcriptError };
+  if (transcriptError) return { records: [], latestRecords: [], error: transcriptError };
 
   const transcriptByConversationId = new Map<string, TranscriptMessageLike[]>();
   for (const row of transcriptResults.flatMap((result) => result.rows)) {
@@ -180,7 +175,7 @@ async function fetchAuditRecords(
       conversation: record.source_conversation_id ? conversationsById.get(record.source_conversation_id) ?? null : null,
       transcript: record.source_conversation_id ? transcriptByConversationId.get(record.source_conversation_id) ?? [] : [],
     })),
-    totalCount: latestRecords.length,
+    latestRecords,
   };
 }
 
@@ -211,15 +206,11 @@ export async function exportDataset(
     const lines: string[] = [];
     const recordIds: string[] = [];
 
-    for (const record of records) {
-      const converted = type === 'sft'
-        ? toSftRecord(record)
-        : type === 'dpo'
-          ? toDpoRecord(record)
-          : toMetadataRecord(record);
+    for (const context of records) {
+      const converted = toDatasetRecord(type, context);
       if (!converted) continue;
       lines.push(JSON.stringify(converted));
-      recordIds.push(record.record.id);
+      recordIds.push(context.record.id);
     }
 
     if (recordIds.length === 0) {
@@ -257,7 +248,7 @@ export async function previewDataset(
   limit: number = 10,
 ): Promise<PreviewResult> {
   try {
-    const { records, totalCount, error } = await fetchAuditRecords(type, filters, limit);
+    const { records, latestRecords, error } = await fetchAuditRecords(type, filters, limit);
     if (error) {
       return {
         error: `查询审计记录失败：${error}`,
@@ -266,20 +257,32 @@ export async function previewDataset(
     }
 
     const sampleRecords: Array<SftRecord | MetadataRecord | DpoRecord> = [];
+    const projectCounts = new Map<string, number>();
 
-    for (const record of records) {
-      const converted = type === 'sft'
-        ? toSftRecord(record)
-        : type === 'dpo'
-          ? toDpoRecord(record)
-          : toMetadataRecord(record);
-      if (converted) sampleRecords.push(converted);
+    for (const context of records) {
+      const converted = toDatasetRecord(type, context);
+      if (!converted) continue;
+      sampleRecords.push(converted);
+      const projectName = firstJoined(context.conversation?.projects)?.name?.trim() || '未关联项目';
+      projectCounts.set(projectName, (projectCounts.get(projectName) ?? 0) + 1);
     }
+
+    // 覆盖率与分布都从这一次查询的结果算，不再另起一遍 audit_records 全量扫描。
+    const validRecords = latestRecords.filter((record) => isExportableRecord(type, record)).length;
 
     return {
       type,
-      totalCount,
+      totalCount: latestRecords.length,
       sampleRecords,
+      projectDistribution: [...projectCounts.entries()]
+        .map(([name, count]) => ({ name, count }))
+        .sort((left, right) => right.count - left.count),
+      coverage: {
+        eligibleRecords: latestRecords.length,
+        validRecords,
+        invalidRecords: Math.max(latestRecords.length - validRecords, 0),
+        sampleLimit: limit,
+      },
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

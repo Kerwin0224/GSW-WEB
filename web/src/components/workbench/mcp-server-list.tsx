@@ -5,11 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/workbench/state-surfaces';
 import { McpServerDialog } from '@/components/workbench/mcp-server-dialog';
 import { RoleBadge } from '@/components/workbench/role-badge';
+import type { AppRole } from '@/lib/supabase/database.types';
 
 /** 与 mcp_servers.allowed_roles 的实际取值一致：admin 与两个运行时角色。 */
-type Role = 'admin' | 'teacher' | 'student';
-
-
+type Role = Exclude<AppRole, 'org_admin'>;
 
 export type ServerRow = {
   id: string;

@@ -1,5 +1,5 @@
 import type { UIMessage } from 'ai';
-import { canonicalizeUiMessageParts } from '@/lib/chat-message-parts';
+import { toInitialMessage, toSessionSummary, type ConversationMessageRow, type ConversationSummaryRow } from '@/lib/chat-message-parts';
 import { createClient } from '@/lib/supabase/server';
 import { isPreReviewResultChecked, normalizePreReviewIssuesForMessage, type NormalizedPreReviewIssue } from '@/lib/teacher-pre-review';
 import { fail, getCapability, ok, requireRole, type DataResult } from './common';
@@ -63,14 +63,6 @@ type QueueConversationRow = {
   classes: { name: string | null } | Array<{ name: string | null }> | null;
 };
 
-type ConversationSummaryRow = {
-  id: string;
-  title: string | null;
-  updated_at: string;
-  conversation_messages?: Array<{ id: string }> | null;
-};
-type ConversationMessageRow = Pick<Database['public']['Tables']['conversation_messages']['Row'], 'id' | 'role' | 'content' | 'parts'>;
-
 function parseStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
@@ -110,7 +102,8 @@ function parsePreReview(
     }
   };
 
-  // 处理顶层 issues 数组（旧格式）
+  // 处理顶层 issues 数组（旧格式）。生产库里 2026-05-09 那批未定稿会话只有这个形状，
+  // 删掉这条分支会让它们的预审标记静默消失（会话级核实与看板风险列都读这里）。
   const rawIssues = metadata.issues;
   if (Array.isArray(rawIssues)) {
     // 按 messageId 分组后委托给 normalizePreReviewIssuesForMessage
@@ -172,23 +165,6 @@ async function getTeacherClassIds(teacherId: string) {
   return { ok: true as const, classIds: (data ?? []).map((row) => row.class_id) };
 }
 
-function toTeacherSessionSummary(conversation: ConversationSummaryRow): TeacherSessionSummary {
-  return {
-    id: conversation.id,
-    title: conversation.title ?? '未命名会话',
-    messageCount: Array.isArray(conversation.conversation_messages) ? conversation.conversation_messages.length : 0,
-    updatedLabel: new Date(conversation.updated_at).toLocaleString('zh-CN'),
-  };
-}
-
-function toInitialMessage(message: ConversationMessageRow): UIMessage {
-  return {
-    id: message.id,
-    role: message.role === 'assistant' ? 'assistant' : message.role === 'system' ? 'system' : 'user',
-    parts: canonicalizeUiMessageParts(message.content, message.parts),
-  };
-}
-
 export async function getTeacherWorkspace(): Promise<DataResult<TeacherWorkspace>> {
   const role = await requireRole('teacher');
   if (!role.ok) return role;
@@ -203,29 +179,13 @@ export async function getTeacherWorkspace(): Promise<DataResult<TeacherWorkspace
   if (teacherPresetError) return fail('error', `教师自建模板加载失败：${teacherPresetError.message}`);
   if (conversationError) return fail('error', `教师会话加载失败：${conversationError.message}`);
   const presetMap = new Map([...(teacherPresets ?? []), ...(presets ?? [])].map((preset) => [preset.id, preset]));
-  return ok({ presets: Array.from(presetMap.values()), teacherPresets: teacherPresets ?? [], providerBlocked: cap.ok && cap.data.ready ? undefined : cap.ok ? cap.data.blockedReason : cap.message, sessions: (conversations ?? []).map((conversation) => toTeacherSessionSummary(conversation as ConversationSummaryRow)) });
+  return ok({ presets: Array.from(presetMap.values()), teacherPresets: teacherPresets ?? [], providerBlocked: cap.ok && cap.data.ready ? undefined : cap.ok ? cap.data.blockedReason : cap.message, sessions: (conversations ?? []).map((conversation) => toSessionSummary(conversation as ConversationSummaryRow)) });
 }
 
-export type TeacherClassRule = {
-  classId: string;
-  className: string;
-  /** 本人为这个班配置的、当前生效的归类规则（published）；无则 null。 */
-  rule: string | null;
-  /** 本人是否有草稿（未发布）。 */
-  hasDraft: boolean;
-  /** 同班其他任课教师已配置的规则条数（提示"本班已有 N 位老师配了规则"）。 */
-  peerRuleCount: number;
-  studentCount: number;
-};
+export type TeacherClass = { classId: string; className: string; studentCount: number };
 
-/**
- * 教师视角的"我的班级 + 我为各班配置的归类规则"。
- * 这是"把归类能力交给老师"的入口数据：教师在这里为每个班写自己学科的归类口径。
- *
- * 每师每班一条：只取**本人**的规则作为可编辑对象；同班其他教师的规则只计数，
- * 因为那是别人学科的口径，本人不该在这里改写。
- */
-export async function getTeacherClassRules(): Promise<DataResult<TeacherClassRule[]>> {
+/** 教师任教班级的最小列表，供空间面板选择"把哪个班拉进空间"。 */
+export async function getTeacherClasses(): Promise<DataResult<TeacherClass[]>> {
   const role = await requireRole('teacher');
   if (!role.ok) return role;
   const supabase = await createClient();
@@ -240,54 +200,22 @@ export async function getTeacherClassRules(): Promise<DataResult<TeacherClassRul
   const rows = (memberships ?? []) as Array<{ class_id: string; classes: { name: string | null } | Array<{ name: string | null }> | null }>;
   if (rows.length === 0) return ok([]);
 
-  const classIds = rows.map((row) => row.class_id);
-  const [presetsResult, studentsResult] = await Promise.all([
-    supabase
-      .from('prompt_presets')
-      .select('class_id,status,system_instruction,created_by')
-      .in('class_id', classIds)
-      .eq('purpose', 'project_classification')
-      .order('updated_at', { ascending: false }),
-    supabase.from('class_memberships').select('class_id').in('class_id', classIds).eq('role', 'student'),
-  ]);
-  if (presetsResult.error) return fail('error', `归类规则加载失败：${presetsResult.error.message}`);
-  if (studentsResult.error) return fail('error', `班级学生数加载失败：${studentsResult.error.message}`);
-
-  // 本人的生效规则 / 本人草稿：只看 created_by = 自己。
-  const ownRuleByClass = new Map<string, string>();
-  const ownDraftClasses = new Set<string>();
-  // 其他教师的生效规则数：按 (class, 作者) 去重计数。
-  const peerRuleKeys = new Set<string>();
-  const teacherId = role.data.id;
-  for (const preset of (presetsResult.data ?? []) as Array<{ class_id: string | null; status: string; system_instruction: string; created_by: string | null }>) {
-    if (!preset.class_id) continue;
-    const isOwn = preset.created_by === teacherId;
-    if (isOwn) {
-      if (preset.status === 'published' && !ownRuleByClass.has(preset.class_id)) {
-        ownRuleByClass.set(preset.class_id, preset.system_instruction);
-      } else if (preset.status === 'draft') {
-        ownDraftClasses.add(preset.class_id);
-      }
-    } else if (preset.status === 'published' && preset.created_by) {
-      peerRuleKeys.add(`${preset.class_id}:${preset.created_by}`);
-    }
-  }
+  // 班名与人数分开取：class_memberships 一行一成员，join 出班名会按学生数重复。
+  const { data: students, error: studentsError } = await supabase
+    .from('class_memberships')
+    .select('class_id')
+    .in('class_id', rows.map((row) => row.class_id))
+    .eq('role', 'student');
+  if (studentsError) return fail('error', `班级学生数加载失败：${studentsError.message}`);
 
   const studentCountByClass = new Map<string, number>();
-  for (const row of (studentsResult.data ?? []) as Array<{ class_id: string }>) {
-    studentCountByClass.set(row.class_id, (studentCountByClass.get(row.class_id) ?? 0) + 1);
+  for (const student of (students ?? []) as Array<{ class_id: string }>) {
+    studentCountByClass.set(student.class_id, (studentCountByClass.get(student.class_id) ?? 0) + 1);
   }
 
   return ok(rows.map((row) => {
     const klass = Array.isArray(row.classes) ? row.classes[0] : row.classes;
-    return {
-      classId: row.class_id,
-      className: klass?.name?.trim() || '未命名班级',
-      rule: ownRuleByClass.get(row.class_id) ?? null,
-      hasDraft: ownDraftClasses.has(row.class_id),
-      peerRuleCount: Array.from(peerRuleKeys).filter((key) => key.startsWith(`${row.class_id}:`)).length,
-      studentCount: studentCountByClass.get(row.class_id) ?? 0,
-    };
+    return { classId: row.class_id, className: klass?.name?.trim() || '未命名班级', studentCount: studentCountByClass.get(row.class_id) ?? 0 };
   }));
 }
 

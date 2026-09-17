@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { EmptyState } from '@/components/workbench/state-surfaces';
 import { archiveSpaceAction, saveSpaceAction, setSpaceClassAction, type TeacherSpace } from '@/lib/data/spaces';
-import type { TeacherClassRule } from '@/lib/data/teacher';
+import type { TeacherClass } from '@/lib/data/teacher';
 import type { ActionState } from '@/lib/data/common';
 
 const idle: ActionState = { ok: false, message: '' };
@@ -29,7 +29,7 @@ const THEME_PLACEHOLDER = `只写「这个空间按什么分类」，不用管�
  * 归类主题与结构化返回协议是分开的：老师只写「怎么归类」（语义部分），
  * 两行输出协议由系统在提示词末尾强制拼接，见 lib/classification-prompts.ts。
  */
-export function SpacePanel({ spaces, classes }: { spaces: TeacherSpace[]; classes: TeacherClassRule[] }) {
+export function SpacePanel({ spaces, classes }: { spaces: TeacherSpace[]; classes: TeacherClass[] }) {
   const [selectedId, setSelectedId] = useState(spaces[0]?.id ?? '');
   const [creating, setCreating] = useState(spaces.length === 0);
   // 收敛到第一个：归档当前选中项后 spaces 里就没有它了，
@@ -76,7 +76,7 @@ export function SpacePanel({ spaces, classes }: { spaces: TeacherSpace[]; classe
   );
 }
 
-function SpaceEditor({ space, classes }: { space?: TeacherSpace; classes: TeacherClassRule[] }) {
+function SpaceEditor({ space, classes }: { space?: TeacherSpace; classes: TeacherClass[] }) {
   const [state, action, pending] = useActionState(saveSpaceAction, idle);
   const [name, setName] = useState(space?.name ?? '');
   const [theme, setTheme] = useState(space?.theme ?? '');

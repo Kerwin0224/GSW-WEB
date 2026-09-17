@@ -3,12 +3,10 @@ import { z } from 'zod';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { requireRole } from '@/lib/data/common';
 import { createClient } from '@/lib/supabase/server';
-
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+import { conversationIdSchema } from '@/lib/request-schemas';
 
 const bodySchema = z.object({
-  conversationId: z.string().trim().uuid(),
+  conversationId: conversationIdSchema,
 });
 
 export async function DELETE(req: Request) {

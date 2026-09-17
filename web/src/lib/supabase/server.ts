@@ -2,10 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
 import { createDatabaseSessionSignature, getAppSession } from '@/lib/session';
-
-function getSupabasePublishableKey() {
-  return process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-}
+import { getSupabasePublishableKey } from '@/lib/supabase/public-config';
 
 /**
  * 强制 supabase-js 的所有 REST 请求走 no-store：

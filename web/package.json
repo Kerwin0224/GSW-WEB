@@ -8,7 +8,6 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test --experimental-strip-types src/lib/__tests__/*.test.ts",
-    "test:sft-dpo-pipeline": "node scripts/sft-dpo-pipeline-e2e.mjs",
     "dev:logged": "mkdir -p .logs && next dev 2>&1 | tee .logs/next-dev.log",
     "logs:tail": "mkdir -p .logs && touch .logs/next-dev.log .logs/app-events.jsonl && tail -n 120 -f .logs/next-dev.log .logs/app-events.jsonl",
     "clean": "rm -rf .next"
@@ -27,7 +26,6 @@
     "cmdk": "^1.1.1",
     "lucide-react": "^1.44.0",
     "next": "16.3.4",
-    "next-themes": "^0.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "sonner": "^2.0.8",

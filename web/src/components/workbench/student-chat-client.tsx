@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
-import { BookOpen, ChevronDown, FolderOpen, Loader2, MessageSquare, Plus, Sparkles, Swords, Trash2 } from 'lucide-react';
+import { BookOpen, ChevronDown, FolderOpen, Loader2, Plus, Sparkles, Swords } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,7 @@ import { ChatWorkspace } from '@/components/workbench/chat-workspace';
 import { ThinkingIndicator } from '@/components/workbench/thinking-indicator';
 import { ChatComposer } from '@/components/workbench/chat-composer';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
-import type { BloomStatus } from '@/components/workbench/bloom-status-badge';
+import { SessionRow } from '@/components/workbench/session-row';
 import type { DailyArchiveSummary, ProjectSummary, StudentConversationInitial } from '@/lib/data/student';
 import type { StudentSpace } from '@/lib/data/spaces';
 import {
@@ -286,24 +286,17 @@ export function StudentChatClient({
     clearQueue();
     // 从服务端载入的历史消息 parts 里提取提问类型状态，恢复 bloomStatus，
     // 使历史会话也能渲染 BloomStatusBadge（而不只是流式期间才显示）。
-    const initialBloomStatus: Record<string, BloomStatus> = {};
+    resetBloomStatus();
     for (const message of initialConversation?.messages ?? []) {
       if (message.role !== 'user') continue;
       const bloomPart = (message.parts ?? []).find(
         (part): part is { type: 'data-student-bloom'; data: StudentBloomData } =>
           typeof part === 'object' && part !== null && (part as Record<string, unknown>).type === 'data-student-bloom',
       );
-      if (!bloomPart) continue;
-      const { data } = bloomPart;
-      initialBloomStatus[data.messageId] = data.state === 'classified'
-        ? { state: 'classified', level: data.level }
-        : data.state === 'failed'
-          ? { state: 'failed', reason: data.reason }
-          : { state: 'pending' };
+      if (bloomPart) applyBloomStatus(bloomPart.data);
     }
-    resetBloomStatus(initialBloomStatus);
     setMessages((initialConversation?.messages ?? []) as StudentChatMessage[]);
-  }, [busy, clearQueue, initialActiveProjectId, initialConversation, initialConversationSignature, projects, resetBloomStatus, setMessages, syncFromConversation]);
+  }, [applyBloomStatus, busy, clearQueue, initialActiveProjectId, initialConversation, initialConversationSignature, projects, resetBloomStatus, setMessages, syncFromConversation]);
 
   const displayMessages = useMemo(
     () => [
@@ -317,25 +310,10 @@ export function StudentChatClient({
     [messages, queuedMessages],
   );
 
-  const openProjectContext = (projectId: string) => {
-    enterProject(projectId);
-    setConversationId('');
-    conversationIdRef.current = '';
-    setConversationLocked(false);
-    resetBloomStatus();
-    clearQueue();
-    setUploadStatus('');
-    setUploadError('');
-    clearError();
-    setMessages([]);
-    replaceStudentUrl((params) => {
-      params.set('projectId', projectId);
-      params.delete('conversationId');
-    });
-  };
-
-  const openEmptyContext = () => {
-    resetToBlank();
+  /** 进入某个项目上下文（传 projectId）或退回空白入口（不传）。两者只差归属动作与 URL 上的 projectId。 */
+  const openContext = (projectId?: string) => {
+    if (projectId) enterProject(projectId);
+    else resetToBlank();
     setConversationId('');
     conversationIdRef.current = '';
     setConversationLocked(false);
@@ -347,7 +325,8 @@ export function StudentChatClient({
     setMessages([]);
     replaceStudentUrl((params) => {
       params.delete('conversationId');
-      params.delete('projectId');
+      if (projectId) params.set('projectId', projectId);
+      else params.delete('projectId');
     });
   };
 
@@ -473,11 +452,7 @@ export function StudentChatClient({
         // 会走 onAbort，不向已软删会话 insert 新的 assistant 消息（避免
         // 孤儿数据，也避免浪费已发起的 AI token）。
         if (busy) stop();
-        if (deleteTarget.projectId) {
-          openProjectContext(deleteTarget.projectId);
-        } else {
-          openEmptyContext();
-        }
+        openContext(deleteTarget.projectId);
       }
       setDeleteTarget(null);
       router.refresh();
@@ -513,7 +488,7 @@ export function StudentChatClient({
       sidebarPrimaryAction={(collapsed) => (
         <button
           type="button"
-          onClick={openEmptyContext}
+          onClick={() => openContext()}
           title="开始新会话"
           className={cn('flex min-h-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-sm font-medium text-primary-foreground shadow-lg shadow-primary/25 transition-[background-color,box-shadow,flex-direction] duration-200 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', collapsed ? 'w-full px-0' : 'flex-1 px-4')}
         >
@@ -596,35 +571,22 @@ export function StudentChatClient({
                         <div className="space-y-1 border-t border-border/55 bg-card/45 px-3 py-2">
                           <button
                             type="button"
-                            onClick={() => openProjectContext(project.id)}
+                            onClick={() => openContext(project.id)}
                             className="flex min-h-10 w-full cursor-pointer items-center gap-2 rounded-lg border border-primary/25 bg-primary/8 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             <Plus className="size-3.5 shrink-0" aria-hidden="true" />
                             在《{project.name}》下提问
                           </button>
                           {project.sessions.length === 0 ? <p className="rounded-lg border border-dashed bg-background/55 px-3 py-2 text-xs text-muted-foreground">暂无会话，可继续提问。</p> : null}
-                          {project.sessions.map((session) => {
-                            const current = session.id === conversationId;
-                            return (
-                              <div key={session.id} className={cn('group/session flex min-h-11 items-start gap-1 rounded-lg text-xs transition-colors duration-200 hover:bg-muted focus-within:bg-muted', current && 'bg-primary/8 text-primary')}>
-                                <Link href={`/student?conversationId=${session.id}`} aria-current={current ? 'page' : undefined} className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded-lg px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                                  <MessageSquare className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                                  <span className="min-w-0">
-                                    <span className="block truncate font-medium text-foreground">{session.title}</span>
-                                    <span className="text-muted-foreground">{session.messageCount} 条消息 · {session.updatedLabel}</span>
-                                  </span>
-                                </Link>
-                                <button
-                                  type="button"
-                                  onClick={() => { setDeleteTarget({ id: session.id, title: session.title, projectId: project.id }); setDeleteError(''); }}
-                                  className="mt-1.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-70 transition hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:opacity-0 sm:group-hover/session:opacity-100 sm:group-focus-within/session:opacity-100"
-                                  aria-label={`删除会话 ${session.title}`}
-                                >
-                                  <Trash2 className="size-3.5" aria-hidden="true" />
-                                </button>
-                              </div>
-                            );
-                          })}
+                          {project.sessions.map((session) => (
+                            <SessionRow
+                              key={session.id}
+                              session={session}
+                              current={session.id === conversationId}
+                              href={`/student?conversationId=${session.id}`}
+                              onDelete={() => { setDeleteTarget({ id: session.id, title: session.title, projectId: project.id }); setDeleteError(''); }}
+                            />
+                          ))}
                           <Link
                             href={`/student/challenge?projectId=${project.id}`}
                             className="mt-1 flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-accent/45 bg-accent/8 px-2 py-2 text-xs text-accent-foreground/85 transition-colors hover:border-accent/70 hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -655,28 +617,15 @@ export function StudentChatClient({
               </div>
             ) : (
               <div className="space-y-1 rounded-xl border bg-background/60 p-2">
-                {dailyArchive.sessions.map((session) => {
-                  const current = session.id === conversationId;
-                  return (
-                    <div key={session.id} className={cn('group/session flex min-h-11 items-start gap-1 rounded-lg text-xs text-muted-foreground transition-colors duration-200 hover:bg-muted focus-within:bg-muted', current && 'bg-primary/8 text-primary')}>
-                      <Link href={`/student?conversationId=${session.id}`} aria-current={current ? 'page' : undefined} className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded-lg px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                        <MessageSquare className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium text-foreground">{session.title}</span>
-                          <span>{session.messageCount} 条消息 · {session.updatedLabel}</span>
-                        </span>
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => { setDeleteTarget({ id: session.id, title: session.title }); setDeleteError(''); }}
-                        className="mt-1.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-70 transition hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:opacity-0 sm:group-hover/session:opacity-100 sm:group-focus-within/session:opacity-100"
-                        aria-label={`删除会话 ${session.title}`}
-                      >
-                        <Trash2 className="size-3.5" aria-hidden="true" />
-                      </button>
-                    </div>
-                  );
-                })}
+                {dailyArchive.sessions.map((session) => (
+                  <SessionRow
+                    key={session.id}
+                    session={session}
+                    current={session.id === conversationId}
+                    href={`/student?conversationId=${session.id}`}
+                    onDelete={() => { setDeleteTarget({ id: session.id, title: session.title }); setDeleteError(''); }}
+                  />
+                ))}
               </div>
             )}
           </section>

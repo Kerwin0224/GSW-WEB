@@ -27,7 +27,6 @@ test('marks a completed provider check as one finished execution without claimin
   // Then
   assert.equal(presented.functionKey, 'ai_service');
   assert.equal(presented.result, 'succeeded');
-  assert.equal(presented.healthClaim, 'not_available');
 });
 
 test('uses the recorded HTTP result when a completed request was rejected', () => {

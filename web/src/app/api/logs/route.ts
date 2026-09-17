@@ -4,9 +4,6 @@ import { getAppSession } from '@/lib/session';
 import { writeLogEvent } from '@/lib/observability/server-log-store';
 import { createRequestId } from '@/lib/observability/log-event';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
 const MAX_CLIENT_LOG_BYTES = 8 * 1024;
 
 const clientLogSchema = z.object({

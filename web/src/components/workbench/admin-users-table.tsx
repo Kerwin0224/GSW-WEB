@@ -9,12 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AdminDialogShell } from '@/components/workbench/admin-dialog-shell';
+import { roleConfig } from '@/components/workbench/role-badge';
 import { resetInitialPasswords, type AdminUserListItem } from '@/lib/data/admin';
-import type { AppRole } from '@/lib/supabase/database.types';
-
-function roleLabel(role: AppRole) {
-  return { org_admin: '公司管理员', admin: '管理员', teacher: '教师', student: '学生' }[role];
-}
 
 function statusLabel(status: AdminUserListItem['status']) {
   return status === 'active' ? '启用' : '停用';
@@ -114,7 +110,7 @@ export function AdminUsersTable({ users }: { users: AdminUserListItem[] }) {
                 </TableCell>
                 <TableCell className="font-medium">{user.displayName}</TableCell>
                 <TableCell className="font-mono text-xs">{user.loginId ?? '未设置账号'}</TableCell>
-                <TableCell><Badge variant="outline">{roleLabel(user.role)}</Badge></TableCell>
+                <TableCell><Badge variant="outline">{roleConfig[user.role].label}</Badge></TableCell>
                 <TableCell><Badge variant={user.status === 'active' ? 'secondary' : 'destructive'}>{statusLabel(user.status)}</Badge></TableCell>
                 <TableCell className="text-sm text-muted-foreground">{user.assignmentSummary}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{user.recentActivityLabel}</TableCell>

@@ -40,24 +40,6 @@ export function shouldClassifyProjectForStudentTurn({
   return !isRegeneration && !hasConversation && !hasProject;
 }
 
-export function getStudentChatBlockedReasons({
-  providerBlocked,
-  projectClassificationBlocked,
-  bloomClassificationBlocked,
-  projectClassificationRequired,
-}: {
-  providerBlocked?: string;
-  projectClassificationBlocked?: string;
-  bloomClassificationBlocked?: string;
-  projectClassificationRequired: boolean;
-}) {
-  return [
-    providerBlocked,
-    projectClassificationRequired ? projectClassificationBlocked : undefined,
-    bloomClassificationBlocked,
-  ].filter((reason): reason is string => Boolean(reason));
-}
-
 export function buildStudentChatRequestBody({
   conversationId,
   projectId,

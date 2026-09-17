@@ -24,9 +24,6 @@ export type BloomLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
 export const BLOOM_LEVELS = [1, 2, 3, 4, 5, 6] as const satisfies readonly BloomLevel[];
 
-/** 自高到低。界面上层是高层级（六层塔从「创造」往下看）。 */
-export const BLOOM_LEVELS_DESC = [...BLOOM_LEVELS].reverse() as BloomLevel[];
-
 export type BloomLevelInfo = {
   level: BloomLevel;
   /** 层级名。界面、提示词、判定口径共用同一个叫法。 */

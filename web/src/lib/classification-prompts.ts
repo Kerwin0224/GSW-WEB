@@ -65,9 +65,9 @@ export function parseClassificationAnswer(text: string): { name: string; subtitl
 
 // ─── 归类提示词 ──────────────────────────────────────────────────────────────
 //
-// 归类能力的核心就是提示词。教师在教师端写入自己的归类口径（存 prompt_presets，
-// purpose='project_classification'），这里把「默认口径」和「教师口径」组装成最终
-// system instruction。输出协议无论用哪套规则都由系统强制拼接，教师改规则不会破坏解析。
+// 归类能力的核心就是提示词。教师在**空间主题**里写自己的归类口径（spaces.theme），
+// 这里把「默认口径」和「空间口径」组装成最终 system instruction。
+// 输出协议无论用哪套规则都由系统强制拼接，教师改口径不会破坏解析。
 
 /** 输出协议。无论用内置规则还是教师规则，这一段落都由系统强制拼接。 */
 const projectClassificationProtocol =

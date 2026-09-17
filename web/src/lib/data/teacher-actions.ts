@@ -1,6 +1,6 @@
 'use server';
 
-import { generateObject, type LanguageModel } from 'ai';
+import { Output, streamText, type LanguageModel } from 'ai';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
@@ -16,10 +16,8 @@ import {
   asMetadataObject,
   firstJoined,
   isApprovedAudit,
-  isRevisionDraft,
   latestMaterializedReview,
   latestRevisionDraft,
-  metadataAction,
   metadataText,
   resolveReviewState,
   reviewTimestamp,
@@ -79,6 +77,31 @@ type ConversationContext = {
   transcript: Array<{ id: string; role: 'user' | 'assistant' | 'system' | 'tool'; content: string; created_at: string }>;
   auditRows: AuditRow[];
 };
+
+type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
+
+/**
+ * 查教师是否任教该班。RLS 也会拦，提前查一次是为了把「静默失败」变成可读错误。
+ * 失败文案由调用方给——两处调用点想说的话不一样，收敛成一句反而丢了上下文。
+ */
+async function checkTeacherClassMembership(
+  supabase: SupabaseClient,
+  classId: string,
+  teacherId: string,
+  failureMessage: string,
+): Promise<{ ok: true; isMember: boolean } | { ok: false; message: string }> {
+  const { data: membership, error } = await supabase
+    .from('class_memberships')
+    .select('id')
+    .eq('class_id', classId)
+    .eq('profile_id', teacherId)
+    .eq('role', 'teacher')
+    .limit(1)
+    .maybeSingle();
+
+  if (error) return { ok: false, message: `${failureMessage}：${error.message}` };
+  return { ok: true, isMember: Boolean(membership) };
+}
 
 
 function isFinalizedMaterializedReview(row: AuditRow) {
@@ -161,20 +184,9 @@ async function getConversationContext(conversationId: string, teacherId: string)
     return { ok: false, message: '只有学生项目会话可以进入会话级学习记录核实。' };
   }
 
-  const { data: membership, error: membershipError } = await supabase
-    .from('class_memberships')
-    .select('id')
-    .eq('class_id', conversation.class_id)
-    .eq('profile_id', teacherId)
-    .eq('role', 'teacher')
-    .limit(1)
-    .maybeSingle();
-
-  if (membershipError) {
-    return { ok: false, message: `教师班级权限校验失败：${membershipError.message}` };
-  }
-
-  if (!membership) {
+  const membership = await checkTeacherClassMembership(supabase, conversation.class_id, teacherId, '教师班级权限校验失败');
+  if (!membership.ok) return membership;
+  if (!membership.isMember) {
     return { ok: false, message: '你无权核实这个学生会话。' };
   }
 
@@ -210,11 +222,17 @@ async function getConversationContext(conversationId: string, teacherId: string)
   };
 }
 
+/**
+ * 单条 AI 回答的核实上下文。
+ *
+ * 入口只有「这条回答属于哪个会话」这一件事要自己查；会话归属、transcript、
+ * 审计行全部转交 getConversationContext——两边曾经各抄一份，连三处错误分支都逐字相同。
+ */
 async function getSourceContext(sourceMessageId: string, teacherId: string): Promise<{ ok: true; data: SourceContext } | { ok: false; message: string }> {
   const supabase = await createClient();
   const { data: source, error: sourceError } = await supabase
     .from('conversation_messages')
-    .select('id,conversation_id,content,created_at,parts,conversations!inner(class_id,project_id,source,deleted_at,finalized_at)')
+    .select('id,conversation_id,content,created_at,parts,conversations!inner(class_id,project_id,source,deleted_at)')
     .eq('id', sourceMessageId)
     .eq('role', 'assistant')
     .is('conversations.deleted_at', null)
@@ -228,99 +246,31 @@ async function getSourceContext(sourceMessageId: string, teacherId: string): Pro
   if (!conversation?.class_id || conversation.source !== 'student_chat' || !conversation.project_id) {
     return { ok: false, message: '只有学生项目中的 AI 回答可以进入学习记录核实。' };
   }
-  if (conversation.deleted_at) {
-    return { ok: false, message: '该会话已被学生删除，不能再进入学习记录核实。' };
-  }
 
-  const { data: membership, error: membershipError } = await supabase
-    .from('class_memberships')
-    .select('id')
-    .eq('class_id', conversation.class_id)
-    .eq('profile_id', teacherId)
-    .eq('role', 'teacher')
-    .limit(1)
-    .maybeSingle();
+  const contextResult = await getConversationContext(source.conversation_id, teacherId);
+  if (!contextResult.ok) return contextResult;
 
-  if (membershipError) {
-    return { ok: false, message: `教师班级权限校验失败：${membershipError.message}` };
-  }
-
-  if (!membership) {
-    return { ok: false, message: '你无权核实这条学习记录。' };
-  }
-
-  const [{ data: transcriptRows, error: transcriptError }, { data: auditRows, error: auditError }] = await Promise.all([
-    supabase
-      .from('conversation_messages')
-      .select('id,role,content,created_at')
-      .eq('conversation_id', source.conversation_id)
-      .order('created_at', { ascending: true }),
-    supabase
-      .from('audit_records')
-      .select('id,source_message_id,source_conversation_id,kind,status,original_answer,corrected_answer,chosen_answer,rejected_answer,rationale,metadata,created_at,updated_at')
-      .eq('source_conversation_id', source.conversation_id)
-      .order('created_at', { ascending: true }),
-  ]);
-
-  if (transcriptError) {
-    return { ok: false, message: `学习记录上下文加载失败：${transcriptError.message}` };
-  }
-
-  if (auditError) {
-    return { ok: false, message: `核实历史加载失败：${auditError.message}` };
-  }
-
-  const transcript = (transcriptRows ?? []) as ConversationContext['transcript'];
+  const { conversation: conversationRow, classId, transcript, auditRows } = contextResult.data;
   const prompt = nearestPrompt(transcript, source.id);
 
   if (!prompt) {
     return { ok: false, message: '缺少这条 AI 回答对应的学生问题，不能脱离上下文核实。' };
   }
 
-  const conversationAudits = (auditRows ?? []) as AuditRow[];
-  const sourceAudits = conversationAudits.filter((row) => row.source_message_id === source.id);
-  const reviewedAudits = sourceAudits.filter(isApprovedAudit);
-  const originalAnswer = resolveOriginalAnswer(source.content, sourceAudits);
+  const sourceAudits = auditRows.filter((row) => row.source_message_id === source.id);
 
   return {
     ok: true,
     data: {
       source: source as SourceMessage,
-      classId: conversation.class_id,
+      classId,
       prompt,
-      originalAnswer,
+      originalAnswer: resolveOriginalAnswer(source.content, sourceAudits),
       currentAnswer: source.content.trim(),
-      reviewState: resolveReviewState(reviewedAudits),
-      conversationFinalized: isConversationFinalized(conversation.finalized_at),
+      reviewState: resolveReviewState(sourceAudits.filter(isApprovedAudit)),
+      conversationFinalized: isConversationFinalized(conversationRow.finalized_at),
     },
   };
-}
-
-export async function confirmLearningRecord(sourceMessageId: string, _previousState: AuditSubmissionState, _formData: FormData): Promise<AuditSubmissionState> {
-  void _previousState;
-  void _formData;
-  const role = await requireRole('teacher');
-  if (!role.ok) return { ok: false, message: role.message };
-
-  const contextResult = await getSourceContext(sourceMessageId, role.data.id);
-  if (!contextResult.ok) return { ok: false, message: contextResult.message };
-
-  const { reviewState, conversationFinalized } = contextResult.data;
-  if (conversationFinalized) {
-    return { ok: true, message: '这个会话已经完成最终核实提交；学生侧已停止继续追问。' };
-  }
-
-  if (reviewState === 'confirmed') {
-    return { ok: true, message: '单条确认已并入会话级最终提交；如需调整，请直接保存修订。' };
-  }
-
-  if (reviewState === 'revised') {
-    return { ok: true, message: '这条记录当前已是教师修订版；如需继续调整，请直接保存修订。' };
-  }
-
-  revalidatePath('/teacher');
-  revalidatePath('/teacher/audit');
-  return { ok: true, message: '单条确认已收敛到“确认提交整个会话”；未修订回答会在会话级最终提交时进入 SFT。' };
 }
 
 export async function reviseLearningRecord(sourceMessageId: string, _previousState: AuditSubmissionState, formData: FormData): Promise<AuditSubmissionState> {
@@ -446,9 +396,12 @@ async function runPreReview(model: LanguageModel, transcript: ConversationContex
     .map((message, index) => `${index + 1}. messageId=${message.id}`)
     .join('\n');
 
-  const result = await generateObject({
+  // 网关对非流式 JSON 请求会抛 Invalid JSON response（2026-09-11 归类事故根因），
+  // 所以结构化预审也走 streamText（出站 body 带 stream: true），
+  // 结构化输出与流式与否正交，Output.object 仍给出校验过的对象。
+  const result = streamText({
     model,
-    schema: conversationPreReviewSchema,
+    output: Output.object({ schema: conversationPreReviewSchema }),
     prompt: `你是文韵智途的 AI 预审助手。请在教师进行学习记录核实前，预审完整学生会话中的所有 AI 回答。
 
 要求：
@@ -470,7 +423,7 @@ ${assistantChecklist}
 ${transcriptText}`,
   });
 
-  let reviews = normalizePreReviewResults(assistantMessages, result.object.results);
+  let reviews = normalizePreReviewResults(assistantMessages, (await result.output).results);
   const fallbackTargets = reviews.filter((review) => review.status === 'missing_result' || review.ignoredIssueCount > 0);
 
   if (fallbackTargets.length > 0) {
@@ -478,9 +431,9 @@ ${transcriptText}`,
       const message = assistantMessages.find((assistantMessage) => assistantMessage.id === review.messageId);
       if (!message) return review;
       try {
-        const fallbackResult = await generateObject({
+        const fallbackResult = streamText({
           model,
-          schema: singleMessagePreReviewSchema,
+          output: Output.object({ schema: singleMessagePreReviewSchema }),
           prompt: `你是文韵智途的 AI 预审助手。全会话预审中，这条 AI 回答的结果缺失或 quote 无法匹配原文。请只重审这一条 AI 回答。
 
 要求：
@@ -499,7 +452,7 @@ ${transcriptText}`,
           messageId: message.id,
           status: 'checked',
           source: 'single_message',
-          ...normalizePreReviewIssuesForMessage(message, fallbackResult.object.issues),
+          ...normalizePreReviewIssuesForMessage(message, (await fallbackResult.output).issues),
         } satisfies NormalizedPreReviewResult;
       } catch (error) {
         return {
@@ -800,68 +753,3 @@ export async function saveTeacherPromptPreset(_previousState: AuditSubmissionSta
   return { ok: true, message: '教师预设已保存为草稿。' };
 }
 
-/**
- * 保存本班的项目归类规则（publish 后立即对学生生效）。
- *
- * 产品语义（2026-09-16）：项目归类口径由任课教师决定。教师只写"本学科怎么归类"，
- * 输出协议由系统拼接（见 buildProjectClassificationInstruction），所以教师改规则不会破坏解析。
- * 一个班只保留一条生效规则：先撤下本班旧的 published，再发布新的（DB 部分唯一索引兜底）。
- */
-export async function saveClassClassificationRule(_previousState: AuditSubmissionState, formData: FormData): Promise<AuditSubmissionState> {
-  void _previousState;
-  const role = await requireRole('teacher');
-  if (!role.ok) return { ok: false, message: role.message };
-
-  const classId = String(formData.get('class_id') ?? '').trim();
-  const instruction = String(formData.get('system_instruction') ?? '').trim();
-  const publish = String(formData.get('publish') ?? '') === 'true';
-  if (!classId) return { ok: false, message: '请选择要配置的班级。' };
-  if (!instruction) return { ok: false, message: '请填写归类规则。', errors: { system_instruction: '归类规则不能为空。' } };
-
-  const supabase = await createClient();
-  // 校验该班确属本人任教——RLS 也会拦，但提前给出可读错误而非静默失败。
-  const { data: membership, error: membershipError } = await supabase
-    .from('class_memberships')
-    .select('class_id')
-    .eq('class_id', classId)
-    .eq('profile_id', role.data.id)
-    .eq('role', 'teacher')
-    .limit(1)
-    .maybeSingle();
-  if (membershipError) return { ok: false, message: `班级校验失败：${membershipError.message}` };
-  if (!membership) return { ok: false, message: '你不在该班级任教，无法配置归类规则。' };
-
-  // 撤下**本人**在该班旧的生效规则（草稿不动），保证"每师每班一条生效"。
-  // 注意不能按整班收窄：同班其他学科教师的规则必须保留，否则一发布就把别人的顶掉。
-  if (publish) {
-    const { error: retractError } = await supabase
-      .from('prompt_presets')
-      .update({ status: 'draft' })
-      .eq('class_id', classId)
-      .eq('created_by', role.data.id)
-      .eq('purpose', 'project_classification')
-      .eq('status', 'published');
-    if (retractError) return { ok: false, message: `旧规则撤下失败：${retractError.message}` };
-  }
-
-  const { error } = await supabase.from('prompt_presets').insert({
-    title: `项目归类规则 · ${new Date().toLocaleDateString('zh-CN')}`,
-    scenario: '项目归类',
-    system_instruction: instruction,
-    target_role: 'teacher',
-    class_id: classId,
-    purpose: 'project_classification',
-    status: publish ? 'published' : 'draft',
-    created_by: role.data.id,
-  });
-  if (error) return { ok: false, message: `归类规则保存失败：${error.message}` };
-
-  revalidatePath('/teacher');
-  revalidatePath('/student');
-  return {
-    ok: true,
-    message: publish
-      ? '归类规则已发布，本班学生的新提问会按这套规则归属项目。'
-      : '归类规则已保存为草稿；发布后才会对学生生效。',
-  };
-}

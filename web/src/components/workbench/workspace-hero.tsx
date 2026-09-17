@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 export type WorkspaceHeroMetric = {
@@ -89,35 +88,5 @@ export function SectionHeader({
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
-  );
-}
-
-export function PrincipleCard({
-  index,
-  title,
-  description,
-  accent = 'primary',
-}: {
-  index: string;
-  title: string;
-  description: string;
-  accent?: 'primary' | 'gold' | 'cinnabar';
-}) {
-  const accentClass = {
-    primary: 'bg-primary/10 text-primary ring-primary/20',
-    gold: 'bg-accent/15 text-foreground ring-accent/30',
-    cinnabar: 'bg-destructive/10 text-destructive ring-destructive/20',
-  }[accent];
-
-  return (
-    <Card className="border-border/70 bg-card/86 shadow-sm transition-colors hover:border-primary/25 hover:bg-card">
-      <CardContent className="flex gap-4 p-5">
-        <span className={cn('flex size-11 shrink-0 items-center justify-center rounded-lg text-sm font-semibold ring-1 shadow-sm', accentClass)}>{index}</span>
-        <div className="space-y-1">
-          <h3 className="font-heading text-lg">{title}</h3>
-          <p className="text-sm leading-6 text-muted-foreground">{description}</p>
-        </div>
-      </CardContent>
-    </Card>
   );
 }

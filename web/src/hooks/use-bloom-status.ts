@@ -15,8 +15,8 @@ type StudentBloomData =
 
 export type { StudentBloomData };
 
-export function useBloomStatus(initial?: Record<string, BloomStatus>) {
-  const [bloomStatus, setBloomStatus] = useState<Record<string, BloomStatus>>(initial ?? {});
+export function useBloomStatus() {
+  const [bloomStatus, setBloomStatus] = useState<Record<string, BloomStatus>>({});
 
   const applyBloomStatus = useCallback((status: StudentBloomData) => {
     setBloomStatus((current) => ({
@@ -41,5 +41,5 @@ export function useBloomStatus(initial?: Record<string, BloomStatus>) {
     setBloomStatus(next ?? {});
   }, []);
 
-  return { bloomStatus, setBloomStatus, applyBloomStatus, markQueued, markPending, reset } as const;
+  return { bloomStatus, applyBloomStatus, markQueued, markPending, reset } as const;
 }

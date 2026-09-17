@@ -9,10 +9,10 @@ import type { AppRole } from '@/lib/supabase/database.types';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { writeLogEvent } from '@/lib/observability/server-log-store';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
 const roleHome: Record<AppRole, string> = { student: '/student', teacher: '/teacher', admin: '/admin', org_admin: '/org' };
+// 限流是 per-instance best-effort：Vercel serverless 每实例各持一份 Map、实例回收即清零，不是跨实例真限流。
+// 刻意不做 DB 侧：键是 ip:loginId，攻击者从自己 IP 打只耗自己那份计数，锁不到受害者；改成按账号并在验密前判定，
+// 任何知道学号的人连打 LOGIN_MAX_ATTEMPTS 次错密码就能让该账号在窗口内密码正确也登不进；真实风险是「初始密码 = 学号」的产品流程，不是限流参数。
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;

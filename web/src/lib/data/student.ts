@@ -3,7 +3,7 @@ import 'server-only';
 import type { UIMessage } from 'ai';
 
 import { createClient } from '@/lib/supabase/server';
-import { canonicalizeUiMessageParts } from '@/lib/chat-message-parts';
+import { canonicalizeUiMessageParts, toSessionSummary, type ConversationMessageRow, type ConversationSummaryRow } from '@/lib/chat-message-parts';
 import type { Database } from '@/lib/supabase/database.types';
 import { fail, getCapabilities, ok, requireRole, type DataResult } from './common';
 import { isStudentConversationFinalized } from './conversation-finalization';
@@ -44,37 +44,11 @@ export type ProjectSummary = {
   challengeProgress: ProjectChallengeProgress;
 };
 export type DailyArchiveSummary = { sessions: ProjectSessionSummary[]; updatedLabel?: string };
-export type StudentWorkspace = { providerBlocked?: string; projectClassificationBlocked?: string; bloomClassificationBlocked?: string; classificationBlocked?: string; challengeBlocked?: string; dailyArchive: DailyArchiveSummary };
+export type StudentWorkspace = { providerBlocked?: string; projectClassificationBlocked?: string; bloomClassificationBlocked?: string; challengeBlocked?: string; dailyArchive: DailyArchiveSummary };
 export type ProjectDetail = { project: Database['public']['Tables']['projects']['Row']; questions: Database['public']['Tables']['conversation_messages']['Row'][]; practices: Database['public']['Tables']['practice_records']['Row'][]; challengeProgress: ProjectChallengeProgress };
 
 type PracticeSummaryRow = Pick<Database['public']['Tables']['practice_records']['Row'], 'target_bloom_level' | 'achieved' | 'evaluation_state'> & { created_at?: string };
-type ConversationSummaryRow = {
-  id: string;
-  title: string | null;
-  updated_at: string;
-  project_id?: string | null;
-  conversation_messages?: Array<{ id: string }> | null;
-};
-type ConversationMessageRow = Pick<Database['public']['Tables']['conversation_messages']['Row'], 'id' | 'role' | 'content' | 'parts'>;
 type ConversationMessageWithBloomRow = ConversationMessageRow & Pick<Database['public']['Tables']['conversation_messages']['Row'], 'bloom_level' | 'bloom_state'>;
-
-function toSessionSummary(conversation: ConversationSummaryRow): ProjectSessionSummary {
-  return {
-    id: conversation.id,
-    title: conversation.title ?? '未命名会话',
-    messageCount: Array.isArray(conversation.conversation_messages) ? conversation.conversation_messages.length : 0,
-    updatedLabel: new Date(conversation.updated_at).toLocaleString('zh-CN'),
-    projectId: conversation.project_id ?? undefined,
-  };
-}
-
-function toInitialMessage(message: ConversationMessageRow): UIMessage {
-  return {
-    id: message.id,
-    role: message.role === 'assistant' ? 'assistant' : message.role === 'system' ? 'system' : 'user',
-    parts: canonicalizeUiMessageParts(message.content, message.parts),
-  };
-}
 
 /**
  * 把数据库里的 bloom_level / bloom_state 注入到消息 parts 里，
@@ -166,7 +140,6 @@ export async function getStudentWorkspace(): Promise<DataResult<StudentWorkspace
   const caps = await getCapabilities(['student_chat', 'bloom_classification', 'project_classification', 'practice_generation', 'practice_evaluation']);
   const bloomClassificationBlocked = caps.bloom_classification.ready ? undefined : caps.bloom_classification.blockedReason ?? '缺少 bloom_classification 真实模型能力配置。';
   const projectClassificationBlocked = caps.project_classification.ready ? undefined : caps.project_classification.blockedReason ?? '缺少 project_classification 真实模型能力配置。';
-  const classificationBlocked = [bloomClassificationBlocked, projectClassificationBlocked].filter(Boolean).join('；') || undefined;
 
   const supabase = await createClient();
   const { data: archiveConversations, error: archiveError } = await supabase
@@ -184,7 +157,6 @@ export async function getStudentWorkspace(): Promise<DataResult<StudentWorkspace
     providerBlocked: caps.student_chat.ready ? undefined : caps.student_chat.blockedReason,
     projectClassificationBlocked,
     bloomClassificationBlocked,
-    classificationBlocked,
     challengeBlocked: caps.practice_generation.ready && caps.practice_evaluation.ready ? undefined : '挑战生成或挑战确认能力尚未就绪。',
     dailyArchive: {
       sessions: (archiveConversations ?? []).map((conversation) => toSessionSummary(conversation as ConversationSummaryRow)),

@@ -74,8 +74,8 @@ export type BloomClassificationResult = {
 
 /**
  * 布鲁姆认知路径判定：只针对单个学生问题，确定真正学懂所需要达到的最高充分层级。
- * 与项目归属同理走流式累积的两行文本协议（结构化输出在只讲 SSE 的网关上不可用，
- * 见 project_classification_fallback 事故），解析失败抛错，
+ * 与项目归属同理走流式累积的两行文本协议（该网关的约束是非流式 JSON 会抛
+ * Invalid JSON response，见 project_classification_fallback 事故），解析失败抛错，
  * 由调用方捕获并决定写 bloom_state='failed'。
  */
 export async function classifyBloomLevel(

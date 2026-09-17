@@ -22,7 +22,7 @@ export function ToolCallPart({ part }: { part: unknown }) {
   const view = describeToolPart(part);
   if (!view) return null;
 
-  const Icon = view.state === 'running' ? Loader2 : view.state === 'error' ? STATE_ICON.error : STATE_ICON.done;
+  const Icon = STATE_ICON[view.state];
   const isSearch = view.actionLabel.includes('联网搜索');
   const KindIcon = isSearch ? Globe : Wrench;
 

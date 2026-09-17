@@ -12,7 +12,7 @@
 import { revalidatePath } from 'next/cache';
 import { createDatabaseSessionSignature } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
-import { fail, ok, requireRole, type DataResult } from './common';
+import { fail, ok, requireRole, type ActionState, type DataResult } from './common';
 
 export type OrgSchoolSummary = {
   id: string;
@@ -39,7 +39,6 @@ export type OrgSchoolClass = {
   name: string;
   grade: string | null;
   status: 'active' | 'archived';
-  studentCount: number;
 };
 
 async function requireOrgContext() {
@@ -97,7 +96,7 @@ export async function listOrgSchools(): Promise<DataResult<OrgSchoolSummary[]>> 
   return ok(summaries);
 }
 
-export async function createSchool(formData: FormData): Promise<AdminActionLike> {
+export async function createSchool(formData: FormData): Promise<ActionState> {
   const ctx = await requireOrgContext();
   if (!ctx.ok) return { ok: false, message: ctx.message };
   const name = String(formData.get('name') ?? '').trim();
@@ -111,7 +110,7 @@ export async function createSchool(formData: FormData): Promise<AdminActionLike>
   return { ok: true, message: `已创建学校「${name}」。` };
 }
 
-export async function setSchoolStatus(formData: FormData): Promise<AdminActionLike> {
+export async function setSchoolStatus(formData: FormData): Promise<ActionState> {
   const ctx = await requireOrgContext();
   if (!ctx.ok) return { ok: false, message: ctx.message };
   const schoolId = String(formData.get('schoolId') ?? '');
@@ -128,7 +127,7 @@ export async function setSchoolStatus(formData: FormData): Promise<AdminActionLi
   return { ok: true, message: status === 'active' ? '学校已启用。' : '学校已停用。' };
 }
 
-export async function renameSchool(formData: FormData): Promise<AdminActionLike> {
+export async function renameSchool(formData: FormData): Promise<ActionState> {
   const ctx = await requireOrgContext();
   if (!ctx.ok) return { ok: false, message: ctx.message };
   const schoolId = String(formData.get('schoolId') ?? '');
@@ -183,16 +182,11 @@ export async function getOrgSchoolDetail(schoolId: string): Promise<DataResult<{
       name: row.name,
       grade: row.grade,
       status: row.status as OrgSchoolClass['status'],
-      // v1 口径：班级人数在详情页按成员表统计（一个班一次查询成本可接受）
-      studentCount: 0,
     })),
   });
 }
 
-// AdminActionLike：与 admin.ts 的表单 action 返回形状一致，复用其客户端组件。
-export type AdminActionLike = { ok: boolean; message: string };
-
-export async function createSchoolAdmin(formData: FormData): Promise<AdminActionLike> {
+export async function createSchoolAdmin(formData: FormData): Promise<ActionState> {
   const ctx = await requireOrgContext();
   if (!ctx.ok) return { ok: false, message: ctx.message };
   const schoolId = String(formData.get('schoolId') ?? '');

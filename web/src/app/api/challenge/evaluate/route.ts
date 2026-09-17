@@ -1,16 +1,14 @@
-import { generateObject, type LanguageModel } from 'ai';
+import { Output, streamText } from 'ai';
 import { z } from 'zod';
 
 import { withApiLogging } from '@/lib/observability/with-api-logging';
+import { writeLogEvent } from '@/lib/observability/server-log-store';
 import { createClient } from '@/lib/supabase/server';
 import { getCapability, requireRole, resolveReadyModel } from '@/lib/data/common';
 import { buildChallengeEvaluationPrompt } from '@/lib/challenge-prompts';
+import { postgresUuidSchema } from '@/lib/request-schemas';
 
-export const runtime = 'nodejs';
 export const maxDuration = 60;
-export const dynamic = 'force-dynamic';
-
-const postgresUuidSchema = z.string().trim().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'Invalid UUID');
 
 const bodySchema = z.object({
   practiceId: postgresUuidSchema,
@@ -23,7 +21,7 @@ const evaluationSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  return withApiLogging(req, { area: 'api', event: 'challenge_evaluate', route: '/api/challenge/evaluate' }, async () => {
+  return withApiLogging(req, { area: 'api', event: 'challenge_evaluate', route: '/api/challenge/evaluate' }, async (requestId) => {
     const role = await requireRole('student');
     if (!role.ok) return Response.json({ state: role.reason, error: role.message }, { status: role.reason === 'forbidden' ? 403 : 401 });
 
@@ -59,9 +57,11 @@ export async function POST(req: Request) {
     const project = Array.isArray(practice.projects) ? practice.projects[0] : practice.projects;
     let evaluation: z.infer<typeof evaluationSchema>;
     try {
-      const result = await generateObject({
+      // 同 challenge/generate：非流式 JSON 请求在该网关会抛 Invalid JSON response，
+      // streamText 的 body 带 stream: true，Output.object 仍产出校验过的对象。
+      const result = streamText({
         model,
-        schema: evaluationSchema,
+        output: Output.object({ schema: evaluationSchema }),
         prompt: buildChallengeEvaluationPrompt({
           projectName: project?.name ?? '未知项目',
           projectSubtitle: project?.subtitle,
@@ -70,8 +70,20 @@ export async function POST(req: Request) {
           studentAnswer: parsed.data.answer,
         }),
       });
-      evaluation = result.object;
+      evaluation = await result.output;
     } catch (error) {
+      // 与 challenge/generate 同理：此前的失败只体现在 502 响应体里，运行日志看不到原因。
+      // 只记错误原文，不含 prompt 与对话正文。
+      await writeLogEvent({
+        level: 'error',
+        area: 'api',
+        event: 'challenge_evaluate_failed',
+        requestId,
+        route: '/api/challenge/evaluate',
+        method: 'POST',
+        status: 502,
+        context: { error: (error instanceof Error ? error.message : String(error)).slice(0, 200) },
+      });
       await supabase.from('practice_records').update({ answer: parsed.data.answer, evaluation_state: 'failed', feedback: error instanceof Error ? `挑战确认调用失败：${error.message}` : '挑战确认调用失败：Provider 返回未知错误。' }).eq('id', practice.id);
       return Response.json({ state: 'failed', error: '真实挑战确认调用失败。', resolution: error instanceof Error ? error.message : 'Provider 返回未知错误。' }, { status: 502 });
     }

@@ -7,16 +7,15 @@ import { toProviderProtocol, normalizeAnthropicBaseURL } from '@/lib/provider-pr
 import { createClient } from '@/lib/supabase/server';
 import type { AppRole, Database, ModelTier, ProviderCapability } from '@/lib/supabase/database.types';
 import { getProfile, type Profile } from '@/lib/auth';
-import { decryptSecret, isEncryptedSecret } from '@/lib/crypto/secret-cipher';
+import { decryptSecret } from '@/lib/crypto/secret-cipher';
 
 export type DataResult<T> = { ok: true; data: T } | { ok: false; reason: 'unauthenticated' | 'forbidden' | 'missing_profile' | 'blocked' | 'password_change_required' | 'error'; message: string };
 /**
  * Server Action 的通用返回形状，配合 useActionState 使用。
  *
  * 仓库此前有 7 个逐字段同构的形状各写各的（AdminActionState / AuditSubmissionState /
- * AdminActionLike / ProviderActionResult / CreateStudentProjectResult / McpServerTestResult …），
- * `AdminActionLike` 的注释甚至自称「与 admin.ts 形状一致」。新代码一律用这个，
- * 旧的在各自被改动时顺带收敛过来，不做一次性大改。
+ * ProviderActionResult / CreateStudentProjectResult / McpServerTestResult …）。
+ * 新代码一律用这个，旧的在各自被改动时顺带收敛过来，不做一次性大改。
  */
 export type ActionState = { ok: boolean; message: string; errors?: Record<string, string> };
 export type CapabilityStatus = { capability: ProviderCapability; ready: boolean; modelId?: string; providerName?: string; providerType?: string; baseUrl?: string | null; secretRef?: string | null; blockedReason?: string };
@@ -33,11 +32,6 @@ export const scenarioModelTiers = {
   practice_evaluation: 'advanced',
   audit_assist: 'advanced',
 } as const satisfies Partial<Record<ProviderCapability, ModelTier>>;
-
-export const tierScenarios = {
-  flash: ['student_chat', 'bloom_classification', 'project_classification', 'practice_generation'],
-  advanced: ['teacher_chat', 'practice_evaluation', 'audit_assist'],
-} as const satisfies Record<ModelTier, readonly ProviderCapability[]>;
 
 export function ok<T>(data: T): DataResult<T> { return { ok: true, data }; }
 export function fail<T = never>(reason: DataResult<T> extends infer R ? R extends { ok: false; reason: infer S } ? S : never : never, message: string): DataResult<T> { return { ok: false, reason, message } as DataResult<T>; }
@@ -171,7 +165,6 @@ export async function getModelTiers(tiers: ModelTier[]): Promise<Record<ModelTie
 }
 
 export async function getCapability(capability: ProviderCapability): Promise<DataResult<CapabilityStatus>> {
-  if (capability === 'embedding') return getEmbeddingCapability();
   return getProviderCapability(capability);
 }
 type ProviderCapabilityRow = {
@@ -228,17 +221,13 @@ async function getProviderCapability(capability: ProviderCapability): Promise<Da
   }
 }
 
-async function getEmbeddingCapability(): Promise<DataResult<CapabilityStatus>> {
-  return getProviderCapability('embedding');
-}
-
 export function resolveEnvSecret(secretRef?: string | null) {
   if (!secretRef) return null;
 
-  // 优先尝试解密：管理员粘贴 API Key 时使用 AES-256-GCM 存储
-  if (isEncryptedSecret(secretRef)) {
-    return decryptSecret(secretRef);
-  }
+  // 优先尝试解密：管理员粘贴 API Key 时使用 AES-256-GCM 存储。
+  // 非 v1 格式（含旧 env: 引用）decryptSecret 直接返回 null，无需另做格式判断。
+  const decrypted = decryptSecret(secretRef);
+  if (decrypted) return decrypted;
 
   // 兼容旧的 env:VAR_NAME 引用
   if (!secretRef.startsWith('env:')) return null;

@@ -1,4 +1,37 @@
 import type { UIMessage } from 'ai';
+import type { Database } from '@/lib/supabase/database.types';
+
+/**
+ * 会话列表行与消息行的最小结构。教师会话列表和学生会话归档拉的是同一批列，
+ * 各写一份类型只会让「教师版少一个 project_id」这种差异悄悄漂移。
+ */
+export type ConversationSummaryRow = {
+  id: string;
+  title: string | null;
+  updated_at: string;
+  project_id?: string | null;
+  conversation_messages?: Array<{ id: string }> | null;
+};
+export type ConversationMessageRow = Pick<Database['public']['Tables']['conversation_messages']['Row'], 'id' | 'role' | 'content' | 'parts'>;
+
+/** 会话行 → 列表视图模型。projectId 只有学生视角消费，教师视角取到 undefined。 */
+export function toSessionSummary(conversation: ConversationSummaryRow) {
+  return {
+    id: conversation.id,
+    title: conversation.title ?? '未命名会话',
+    messageCount: Array.isArray(conversation.conversation_messages) ? conversation.conversation_messages.length : 0,
+    updatedLabel: new Date(conversation.updated_at).toLocaleString('zh-CN'),
+    projectId: conversation.project_id ?? undefined,
+  };
+}
+
+export function toInitialMessage(message: ConversationMessageRow): UIMessage {
+  return {
+    id: message.id,
+    role: message.role === 'assistant' ? 'assistant' : message.role === 'system' ? 'system' : 'user',
+    parts: canonicalizeUiMessageParts(message.content, message.parts),
+  };
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));

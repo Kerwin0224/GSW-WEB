@@ -1,16 +1,14 @@
-import { generateObject, type LanguageModel } from 'ai';
+import { Output, streamText } from 'ai';
 import { z } from 'zod';
 
 import { withApiLogging } from '@/lib/observability/with-api-logging';
+import { writeLogEvent } from '@/lib/observability/server-log-store';
 import { createClient } from '@/lib/supabase/server';
 import { getCapability, requireRole, resolveReadyModel } from '@/lib/data/common';
 import { buildChallengeGenerationPrompt } from '@/lib/challenge-prompts';
+import { postgresUuidSchema } from '@/lib/request-schemas';
 
-export const runtime = 'nodejs';
 export const maxDuration = 60;
-export const dynamic = 'force-dynamic';
-
-const postgresUuidSchema = z.string().trim().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'Invalid UUID');
 
 const bodySchema = z.object({
   projectId: postgresUuidSchema,
@@ -27,7 +25,7 @@ function nextBloomLevel(confirmedLevel: number | null | undefined) {
 }
 
 export async function POST(req: Request) {
-  return withApiLogging(req, { area: 'api', event: 'challenge_generate', route: '/api/challenge/generate' }, async () => {
+  return withApiLogging(req, { area: 'api', event: 'challenge_generate', route: '/api/challenge/generate' }, async (requestId) => {
     const role = await requireRole('student');
     if (!role.ok) return Response.json({ state: role.reason, error: role.message }, { status: role.reason === 'forbidden' ? 403 : 401 });
 
@@ -80,9 +78,12 @@ export async function POST(req: Request) {
 
     let generated: z.infer<typeof challengeSchema>;
     try {
-      const result = await generateObject({
+      // 网关对非流式 JSON 请求会抛 Invalid JSON response，所以走 streamText
+      // （出站 body 带 stream: true）。SDK 里走 doGenerate 的非流式生成入口一律不可用。
+      // 结构化输出与流式与否是两个正交维度，Output.object 仍给出校验过的对象。
+      const result = streamText({
         model,
-        schema: challengeSchema,
+        output: Output.object({ schema: challengeSchema }),
         prompt: buildChallengeGenerationPrompt({
           projectName: project.name,
           projectSubtitle: project.subtitle,
@@ -90,8 +91,21 @@ export async function POST(req: Request) {
           priorQuestions: priorQuestions ?? [],
         }),
       });
-      generated = result.object;
+      generated = await result.output;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // 该路由此前的失败只体现在 502 响应体里，运行日志看不到原因。
+      // 只记错误原文，不含 prompt 与对话正文。
+      await writeLogEvent({
+        level: 'error',
+        area: 'api',
+        event: 'challenge_generate_failed',
+        requestId,
+        route: '/api/challenge/generate',
+        method: 'POST',
+        status: 502,
+        context: { error: message.slice(0, 200) },
+      });
       return Response.json({ state: 'failed', error: '真实挑战生成调用失败。', resolution: error instanceof Error ? error.message : 'Provider 返回未知错误。' }, { status: 502 });
     }
 

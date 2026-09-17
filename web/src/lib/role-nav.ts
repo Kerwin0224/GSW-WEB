@@ -24,7 +24,9 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-export type Role = 'org_admin' | 'admin' | 'teacher' | 'student';
+import type { AppRole } from '@/lib/supabase/database.types';
+
+export type Role = AppRole;
 
 export type RoleNavItem = {
   label: string;

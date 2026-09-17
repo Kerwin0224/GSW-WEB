@@ -122,26 +122,6 @@ GitHub 是唯一 hub：代码和 schema 都从提交流出，Vercel 和 Supabase
 ⚠️ **一次性数据脚本也是云端跑的**：`docs/prod-data-fixes/` 下那些 SQL 的抬头若写
 「在 Studio SQL Editor 执行」，按上面的命令跑即可，不必开浏览器。
 
-### SFT/DPO 导出链路 e2e（scripts/sft-dpo-pipeline-e2e.mjs）
-
-> ⛔ **当前跑不了，且不许为了它破例。** 这条链路依赖 `supabase db reset` + 本地栈 +
-> 本地 `.env.local` 指向 `127.0.0.1:54321`，与上面「永不起本地栈」直接冲突。
-> 要恢复它必须先跟用户确认（要么临时起本地栈，要么把它改造成对云端只读跑）。
-> 下面这段是原样留档，**不要照着执行**。
-
-自起 dev server（端口 3210）+ 真实数据库全链验证：seed 交互轨迹 → 教师审核 → 双端预览 → 管理员导出/下载 → 越权 403 → 清理。**只对本地库跑**（预览/生产禁止）。前置条件（seed 已内置）：
-
-- e2e 夹具账号/班级由 `supabase/seed.sql` 供给（`a0000000-…-001/002/012`、`c0000000-…-01`）
-- `private.runtime_secrets.cwb_auth_secret` 由 seed 写入本地固定值 `dev-only-cwb-auth-secret-gsw-local`；本地 `.env.local` 的 `CWB_AUTH_SECRET` 应设为同值
-
-```bash
-supabase db reset
-CWB_AUTH_SECRET=dev-only-cwb-auth-secret-gsw-local \
-NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 \
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$(supabase status -o env | grep -oP 'PUBLISHABLE_KEY=\K.*') \
-npm run test:sft-dpo-pipeline
-```
-
 ### 新功能
 
 1. 开分支 → 写迁移 + 代码 → **按上节在云端验证**（`db push --dry-run` 看顺序，

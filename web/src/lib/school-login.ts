@@ -1,7 +1,5 @@
 const SCHOOL_ACCOUNT_PATTERN = /^\d{8}$/;
 
-export type SchoolAccountRole = 'admin' | 'teacher' | 'student';
-
 export function normalizeSchoolLoginId(value: string) {
   return value.trim();
 }
@@ -16,16 +14,3 @@ export function validateSchoolLoginId(value: string) {
   return { ok: true as const, loginId };
 }
 
-export function describeSchoolLoginId(loginId: string, role?: SchoolAccountRole) {
-  const normalized = normalizeSchoolLoginId(loginId);
-  if (!SCHOOL_ACCOUNT_PATTERN.test(normalized)) return null;
-  const year = normalized.slice(0, 4);
-  if (role === 'student') {
-    return { kind: 'student' as const, year, classCode: normalized.slice(4, 6), serial: normalized.slice(6, 8) };
-  }
-  return { kind: 'staff' as const, year, serial: normalized.slice(4, 8) };
-}
-
-export function isInitialPassword(loginId: string, password: string) {
-  return normalizeSchoolLoginId(loginId) === password;
-}

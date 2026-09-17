@@ -4,7 +4,6 @@ import { test } from 'node:test';
 import {
   buildStudentChatRequestBody,
   buildStudentConversationHref,
-  getStudentChatBlockedReasons,
   parseAssignmentFromHeaders,
   shouldClassifyProjectForStudentTurn,
   shouldReplaceStudentConversationHref,
@@ -40,26 +39,6 @@ test('regeneration never runs project classification', () => {
     hasProject: false,
     isRegeneration: true,
   }), false);
-});
-
-test('project classification blocker is shown only when global empty entry requires it', () => {
-  const reasons = getStudentChatBlockedReasons({
-    providerBlocked: 'student chat blocked',
-    projectClassificationBlocked: 'project classification blocked',
-    bloomClassificationBlocked: 'bloom classification blocked',
-    projectClassificationRequired: false,
-  });
-
-  assert.deepEqual(reasons, ['student chat blocked', 'bloom classification blocked']);
-});
-
-test('global empty entry shows project classification blocker', () => {
-  const reasons = getStudentChatBlockedReasons({
-    projectClassificationBlocked: 'project classification blocked',
-    projectClassificationRequired: true,
-  });
-
-  assert.deepEqual(reasons, ['project classification blocked']);
 });
 
 test('request body keeps project context for a new project-entry conversation', () => {

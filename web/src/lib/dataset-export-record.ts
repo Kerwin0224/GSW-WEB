@@ -6,6 +6,9 @@
  * 且 route.ts 复制了一份 keepLatest 逻辑，两处已合并到这里）。
  */
 
+// 相对路径带 .ts 后缀：本文件要能被 node --test 直接跑（它不解析 tsconfig 的 @/ 别名）。
+import { asMetadataObject, firstJoined } from './data/audit-record.ts';
+
 export type DatasetType = 'sft' | 'dpo' | 'metadata';
 export type DatasetExportScope = 'unexported' | 'all';
 
@@ -38,11 +41,23 @@ export type ExportResult =
       resolution?: string;
     };
 
+export type PreviewCoverage = {
+  eligibleRecords: number;
+  validRecords: number;
+  invalidRecords: number;
+  sampleLimit: number;
+};
+
+export type ProjectDistributionEntry = { name: string; count: number };
+
 export type PreviewResult =
   | {
       type: DatasetType;
       totalCount: number;
       sampleRecords: Array<SftRecord | DpoRecord | MetadataRecord>;
+      /** 按项目名的分布，取自本次预览样本。 */
+      projectDistribution: ProjectDistributionEntry[];
+      coverage: PreviewCoverage;
     }
   | DatasetError;
 
@@ -129,17 +144,21 @@ export type DatasetContext = {
   transcript: TranscriptMessageLike[];
 };
 
-export function firstJoined<T>(value: T | T[] | null | undefined): T | null {
-  if (Array.isArray(value)) return value[0] ?? null;
-  return value ?? null;
-}
-
 export function getRecordTimestamp(record: Pick<ExportableAuditRow, 'updated_at' | 'created_at'>) {
   return record.updated_at || record.created_at;
 }
 
-export function asMetadataObject(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+/**
+ * 这条最新记录能否转成该类型的样本。
+ *
+ * 与 to*Record 的取值口径一致，但只看单行字段：预览覆盖率要对**全部**候选计数，
+ * 不能先给每行都拼一遍 transcript 上下文（那是导出才做的事）。
+ */
+export function isExportableRecord(type: DatasetType, record: ExportableAuditRow): boolean {
+  if (type === 'metadata') return true;
+  return type === 'sft'
+    ? Boolean(record.corrected_answer ?? record.original_answer)
+    : Boolean((record.chosen_answer ?? record.corrected_answer) && (record.rejected_answer ?? record.original_answer));
 }
 
 export function isFinalizedExportRecord(record: Pick<ExportableAuditRow, 'metadata'>) {

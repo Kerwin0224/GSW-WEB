@@ -1,7 +1,7 @@
 import { Clock, AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { BloomBadge } from '@/components/workbench/bloom-badge';
-import { BLOOM_LEVEL_INFO, type BloomLevel } from '@/lib/bloom-levels';
+import type { BloomLevel } from '@/lib/bloom-levels';
 
 export type BloomStatus =
   | { state: 'pending' }
@@ -41,9 +41,4 @@ export function BloomStatusBadge({ status }: { status: BloomStatus }) {
     );
   }
   return <Badge variant="secondary">未判断提问类型</Badge>;
-}
-
-export function BloomText({ level }: { level: BloomLevel }) {
-  const info = BLOOM_LEVEL_INFO[level];
-  return <span>提问类型：L{level} {info.name} · {info.hint}</span>;
 }

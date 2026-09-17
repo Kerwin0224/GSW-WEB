@@ -1,11 +1,10 @@
 'use client';
 
-import Link from 'next/link';
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { useRouter } from 'next/navigation';
-import { ClipboardList, Loader2, MessageSquare, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ClipboardList, Loader2, Plus, Sparkles } from 'lucide-react';
 
 import type { Database } from '@/lib/supabase/database.types';
 import type { TeacherConversationInitial, TeacherSessionSummary } from '@/lib/data/teacher';
@@ -21,6 +20,7 @@ import { ChatWorkspace } from '@/components/workbench/chat-workspace';
 import { ThinkingIndicator } from '@/components/workbench/thinking-indicator';
 import { ChatComposer } from '@/components/workbench/chat-composer';
 import { BlockedState, EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
+import { SessionRow } from '@/components/workbench/session-row';
 import { saveTeacherPromptPreset, type AuditSubmissionState } from '@/lib/data/teacher-actions';
 import { cn } from '@/lib/utils';
 
@@ -299,28 +299,15 @@ export function TeacherChatClient({
               <div className="rounded-xl border border-dashed bg-background/50 px-3 py-4 text-xs text-muted-foreground">暂无历史会话。</div>
             ) : (
               <div className="space-y-1 rounded-xl border bg-background/60 p-2">
-                {sessions.map((session) => {
-                  const current = session.id === conversationId;
-                  return (
-                    <div key={session.id} className={cn('group/session flex min-h-11 items-start gap-1 rounded-lg text-xs text-muted-foreground transition-colors duration-200 hover:bg-muted focus-within:bg-muted', current && 'bg-primary/8 text-primary')}>
-                      <Link href={`/teacher/chat?conversationId=${session.id}`} aria-current={current ? 'page' : undefined} className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded-lg px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                        <MessageSquare className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium text-foreground">{session.title}</span>
-                          <span>{session.messageCount} 条消息 · {session.updatedLabel}</span>
-                        </span>
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => { setDeleteTarget(session); setDeleteError(''); }}
-                        className="mt-1.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-70 transition hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:opacity-0 sm:group-hover/session:opacity-100 sm:group-focus-within/session:opacity-100"
-                        aria-label={`删除会话 ${session.title}`}
-                      >
-                        <Trash2 className="size-3.5" aria-hidden="true" />
-                      </button>
-                    </div>
-                  );
-                })}
+                {sessions.map((session) => (
+                  <SessionRow
+                    key={session.id}
+                    session={session}
+                    current={session.id === conversationId}
+                    href={`/teacher/chat?conversationId=${session.id}`}
+                    onDelete={() => { setDeleteTarget(session); setDeleteError(''); }}
+                  />
+                ))}
               </div>
             )}
           </section>

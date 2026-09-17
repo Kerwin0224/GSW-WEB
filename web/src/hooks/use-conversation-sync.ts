@@ -6,13 +6,25 @@
  */
 
 import { useEffect } from 'react';
-import { createClient as createBrowserSupabaseClient } from '@/lib/supabase/browser';
+import { createBrowserClient } from '@supabase/ssr';
+
+import { getSupabasePublishableKey } from '@/lib/supabase/public-config';
+
+function createBrowserSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishableKey = getSupabasePublishableKey();
+  if (!supabaseUrl || !publishableKey) {
+    throw new Error('Supabase public URL/key are required. Configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY.');
+  }
+
+  return createBrowserClient(supabaseUrl, publishableKey);
+}
 
 export function useConversationSync(
   conversationId: string,
   onSync: () => void,
 ) {
-  // Focus + visibility 事件同步
+  // focus + visibilitychange + 5 秒轮询：Realtime 不可用或断线时的兜底。
   useEffect(() => {
     if (!conversationId) return;
     const refresh = () => {
@@ -20,20 +32,12 @@ export function useConversationSync(
     };
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', refresh);
+    const timer = window.setInterval(refresh, 5000);
     return () => {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', refresh);
+      window.clearInterval(timer);
     };
-  }, [conversationId, onSync]);
-
-  // 定时轮询（5 秒间隔）
-  useEffect(() => {
-    if (!conversationId) return;
-    const refresh = () => {
-      if (document.visibilityState === 'visible') onSync();
-    };
-    const timer = window.setInterval(refresh, 5000);
-    return () => window.clearInterval(timer);
   }, [conversationId, onSync]);
 
   // Supabase Realtime 订阅
@@ -57,9 +61,10 @@ export function useConversationSync(
 
     const channel = supabase
       .channel(`student-conversation-sync-${conversationId}`, { config: { broadcast: { self: false } } })
+      // 只认 broadcast：postgres_changes 需要 Realtime 服务端识别当前用户，
+      // 而自定义会话不走 Supabase Auth，RLS 依赖的 current_app_user_id 在那边拿不到
+      // （详见 lib/data/student-conversation-broadcast.ts 头注释）。
       .on('broadcast', { event: 'student-conversation-update' }, queueRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversation_messages', filter: `conversation_id=eq.${conversationId}` }, queueRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_records', filter: `source_conversation_id=eq.${conversationId}` }, queueRefresh)
       .subscribe();
 
     return () => {

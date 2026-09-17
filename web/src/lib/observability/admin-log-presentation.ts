@@ -35,7 +35,6 @@ export type PresentedLogEvent = {
   readonly functionLabel: string;
   readonly result: LogExecutionResult;
   readonly resultLabel: string;
-  readonly healthClaim: 'not_available';
   readonly outcome: string;
   readonly affectedUsers: string;
   readonly remediation: string;
@@ -197,7 +196,6 @@ export function presentLogEvent(event: PresentableLogEvent): PresentedLogEvent {
     functionLabel: definition.label,
     result,
     resultLabel: RESULT_LABELS[result],
-    healthClaim: 'not_available',
     outcome: outcomeFor(event, result),
     affectedUsers: affectedUsersFor(event, definition),
     remediation: remediationFor(event, result),

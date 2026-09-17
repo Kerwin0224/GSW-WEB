@@ -5,9 +5,6 @@ import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { getAppSession } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
 export async function PATCH(req: Request) {
   return withApiLogging(req, { area: 'auth', event: 'account_avatar_update', route: '/api/account/avatar' }, async (requestId) => {
     const session = await getAppSession();

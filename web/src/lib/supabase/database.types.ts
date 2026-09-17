@@ -106,8 +106,8 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['projects']['Insert']>;
       };
       conversations: {
-        Row: { id: string; owner_id: string; class_id: string | null; project_id: string | null; source: InteractionSource; prompt_preset_id: string | null; title: string | null; deleted_at: string | null; created_at: string; updated_at: string };
-        Insert: { id?: string; owner_id: string; class_id?: string | null; project_id?: string | null; source: InteractionSource; prompt_preset_id?: string | null; title?: string | null; deleted_at?: string | null };
+        Row: { id: string; owner_id: string; class_id: string | null; project_id: string | null; source: InteractionSource; prompt_preset_id: string | null; title: string | null; deleted_at: string | null; finalized_at: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; owner_id: string; class_id?: string | null; project_id?: string | null; source: InteractionSource; prompt_preset_id?: string | null; title?: string | null; deleted_at?: string | null; finalized_at?: string | null };
         Update: Partial<Database['public']['Tables']['conversations']['Insert']>;
       };
       conversation_messages: {
@@ -145,11 +145,6 @@ export interface Database {
         Insert: { id?: string; export_type: AuditKind; status?: 'queued' | 'ready' | 'failed'; record_count?: number; jsonl: string; school_id?: string | null; created_by?: string | null };
         Update: Partial<Database['public']['Tables']['export_batches']['Insert']>;
       };
-      data_quality_events: {
-        Row: { id: string; event_type: string; table_name: string; record_count: number; reason: string; payload: Json; created_at: string };
-        Insert: { id?: string; event_type: string; table_name: string; record_count?: number; reason: string; payload?: Json };
-        Update: Partial<Database['public']['Tables']['data_quality_events']['Insert']>;
-      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -163,14 +158,6 @@ export interface Database {
         Args: { p_space_id: string; p_class_id: string };
         Returns: number;
       };
-      authenticate_school_account: {
-        Args: { p_login_id: string; p_password: string };
-        Returns: { id: string; login_id: string; role: AppRole; display_name: string }[];
-      };
-      authenticate_school_account_v2: {
-        Args: { p_login_id: string; p_password: string; p_server_signature: string };
-        Returns: { id: string; login_id: string; role: AppRole; display_name: string; avatar_key: AvatarKey; session_version: number }[];
-      };
       change_own_password: {
         Args: { p_current_password: string; p_new_password: string };
         Returns: { id: string; login_id: string; role: AppRole; display_name: string; avatar_key: AvatarKey; session_version: number }[];
@@ -180,7 +167,6 @@ export interface Database {
         Args: { p_event_id: string; p_level: 'debug' | 'info' | 'warn' | 'error'; p_area: string; p_event: string; p_route: string | null; p_method: string | null; p_status: number | null; p_request_id: string | null; p_message: string | null; p_digest: string | null; p_context: Json | null; p_server_signature: string };
         Returns: undefined;
       };
-      get_profile: { Args: { p_user_id: string }; Returns: Database['public']['Tables']['profiles']['Row'][] };
       match_document_chunks: {
         Args: { query_embedding: Vector; match_count?: number; match_threshold?: number; project_id?: string | null };
         Returns: { id: string; document_id: string; owner_id: string; class_id: string | null; project_id: string | null; chunk_index: number; content: string; metadata: Json; document_title: string; source_uri: string | null; similarity: number }[];
@@ -200,7 +186,6 @@ export interface Database {
       is_student_conversation_finalized: { Args: { p_conversation_id: string }; Returns: boolean };
       save_model_tier_binding_and_sync: { Args: { p_tier: string; p_provider_id: string; p_model_id: string }; Returns: undefined };
       save_scenario_tier_bindings_and_sync: { Args: { p_bindings: Json }; Returns: undefined };
-      refresh_project_highest_bloom_level: { Args: { p_project_id: string }; Returns: undefined };
     };
     Enums: { app_role: AppRole; model_tier: ModelTier; provider_capability: ProviderCapability; prompt_preset_status: PromptPresetStatus; interaction_source: InteractionSource; audit_kind: AuditKind; audit_status: AuditStatus; export_status: ExportStatus };
     CompositeTypes: Record<string, never>;

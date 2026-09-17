@@ -6,12 +6,6 @@ import type { AppRole, Database } from '@/lib/supabase/database.types';
 
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 
-export async function getSessionUser() {
-  const session = await getAppSession();
-  if (!session) return null;
-  return { id: session.sub, loginId: session.loginId, role: session.role, displayName: session.displayName };
-}
-
 export async function getProfile(): Promise<Profile | null> {
   const session = await getAppSession();
   if (!session) return null;

@@ -9,6 +9,7 @@ import { createDatabaseSessionSignature } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
 import type { AppRole, Database, Json, ModelTier, ProviderCapability } from '@/lib/supabase/database.types';
 import { fail, getModelTiers, ok, requireAnyRole, requireRole, scenarioModelTiers, type DataResult, type ModelTierStatus } from './common';
+import { asMetadataObject } from './audit-record';
 
 export type AdminActionState = { ok: boolean; message: string; errors?: Record<string, string> };
 export type ProviderActionResult = { ok: true; message?: string } | { ok: false; message: string };
@@ -79,9 +80,6 @@ type McpServerUpdate = Database['public']['Tables']['mcp_servers']['Update'];
 
 type ProviderWithCapabilities = ProviderConfigRow & { provider_capabilities?: ProviderCapabilityRow[] | null };
 
-function asMetadataObject(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
 type ProviderApiModel = { id: string; ownedBy?: string };
 
 type ProviderConfigInput = { name: string; providerType: string; baseUrl: string; apiKey: string };
@@ -298,15 +296,46 @@ function matchesAdminUserFilters(user: AdminUserListItem, filters: AdminUserFilt
     .some((value) => value.toLowerCase().includes(query));
 }
 
+/**
+ * 按 RFC4180 解析 CSV：引号包裹、字段内逗号与换行、"" 转义。
+ *
+ * 名册是用户从 Excel/WPS 导出的，引用与内嵌逗号都合法；朴素的 split(',')
+ * 会把含逗号的 class_name 切成两格，Object.fromEntries 取 cells[index] 后
+ * 字段静默错位——预览看着"有效"，实际把学生挂进错的班级。
+ */
 function parseCsv(csvText: string): Record<string, string>[] {
-  const lines = csvText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const [headerLine, ...rows] = lines;
-  if (!headerLine) return [];
-  const headers = headerLine.split(',').map((header) => header.trim());
-  return rows.map((line) => {
-    const cells = line.split(',').map((cell) => cell.trim());
-    return Object.fromEntries(headers.map((header, index) => [header, cells[index] ?? '']));
-  });
+  const table: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < csvText.length; index += 1) {
+    const char = csvText[index];
+    if (inQuotes) {
+      if (char !== '"') { cell += char; continue; }
+      if (csvText[index + 1] === '"') { cell += '"'; index += 1; continue; }
+      inQuotes = false;
+      continue;
+    }
+    if (char === '"') { inQuotes = true; continue; }
+    if (char === ',') { row.push(cell); cell = ''; continue; }
+    if (char === '\r' || char === '\n') {
+      if (char === '\r' && csvText[index + 1] === '\n') index += 1;
+      row.push(cell);
+      table.push(row);
+      row = [];
+      cell = '';
+      continue;
+    }
+    cell += char;
+  }
+  row.push(cell);
+  table.push(row);
+
+  const [headerRow, ...dataRows] = table.filter((cells) => cells.some((value) => value.trim()));
+  if (!headerRow) return [];
+  const headers = headerRow.map((header) => header.trim());
+  return dataRows.map((cells) => Object.fromEntries(headers.map((header, index) => [header, (cells[index] ?? '').trim()])));
 }
 
 export async function getAdminDashboard() {
@@ -540,26 +569,6 @@ export async function getAdminProviders() {
   }
 }
 
-
-export async function saveProviderConfig(formData: FormData): Promise<void> {
-  const role = await requireAnyRole(['admin', 'org_admin']);
-  if (!role.ok) return;
-  const name = String(formData.get('name') ?? '').trim();
-  const provider_type = String(formData.get('provider_type') ?? '').trim();
-  const base_url = String(formData.get('base_url') ?? '').trim() || null;
-  const secret_ref = String(formData.get('secret_ref') ?? '').trim();
-  const secret_last_four = String(formData.get('secret_last_four') ?? '').trim() || null;
-  const model_id = String(formData.get('model_id') ?? '').trim();
-  const selected = providerCapabilities.filter((capability) => formData.get(capability) === 'on');
-  if (!name || !provider_type || !secret_ref.startsWith('env:') || !model_id || selected.length === 0) return;
-  const supabase = await createClient();
-  const { data: provider, error } = await supabase.from('provider_configs').insert({ name, provider_type, base_url, secret_ref, secret_last_four, is_enabled: true, health_status: 'unchecked', created_by: role.data.id }).select('id').single();
-  if (error) return;
-  const { error: capError } = await supabase.from('provider_capabilities').insert(selected.map((capability) => ({ provider_id: provider.id, capability, model_id, is_enabled: true })));
-  if (capError) return;
-  revalidatePath('/admin/providers');
-  revalidatePath('/admin');
-}
 
 export async function saveProviderConfigV2(input: ProviderConfigInput): Promise<ProviderActionResult> {
   const role = await requireAnyRole(['admin', 'org_admin']);
@@ -908,7 +917,7 @@ export async function importUsersFromCsv(csvText: string): Promise<{ ok: true; i
     if (provisionError || !profileId) return { ok: false, message: `第 ${row.rowNumber} 行账号导入失败：${provisionError?.message ?? 'unknown'}`, preview };
     const profileIdText = String(profileId);
     if (row.className && row.role !== 'admin') {
-      const { data: classRow, error: classError } = await supabase.from('classes').upsert({ name: row.className, school_id: caller.school_id, created_by: caller.id }, { onConflict: 'name' }).select('id').single();
+      const { data: classRow, error: classError } = await supabase.from('classes').upsert({ name: row.className, school_id: caller.school_id, created_by: caller.id }, { onConflict: 'school_id,name' }).select('id').single();
       if (classError) return { ok: false, message: `第 ${row.rowNumber} 行班级导入失败：${classError.message}`, preview };
       if (row.role === 'student') {
         const { error: transferError } = await supabase.from('class_memberships').delete().eq('profile_id', profileIdText).eq('role', 'student');

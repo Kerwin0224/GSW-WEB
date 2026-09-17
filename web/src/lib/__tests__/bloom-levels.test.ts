@@ -5,7 +5,6 @@ import { test } from 'node:test';
 
 import {
   BLOOM_LEVELS,
-  BLOOM_LEVELS_DESC,
   BLOOM_LEVEL_INFO,
   bloomLevelTaskLine,
   formatBloomLevelCriteria,
@@ -20,10 +19,6 @@ test('六层齐备且编号连续', () => {
     assert.ok(BLOOM_LEVEL_INFO[level].name.length > 0);
     assert.ok(BLOOM_LEVEL_INFO[level].operation.length > 0);
   }
-});
-
-test('降序常量与升序相反（界面从上往下是六层塔）', () => {
-  assert.deepEqual(BLOOM_LEVELS_DESC, [6, 5, 4, 3, 2, 1]);
 });
 
 test('isBloomLevel / toBloomLevel 宽进严出', () => {

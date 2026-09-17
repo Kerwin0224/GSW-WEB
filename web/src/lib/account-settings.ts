@@ -38,8 +38,6 @@ export const accountPasswordSchema = z
 
 export const avatarUpdateSchema = z.object({ avatarKey: avatarKeySchema });
 
-export type AccountPasswordInput = z.infer<typeof accountPasswordSchema>;
-
 const postgresUuidSchema = z.string().regex(
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
 );

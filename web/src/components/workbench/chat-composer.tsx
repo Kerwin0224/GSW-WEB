@@ -15,7 +15,6 @@ interface ChatComposerProps {
   inputDisabled?: boolean;
   placeholder: string;
   blockedReason?: string;
-  submitLabel?: string;
   onFileUpload?: (file: File) => void;
   uploadDisabled?: boolean;
   uploadStatus?: string;
@@ -30,7 +29,6 @@ export function ChatComposer({
   inputDisabled = disabled,
   placeholder,
   blockedReason,
-  submitLabel = '发送',
   onFileUpload,
   uploadDisabled,
   uploadStatus,
@@ -94,9 +92,9 @@ export function ChatComposer({
             </label>
           )} />
         ) : null}
-        <Button type="submit" size="icon" className="size-9 shrink-0 rounded-full" disabled={disabled || !value.trim()} aria-label={submitLabel}>
+        <Button type="submit" size="icon" className="size-9 shrink-0 rounded-full" disabled={disabled || !value.trim()} aria-label="发送">
           <Send className="size-4" aria-hidden="true" />
-          <span className="sr-only">{submitLabel}</span>
+          <span className="sr-only">发送</span>
         </Button>
       </form>
       {onFileUpload ? <p className="px-2 text-xs text-muted-foreground">支持 TXT、MD、JSON，最大 512 KB。</p> : null}

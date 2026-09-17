@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { AdminDialogShell } from '@/components/workbench/admin-dialog-shell';
-import type { DatasetType, PreviewResult } from '@/lib/dataset-export';
+import type { DatasetType, PreviewResult } from '@/lib/dataset-export-record';
 
 interface DatasetFilters {
   startDate?: string;
@@ -22,15 +22,7 @@ interface DatasetFilters {
   scope?: 'unexported' | 'all';
 }
 
-type DatasetPreview = Extract<PreviewResult, { totalCount: number }> & {
-  projectDistribution: Array<{ name: string; count: number }>;
-  coverage: {
-    eligibleRecords: number;
-    validRecords: number;
-    invalidRecords: number;
-    sampleLimit: number;
-  };
-};
+type DatasetPreview = Extract<PreviewResult, { totalCount: number }>;
 
 export default function DatasetExportClient() {
   const [type, setType] = useState<DatasetType>('sft');

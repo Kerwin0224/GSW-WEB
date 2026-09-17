@@ -10,7 +10,6 @@ import { emitLogEvent, sanitizeLogEvent, type LogEvent } from '@/lib/observabili
 
 const LOG_DIR = path.join(process.cwd(), '.logs');
 const APP_LOG_FILE = path.join(LOG_DIR, 'app-events.jsonl');
-const DEV_LOG_FILE = path.join(LOG_DIR, 'next-dev.log');
 
 /**
  * 日志双通道：本地 .logs 落盘（开发用）+ app_log_events 表（生产唯一持久层）。
@@ -79,7 +78,6 @@ export class AppLogReadError extends Error {
 }
 
 const APP_EVENT_TAIL_BYTES = 512 * 1024;
-const DEV_LOG_TAIL_BYTES = 256 * 1024;
 
 async function readTailUtf8Lines(filePath: string, byteLimit: number) {
   const file = await open(filePath, 'r');
@@ -106,7 +104,6 @@ export type AppEventFilters = {
   traceId?: string;
   userId?: string;
   search?: string;
-  sinceMs?: number;
 };
 
 function eventMatchesFilters(event: StoredLogEvent, filters: AppEventFilters) {
@@ -122,11 +119,6 @@ function eventMatchesFilters(event: StoredLogEvent, filters: AppEventFilters) {
   if (userId) {
     const eventUser = String(event.context?.user_id ?? event.context?.userId ?? event.context?.profile_id ?? '').toLowerCase();
     if (!eventUser.includes(userId)) return false;
-  }
-
-  if (filters.sinceMs !== undefined) {
-    const timestamp = Date.parse(event.timestamp);
-    if (!Number.isFinite(timestamp) || timestamp < filters.sinceMs) return false;
   }
 
   const search = filters.search?.trim().toLowerCase();
@@ -179,20 +171,60 @@ function rowToStoredEvent(row: AppLogEventRow): StoredLogEvent {
   } as StoredLogEvent;
 }
 
+/** LIKE 元字符转义成字面量：管理员输入的字符就是被检索的字符，不当作通配符。 */
+function literalLikeTerm(value: string) {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
+
+/**
+ * or=() 里的 ilike 条件。PostgREST 用 `,` `.` `(` `)` 拆分 or 表达式，
+ * 值里出现这些字符必须整体加双引号，否则过滤语法被拆坏（400）或被截成错误的条件。
+ */
+function orIlikeContains(column: string, term: string) {
+  const escaped = literalLikeTerm(term).replace(/"/g, '\\"');
+  return `${column}.ilike."%${escaped}%"`;
+}
+
 /**
  * 优先读数据库（生产唯一持久通道，管理员经 RLS 读取），
  * 数据库不可用或非管理员会话（本地开发）时回落本地 .logs 文件。
+ *
+ * 过滤条件交给数据库判定：先前是在内存里过滤一个固定取样窗口，窗口之外的匹配事件
+ * 永远搜不到，管理员会把「窗口里没有」误读成「没发生过」。
  */
-export async function readRecentAppEvents(limit = 80): Promise<StoredLogEvent[]> {
+export async function readRecentAppEvents(limit = 80, filters: AppEventFilters = {}): Promise<StoredLogEvent[]> {
   // try 正常完成时在下方赋值、抛异常时由 catch 赋值，进入文件回落前必然已有值
   let databaseCause: unknown;
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    let query = supabase
       .from('app_log_events')
       .select('created_at,level,area,event,route,method,status,request_id,message,digest,context')
       .order('created_at', { ascending: false })
       .limit(limit);
+
+    if (filters.level) query = query.eq('level', filters.level);
+
+    const traceId = filters.traceId?.trim();
+    if (traceId) query = query.ilike('request_id', `%${literalLikeTerm(traceId)}%`);
+
+    // context 是 jsonb，PostgREST 不能整篇全文匹配；其中真正要检索的 trace/user 标识
+    // 各有专用过滤框，所以搜索只覆盖日志行自身的文本列。
+    const search = filters.search?.trim();
+    if (search) {
+      query = query.or(
+        ['event', 'message', 'route', 'area', 'method'].map((column) => orIlikeContains(column, search)).join(','),
+      );
+    }
+
+    const userId = filters.userId?.trim();
+    if (userId) {
+      query = query.or(
+        ['context->>user_id', 'context->>profile_id'].map((column) => orIlikeContains(column, userId)).join(','),
+      );
+    }
+
+    const { data, error } = await query;
     if (!error && data) {
       return (data as AppLogEventRow[]).map(rowToStoredEvent);
     }
@@ -202,8 +234,9 @@ export async function readRecentAppEvents(limit = 80): Promise<StoredLogEvent[]>
   }
   try {
     return (await readTailUtf8Lines(APP_LOG_FILE, APP_EVENT_TAIL_BYTES))
-      .slice(-limit)
       .map((line) => JSON.parse(line) as StoredLogEvent)
+      .filter((event) => eventMatchesFilters(event, filters))
+      .slice(-limit)
       .reverse();
   } catch (fileCause) {
     throw new AppLogReadError(databaseCause, fileCause);
@@ -211,35 +244,14 @@ export async function readRecentAppEvents(limit = 80): Promise<StoredLogEvent[]>
 }
 
 export async function readFilteredAppEvents(filters: AppEventFilters = {}, limit = 80): Promise<StoredLogEvent[]> {
-  const events = await readRecentAppEvents(Math.max(limit * 4, 200));
-  return events.filter((event) => eventMatchesFilters(event, filters)).slice(0, limit);
-}
-
-export async function countRecentAppErrors(hours = 24) {
-  const sinceMs = Date.now() - hours * 60 * 60 * 1000;
-  const events = await readFilteredAppEvents({ level: 'error', sinceMs }, 500);
-  return events.length;
-}
-
-export async function readRecentDevLogLines(limit = 120) {
-  try {
-    return (await readTailUtf8Lines(DEV_LOG_FILE, DEV_LOG_TAIL_BYTES)).slice(-limit).reverse();
-  } catch {
-    return [];
-  }
+  return readRecentAppEvents(limit, filters);
 }
 
 export async function getLogFileStatus() {
-  const [app, dev] = await Promise.all([
-    stat(APP_LOG_FILE).catch(() => null),
-    stat(DEV_LOG_FILE).catch(() => null),
-  ]);
+  const app = await stat(APP_LOG_FILE).catch(() => null);
   return {
     appLogPath: '.logs/app-events.jsonl',
-    devLogPath: '.logs/next-dev.log',
     appLogBytes: app?.size ?? 0,
-    devLogBytes: dev?.size ?? 0,
     appLogUpdatedAt: app?.mtime.toISOString() ?? null,
-    devLogUpdatedAt: dev?.mtime.toISOString() ?? null,
   };
 }

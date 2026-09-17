@@ -4,12 +4,10 @@ import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { requireRole } from '@/lib/data/common';
 import { createClient } from '@/lib/supabase/server';
 import { isStudentConversationFinalized } from '@/lib/data/conversation-finalization';
-
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+import { conversationIdSchema } from '@/lib/request-schemas';
 
 const bodySchema = z.object({
-  conversationId: z.string().trim().uuid(),
+  conversationId: conversationIdSchema,
 });
 
 export async function DELETE(req: Request) {
@@ -56,8 +54,8 @@ export async function DELETE(req: Request) {
 // 客户端随后以编辑后的文本重发首问/追问，实现"回到某节点改写上下文"。
 // 只允许以用户消息为节点；教师已核实的会话不可回滚。
 const truncateSchema = z.object({
-  conversationId: z.string().trim().uuid(),
-  messageId: z.string().trim().uuid(),
+  conversationId: conversationIdSchema,
+  messageId: conversationIdSchema,
 });
 
 export async function PATCH(req: Request) {
