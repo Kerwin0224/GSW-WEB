@@ -6,7 +6,7 @@ import { ProviderCapabilityMatrix } from '@/components/workbench/provider-capabi
 import { ProviderConfigDialog } from '@/components/workbench/provider-config-dialog';
 import { SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { getAdminMcp, getAdminProviders } from '@/lib/data/admin';
-import { getProfile } from '@/lib/auth';
+import { requireProfile } from '@/lib/auth';
 
 /**
  * 公司级平台配置（org_admin）。
@@ -22,11 +22,7 @@ import { getProfile } from '@/lib/auth';
  * （RLS 按 can_read_school_scope 决定 org_admin 能看到本公司各校 + 公司级）。
  */
 export default async function OrgPlatformPage() {
-  const profile = await getProfile();
-  if (!profile) return null;
-  if (profile.role !== 'org_admin') {
-    return <div className="p-6"><ErrorState title="无权访问" description="公司级平台配置仅限公司管理员使用。" /></div>;
-  }
+  await requireProfile('org_admin');
 
   const [providersResult, mcpResult] = await Promise.all([getAdminProviders(), getAdminMcp()]);
   if (!providersResult.ok) {

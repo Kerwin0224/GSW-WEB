@@ -1,5 +1,6 @@
 import { AdminLogViewer, type AdminLogLoadState } from '@/components/workbench/admin-log-viewer';
 import { SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
+import { requireProfile } from '@/lib/auth';
 import { presentLogEvent } from '@/lib/observability/admin-log-presentation';
 import { readFilteredAppEvents, type AppEventFilters } from '@/lib/observability/server-log-store';
 
@@ -8,6 +9,11 @@ export default async function AdminLogsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // 页面侧守卫：本页直读服务端日志，是全仓唯一绕过 requireRole 的页面级数据读取。
+  // 只靠 /admin/layout 不够——layout 在客户端软导航时不重渲染，待改密管理员从
+  // /admin 软跳到本页仍能读到日志。
+  await requireProfile('admin');
+
   const params = await searchParams;
   const pick = (key: string) => {
     const value = params[key];

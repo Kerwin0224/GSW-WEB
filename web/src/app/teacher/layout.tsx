@@ -1,12 +1,8 @@
-import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
-import { getProfile } from '@/lib/auth';
+import { requireProfile } from '@/lib/auth';
 
 export default async function TeacherLayout({ children }: { children: React.ReactNode }) {
-  const profile = await getProfile();
-  if (!profile) redirect('/login');
-  if (profile.role !== 'teacher') redirect('/login?error=role_denied');
-  if (profile.status !== 'active') redirect('/login?error=account_disabled');
+  const profile = await requireProfile('teacher');
 
   return (
     <AppShell role="teacher" displayName={profile.display_name ?? '老师'} loginId={profile.login_id} avatarKey={profile.avatar_key} breadcrumbs={[{ label: '教学总览' }]}>

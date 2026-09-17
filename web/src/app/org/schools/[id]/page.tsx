@@ -1,10 +1,15 @@
 import { notFound } from 'next/navigation';
 
 import { ErrorState } from '@/components/workbench/state-surfaces';
+import { requireProfile } from '@/lib/auth';
 import { getOrgSchoolDetail } from '@/lib/data/org';
 import { SchoolDetailClient } from './detail-client';
 
 export default async function OrgSchoolDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  // 页面侧守卫：此前只有 getOrgSchoolDetail 内部的 requireRole，must_change_password 时
+  // 会被渲染成"加载失败"错误态而不是跳改密页。这里补上。
+  await requireProfile('org_admin');
+
   const { id } = await params;
   const result = await getOrgSchoolDetail(id);
   if (!result.ok) {

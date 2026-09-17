@@ -1,14 +1,17 @@
 import { NextResponse } from 'next/server';
 
 import { avatarKeySchema, avatarUpdateSchema } from '@/lib/account-settings';
+import { requireAnyRole } from '@/lib/data/common';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
-import { getAppSession } from '@/lib/session';
+import { APP_ROLES } from '@/lib/supabase/database.types';
 import { createClient } from '@/lib/supabase/server';
 
 export async function PATCH(req: Request) {
   return withApiLogging(req, { area: 'auth', event: 'account_avatar_update', route: '/api/account/avatar' }, async (requestId) => {
-    const session = await getAppSession();
-    if (!session) return NextResponse.json({ error: '请先登录。', requestId }, { status: 401 });
+    // 改头像对四个角色都开放，但不是"有 cookie 就能改"：requireAnyRole 每次都重新读库，
+    // 停用账号与 must_change_password 账号（只能去改密）在这里就被挡下。
+    const auth = await requireAnyRole(APP_ROLES);
+    if (!auth.ok) return NextResponse.json({ error: auth.message, requestId }, { status: auth.reason === 'forbidden' ? 403 : 401 });
 
     let body: unknown;
     try {

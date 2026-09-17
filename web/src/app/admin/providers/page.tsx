@@ -3,9 +3,12 @@ import { ProviderConfigDialog } from '@/components/workbench/provider-config-dia
 import { ErrorState } from '@/components/workbench/state-surfaces';
 import { SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { getAdminProviders } from '@/lib/data/admin';
-import { getProfile } from '@/lib/auth';
+import { requireProfile } from '@/lib/auth';
 
 export default async function AdminProvidersPage() {
+  // 页面侧守卫，与 /admin 其余页面同款；不走 layout 的软导航缺口判断见 requireProfile 注释。
+  await requireProfile('admin');
+
   const result = await getAdminProviders();
   if (!result.ok) {
     return (
@@ -16,8 +19,6 @@ export default async function AdminProvidersPage() {
   }
 
   const { providers, modelTiers, scenarioTierBindings } = result.data;
-  // 场景路由是公司级资产，页面按角色决定给不给编辑入口。
-  const profile = await getProfile();
   const checkedProviders = providers.filter((provider) => provider.lastHealthCheckAt).length;
   const configuredTiers = [modelTiers.flash, modelTiers.advanced].filter((tier) => tier.providerId && tier.modelId).length;
 
@@ -41,7 +42,9 @@ export default async function AdminProvidersPage() {
             <ProviderConfigDialog />
           )}
         />
-        <ProviderCapabilityMatrix providers={providers} modelTiers={modelTiers} scenarioTierBindings={scenarioTierBindings} canEditScenarioRouting={profile?.role === 'org_admin'} />
+        {/* 不传 canEditScenarioRouting：场景路由是公司级资产，编辑入口只在 /org/platform；
+            本页角色恒为 admin（见上方 requireProfile('admin')），传它只会是恒 false 的死分支。 */}
+        <ProviderCapabilityMatrix providers={providers} modelTiers={modelTiers} scenarioTierBindings={scenarioTierBindings} />
       </section>
     </div>
   );

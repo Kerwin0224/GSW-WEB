@@ -146,74 +146,81 @@ export function AccountSettings({ avatarKey, displayName, loginId, accountRole, 
       <header className="space-y-2 border-b border-border/60 pb-6">
         <h1 className="font-sans text-2xl font-semibold tracking-tight sm:text-3xl">账号设置</h1>
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-          管理本人头像和登录密码。角色、班级与账号状态<span className="whitespace-nowrap">仍由学校管理员维护。</span>
+          {/* 改密态下头像卡不渲染。上方提示条已经说了"初始密码未改""至少 10 位""改完即可正常使用"，
+              页头只补它没说的两件事：改完会退出登录、头像要等改完再管。 */}
+          {mustChangePassword
+            ? '改完密码会自动退出登录，请用新密码重新登录；头像可稍后再设置。角色、班级与账号状态'
+            : '管理本人头像和登录密码。角色、班级与账号状态'}
+          <span className="whitespace-nowrap">仍由学校管理员维护。</span>
         </p>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start">
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-sans text-lg"><h2 className="font-sans">个人头像</h2></CardTitle>
-            <CardDescription>头像只使用系统内置图案，不会上传照片<span className="whitespace-nowrap">或连接外部图片。</span></CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex items-center gap-4 rounded-lg border border-border/60 bg-muted/35 p-4">
-              <AccountAvatar avatarKey={savedAvatarKey} className="size-14" iconClassName="size-6" />
-              <div className="min-w-0 space-y-1">
-                <p className="truncate font-medium">{displayName}</p>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <RoleBadge role={accountRole} />
-                  <span className="font-mono">{loginId}</span>
+      <div className={mustChangePassword ? 'grid gap-6' : 'grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start'}>
+        {mustChangePassword ? null : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-sans text-lg"><h2 className="font-sans">个人头像</h2></CardTitle>
+              <CardDescription>头像只使用系统内置图案，不会上传照片<span className="whitespace-nowrap">或连接外部图片。</span></CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex items-center gap-4 rounded-lg border border-border/60 bg-muted/35 p-4">
+                <AccountAvatar avatarKey={savedAvatarKey} className="size-14" iconClassName="size-6" />
+                <div className="min-w-0 space-y-1">
+                  <p className="truncate font-medium">{displayName}</p>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <RoleBadge role={accountRole} />
+                    <span className="font-mono">{loginId}</span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <fieldset disabled={isSavingAvatar} className="space-y-3">
-              <legend className="text-sm font-medium">选择头像</legend>
-              <div className="grid grid-cols-3 gap-3 sm:grid-cols-6 lg:grid-cols-3">
-                {accountAvatarOptions.map((option) => {
-                  const selected = selectedAvatarKey === option.key;
-                  return (
-                    <Label
-                      key={option.key}
-                      className={`relative flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border p-3 text-xs transition-colors has-[input:focus-visible]:border-ring has-[input:focus-visible]:ring-3 has-[input:focus-visible]:ring-ring/50 ${selected ? 'border-primary bg-primary/8 text-primary ring-2 ring-primary/20' : 'border-border/60 bg-background hover:border-primary/50 hover:bg-muted/40'}`}
-                    >
-                      <input
-                        type="radio"
-                        name="avatarKey"
-                        value={option.key}
-                        checked={selected}
-                        onChange={() => setSelectedAvatarKey(option.key)}
-                        className="sr-only"
-                      />
-                      <AccountAvatar avatarKey={option.key} />
-                      <span>{option.label}</span>
-                      {selected ? <Check className="absolute right-2 top-2 size-3.5" aria-hidden="true" /> : null}
-                    </Label>
-                  );
-                })}
-              </div>
-            </fieldset>
+              <fieldset disabled={isSavingAvatar} className="space-y-3">
+                <legend className="text-sm font-medium">选择头像</legend>
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-6 lg:grid-cols-3">
+                  {accountAvatarOptions.map((option) => {
+                    const selected = selectedAvatarKey === option.key;
+                    return (
+                      <Label
+                        key={option.key}
+                        className={`relative flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border p-3 text-xs transition-colors has-[input:focus-visible]:border-ring has-[input:focus-visible]:ring-3 has-[input:focus-visible]:ring-ring/50 ${selected ? 'border-primary bg-primary/8 text-primary ring-2 ring-primary/20' : 'border-border/60 bg-background hover:border-primary/50 hover:bg-muted/40'}`}
+                      >
+                        <input
+                          type="radio"
+                          name="avatarKey"
+                          value={option.key}
+                          checked={selected}
+                          onChange={() => setSelectedAvatarKey(option.key)}
+                          className="sr-only"
+                        />
+                        <AccountAvatar avatarKey={option.key} />
+                        <span>{option.label}</span>
+                        {selected ? <Check className="absolute right-2 top-2 size-3.5" aria-hidden="true" /> : null}
+                      </Label>
+                    );
+                  })}
+                </div>
+              </fieldset>
 
-            {avatarFeedback.kind !== 'idle' ? (
-              <Alert variant={avatarFeedback.kind === 'error' ? 'destructive' : 'default'} role={avatarFeedback.kind === 'error' ? 'alert' : 'status'}>
-                <AlertTitle>{avatarFeedback.kind === 'error' ? '头像未保存' : '保存成功'}</AlertTitle>
-                <AlertDescription>{avatarFeedback.message}</AlertDescription>
-              </Alert>
-            ) : null}
+              {avatarFeedback.kind !== 'idle' ? (
+                <Alert variant={avatarFeedback.kind === 'error' ? 'destructive' : 'default'} role={avatarFeedback.kind === 'error' ? 'alert' : 'status'}>
+                  <AlertTitle>{avatarFeedback.kind === 'error' ? '头像未保存' : '保存成功'}</AlertTitle>
+                  <AlertDescription>{avatarFeedback.message}</AlertDescription>
+                </Alert>
+              ) : null}
 
-            <Button
-              type="button"
-              size="lg"
-              disabled={isSavingAvatar || selectedAvatarKey === savedAvatarKey}
-              onClick={() => void saveAvatar()}
-              className="w-full sm:w-auto"
-            >
-              {isSavingAvatar ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}
-              {isSavingAvatar ? '保存中' : '保存头像'}
-            </Button>
-          </CardContent>
-        </Card>
+              <Button
+                type="button"
+                size="lg"
+                disabled={isSavingAvatar || selectedAvatarKey === savedAvatarKey}
+                onClick={() => void saveAvatar()}
+                className="w-full sm:w-auto"
+              >
+                {isSavingAvatar ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}
+                {isSavingAvatar ? '保存中' : '保存头像'}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

@@ -1,14 +1,12 @@
 import Link from 'next/link';
 
 import { ErrorState } from '@/components/workbench/state-surfaces';
-import { getProfile } from '@/lib/auth';
+import { requireProfile } from '@/lib/auth';
 import { listOrgSchools } from '@/lib/data/org';
 import { OrgSchoolsClient } from './schools-client';
 
 export default async function OrgHomePage() {
-  const profile = await getProfile();
-  if (!profile) return null;
-  if (profile.role !== 'org_admin') return <div className="p-6"><ErrorState title="无权访问" description="公司学校总览仅限公司管理员使用。" /></div>;
+  const profile = await requireProfile('org_admin');
 
   const result = await listOrgSchools();
   if (!result.ok) return <div className="p-6"><ErrorState title="学校列表加载失败" description={result.message} /></div>;

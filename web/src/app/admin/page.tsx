@@ -6,10 +6,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { WorkspaceHero } from '@/components/workbench/workspace-hero';
+import { requireProfile } from '@/lib/auth';
 import { getAdminDashboard } from '@/lib/data/admin';
 import { AppLogReadError, getLogFileStatus, readRecentAppEvents } from '@/lib/observability/server-log-store';
 
 export default async function AdminDashboard() {
+  // 页面侧守卫。本页虽然直读服务端日志（readRecentAppEvents / getLogFileStatus 自身无角色
+  // 守卫），但**不是**软导航会漏日志的那一个：同一批数据里的 getAdminDashboard() 走 lib/data/*，
+  // 对 must_change_password 返回 password_change_required，下面的 `if (!result.ok)` 在用不到
+  // logEvents 的位置提前返回，日志内容进不了 RSC payload。
+  // 补这一行的收益是行为而非保密：待改密管理员被明确送去 /settings，而不是看到一块
+  // 「管理看板加载失败」。真正会因软导航漏日志的是 admin/logs——那条数据路径上没有任何 requireRole。
+  await requireProfile('admin');
+
   const [result, logStatus, logLoadState] = await Promise.all([
     getAdminDashboard(),
     getLogFileStatus(),

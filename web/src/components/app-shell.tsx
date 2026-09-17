@@ -32,8 +32,11 @@ interface AppShellProps {
    * sidebar：经典左侧栏（教师/管理端）。
    * top：无侧边栏的顶栏模式——学生端主路径是提问本身，
    * 学习入口保留在顶栏，避免核心路径只能从头像菜单发现。
+   * none：只有品牌 + 账号菜单（含退出）的裸顶栏，无侧边栏、无导航项、无面包屑。
+   * 强制改密时用：此时点任何导航项都会被 requireProfile 弹回 /settings?required=1，
+   * 摆出整条导航只是让用户看到一堆进不去、点了原地打转的入口。
    */
-  chrome?: 'sidebar' | 'top';
+  chrome?: 'sidebar' | 'top' | 'none';
 }
 
 function derivedBreadcrumbs(pathname: string, fallback: BreadcrumbSegment[]) {
@@ -75,16 +78,26 @@ export function AppShell({ role, displayName, loginId, avatarKey = 'ink', breadc
     }
   };
 
+  // chrome 为 none 时品牌不做成链接：此时 `/${role}` 会被 requireProfile 弹回
+  // /settings?required=1，点它只是白跳一次。
+  const brandMark = (
+    <>
+      <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+        <BookOpen className="size-4" aria-hidden="true" />
+      </span>
+      <span className="hidden font-heading text-base sm:inline">文韵智途</span>
+    </>
+  );
+
   const header = (
     <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border/60 bg-background/82 px-4 backdrop-blur-xl sm:px-6">
       {chrome === 'sidebar' ? (
         <SidebarTrigger className="-ml-1 min-h-11 min-w-11 cursor-pointer rounded-lg md:hidden" aria-label="打开导航菜单" />
+      ) : chrome === 'none' ? (
+        <span className="flex shrink-0 items-center gap-2 px-1 py-1 text-sm font-medium text-muted-foreground">{brandMark}</span>
       ) : (
         <Link href={`/${role}`} aria-label="文韵智途首页" className="flex shrink-0 items-center gap-2 rounded-md px-1 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <BookOpen className="size-4" aria-hidden="true" />
-          </span>
-          <span className="hidden font-heading text-base sm:inline">文韵智途</span>
+          {brandMark}
         </Link>
       )}
       {chrome === 'top' ? (
@@ -99,6 +112,9 @@ export function AppShell({ role, displayName, loginId, avatarKey = 'ink', breadc
             );
           })}
         </nav>
+      ) : chrome === 'none' ? (
+        // 只留一个撑开的占位，把账号菜单顶到右侧；不渲染面包屑，因为此时没有可去的路径。
+        <div className="min-w-0 flex-1" />
       ) : <Breadcrumb className="min-w-0 flex-1 overflow-hidden">
         <BreadcrumbList className="flex-nowrap text-xs sm:text-sm">
           {visibleBreadcrumbs.map((seg, i) => (
@@ -133,7 +149,8 @@ export function AppShell({ role, displayName, loginId, avatarKey = 'ink', breadc
             </div>
           </div>
           <div className="p-1">
-            {roleAvatarMenuItems[role].map((link) => {
+            {/* 强制改密态不列角色快捷入口：它们同样会被弹回 /settings?required=1。 */}
+            {(chrome === 'none' ? [] : roleAvatarMenuItems[role]).map((link) => {
               const Icon = link.icon;
               return (
                 <DropdownMenuItem key={link.href} render={<Link href={link.href} />} className="cursor-pointer gap-2.5 px-2.5 py-2">
@@ -171,7 +188,8 @@ export function AppShell({ role, displayName, loginId, avatarKey = 'ink', breadc
     </div>
   ) : null;
 
-  if (chrome === 'top') {
+  // top 与 none 都走无侧边栏的裸框架：只有 sidebar 才需要 SidebarProvider + AppSidebar。
+  if (chrome !== 'sidebar') {
     return (
       <div data-role={role} className="flex min-h-svh flex-col">
         <a
