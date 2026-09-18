@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180" role="img" aria-label="文韵智途">
+  <title>文韵智途</title>
+  <!-- 应用图标导出源：满底不留圆角，由系统（iOS/Android/PWA）自己裁形。 -->
+  <rect width="180" height="180" fill="#4A6FA5"/>
+  <path d="M5.5 6v12.3h4.4v-4.1h4.4v-4.1h4.4V6"
+        transform="translate(0.82 0.45) scale(7.37)"
+        fill="none" stroke="#FFFFFF" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

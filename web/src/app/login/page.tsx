@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowRight, BookOpenText, Loader2 } from 'lucide-react';
+import { ArrowRight, Loader2 } from 'lucide-react';
 
+import { BrandMark } from '@/components/brand-mark';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -91,7 +92,7 @@ export default function LoginPage() {
           <div className="space-y-5 lg:space-y-8">
             <div className="inline-flex items-center gap-3 text-sm text-muted-foreground">
               <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                <BookOpenText className="size-4" aria-hidden="true" />
+                <BrandMark className="size-4" />
               </span>
               <span className="font-heading text-xl text-foreground">文韵智途</span>
             </div>

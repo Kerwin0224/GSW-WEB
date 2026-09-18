@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="文韵智途">
+  <title>文韵智途</title>
+  <!-- Next.js 约定的站点图标（favicon）。深色浏览器界面下用亮一档的黛蓝，保住白色描边的对比度。 -->
+  <style>
+    .brand-ground { fill: #4A6FA5; }
+    @media (prefers-color-scheme: dark) { .brand-ground { fill: #5B82B8; } }
+  </style>
+  <rect class="brand-ground" width="32" height="32" rx="7.5"/>
+  <path d="M5.5 6v12.3h4.4v-4.1h4.4v-4.1h4.4V6"
+        transform="translate(-2.15 -2.225) scale(1.5)"
+        fill="none" stroke="#FFFFFF" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -121,7 +121,9 @@
   /* 侧边栏 */
   --sidebar: oklch(0.297 0.000 89.9); /* #2D2D2D */
   --sidebar-foreground: oklch(0.979 0.009 93.6); /* #FAF8F1 */
-  --sidebar-primary: var(--primary);
+  /* 侧栏在浅色主题里也是深面（#2D2D2D），所以这里不能用 --primary 的黛蓝：
+     #4A6FA5 在 #2D2D2D 上只有 2.66:1，低于图形 3:1 的下限。与深色主题同为月白 5.24:1。 */
+  --sidebar-primary: oklch(0.703 0.073 251.4); /* #7EA3CC — 5.24:1 on sidebar */
   --sidebar-primary-foreground: var(--primary-foreground);
   --sidebar-accent: oklch(0.360 0.000 89.9);
   --sidebar-accent-foreground: var(--sidebar-foreground);
@@ -243,7 +245,7 @@
     --ring: #4A6FA5;
     --sidebar: #2D2D2D;
     --sidebar-foreground: #FAF8F1;
-    --sidebar-primary: #4A6FA5;
+    --sidebar-primary: #7EA3CC;
     --sidebar-primary-foreground: #FFFFFF;
     --sidebar-accent: #3A3A3A;
     --sidebar-accent-foreground: #FAF8F1;

@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BookOpen, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 
+import { BrandMark } from '@/components/brand-mark';
 import {
   Sidebar,
   SidebarContent,
@@ -30,7 +31,7 @@ export function AppSidebar({ role }: AppSidebarProps) {
       <SidebarHeader className="border-b border-sidebar-border p-2">
         <div className="flex min-h-12 items-center gap-2 group-data-[collapsible=icon]:justify-center">
           {!collapsed ? <Link href={`/${role}`} onClick={() => setOpenMobile(false)} className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring">
-            <BookOpen className="size-5 shrink-0 text-sidebar-primary" aria-hidden="true" />
+            <BrandMark className="size-5 shrink-0 text-sidebar-primary" />
             <span className="min-w-0">
               <span className="block truncate font-heading text-lg leading-tight">文韵智途</span>
               <span className="block truncate text-xs text-sidebar-foreground/70">{roleSubtitle[role]}</span>

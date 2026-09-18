@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { BookOpen, ChevronDown, LogOut, Settings } from 'lucide-react';
+import { ChevronDown, LogOut, Settings } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 
 import { AppSidebar } from '@/components/app-sidebar';
+import { BrandMark } from '@/components/brand-mark';
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import {
   DropdownMenu,
@@ -83,7 +84,7 @@ export function AppShell({ role, displayName, loginId, avatarKey = 'ink', breadc
   const brandMark = (
     <>
       <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-        <BookOpen className="size-4" aria-hidden="true" />
+        <BrandMark className="size-4" />
       </span>
       <span className="hidden font-heading text-base sm:inline">文韵智途</span>
     </>

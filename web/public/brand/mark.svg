@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="文韵智途" width="24" height="24">
+  <title>文韵智途</title>
+  <!-- 一笔构成的mark：书脊竖直到底，再阶梯上升回到同一高度——「文」与「途」同形。 -->
+  <path d="M5.5 6v12.3h4.4v-4.1h4.4v-4.1h4.4V6"
+        fill="none" stroke="#4A6FA5" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
