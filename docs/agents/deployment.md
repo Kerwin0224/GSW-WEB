@@ -122,26 +122,26 @@ GitHub 是代码和迁移的源事实；Vercel/Supabase 的配置、部署和验
 
 ### 新功能
 
-1. 从最新 `main` 建短命分支，把代码、迁移、配置和测试放进同一个 PR；在 `web/` 完成测试、lint、类型检查。
+1. 在本地完成代码、迁移、配置和测试；`web/` 执行测试、lint、类型检查。
 2. 有迁移时先执行 `supabase db push --dry-run --linked`，再用 `db query` 跑最小探针；RLS、grant、触发器变更必须覆盖真实身份。
-3. push 分支后等待 Vercel Preview `READY` 和 `ci` workflow；有隔离项目时 Preview 连接隔离凭据，单项目模式只做只读或事务回滚验证。
-4. 合并 `main` 后按“生产发布”顺序执行：Vercel candidate → Supabase migration → RLS/运行时探针 → 切换生产流量。迁移失败时不切换 candidate。
+3. 门禁通过后直接 commit 并 push `main`；高风险变更可以临时使用分支和 PR 做复核。
+4. `main` push 后观察 `ci`、Vercel Production 和 `supabase-db-push`；代码异常用 Vercel 回滚，schema 异常用新的 forward migration 修复。
 
-## Git 工作流（与 Vercel 配合）
+## Git 工作流（单人直推）
 
-`main` 是受保护的生产分支，所有变更通过 PR 合并：
+`main` 是生产分支。本项目默认本地开发完成后直接 push `main`，不要求 PR 或审批：
 
 | 改动类型 | 流程 |
 |---|---|
-| 文档、注释、单文件小修 | 短命分支 + PR；通过 `ci` 与 Vercel Preview 后合并 |
-| 依赖升级、schema 迁移、多文件重构 | 同一分支和 PR 提交代码、迁移、配置、测试；迁移顺序和兼容性必须明确 |
-| 紧急修复 | 记录 incident、批准人和绕过原因；补齐 PR、测试、Preview 与发布记录 |
+| 文档、注释、单文件小修 | 本地检查后直接 commit/push `main` |
+| 依赖升级、schema 迁移、多文件重构 | 本地检查、迁移 dry-run 和探针通过后直接 commit/push `main`；风险高时使用临时分支和 PR |
+| 紧急修复 | 可直接 push `main`，记录 incident、原因和回滚方式 |
 
-PR 必须通过 `ci`、Vercel Preview `READY`；含迁移时还要有云端 dry-run 证据。Vercel Production 使用 staged/manual promotion，main push 不直接获得生产域名。
+`main` push 会触发 CI、Vercel Production 和迁移 workflow。CI 是推送后的状态记录，不阻塞已经完成的 push；高风险变更可以临时用 PR 做额外复核。
 
-## 生产发布（固定顺序）
+## 生产发布（直推模式）
 
-**第一段：合并前门禁**
+**push 前门禁**
 
 | 门禁 | 命令或证据 |
 |---|---|
@@ -151,31 +151,28 @@ PR 必须通过 `ci`、Vercel Preview `READY`；含迁移时还要有云端 dry-
 | 迁移顺序 | `supabase db push --dry-run --linked`（有迁移时必跑） |
 | 变更图 | GitNexus `detect_changes({scope:"all"})`，不能是 partial/truncated |
 
-**第二段：Preview 验证**
+**push 后观察**
 
-Preview 有独立项目时连接隔离凭据；单项目模式连接生产项目时只允许只读或可回滚夹具。AI 网关、登录和真实交互链路需要登录账号人工抽验；清单要写明动作和期望结果。Preview 失败或执行了未经批准的生产写入时，不进入合并。
+1. `ci` 在 `main` 上执行测试、lint 和类型检查；失败时先修复再补推。
+2. Vercel 自动构建并分配生产域名；记录 deployment URL 和 commit SHA。
+3. `supabase-db-push` 使用 `production` environment 和并发锁执行迁移；失败时停止继续发布，记录 migration history。
+4. 执行 `supabase migration list --linked`、`supabase db advisors --linked` 和必要的 RLS/运行时探针。
+5. 抽验登录、关键读写路径、AI 请求和日志。代码异常使用 Vercel Instant Rollback；数据库、RLS、grant 和数据使用新的 forward migration 或补偿脚本。
 
-**第三段：合并后发布**
+**回滚边界**：Vercel Instant Rollback 只回滚应用代码。Supabase schema、RLS、grant 和数据不做自动 down migration，迁移必须保持 expand-compatible。
 
-1. Vercel 为合并提交生成 Production candidate，保持自定义生产域名不变。
-2. `supabase-db-push` 使用 `production` environment 和并发锁执行迁移；失败立即停止发布。
-3. 执行 `supabase migration list --linked`、`supabase db advisors --linked` 和必要的 RLS/运行时探针。
-4. 探针通过后，在 Vercel 将 candidate promote 到生产；记录 deployment URL、commit、migration list 和探针结果。
-5. 发布后抽验登录、关键读写路径、AI 请求和日志；异常时回滚应用代码，数据库用新的 forward migration 修复。
-
-**回滚边界**：Vercel Instant Rollback 只回滚应用代码。Supabase schema、RLS、grant 和数据不做自动 down migration，使用兼容的 forward migration 或补偿脚本。
-
-## 自动化与控制面待办
+## 自动化与控制面规则
 
 | 项 | 状态或规则 |
 |---|---|
-| Vercel 正式项目 | `gsw-web`，Root Directory=`web`，Framework=Next.js，main=Production |
+| Vercel 正式项目 | `gsw-web`，Root Directory=`web`，Framework=Next.js，main=Production，Auto-assign Custom Production Domains=开启 |
 | 错误项目 | `classical-chinese-workbench` 是 Root=`/`、Framework=Other 的空壳项目；确认别名和部署归属后再断开 Git 或归档，暂不自动删除 |
-| PR CI | `.github/workflows/ci.yml`：Node、锁文件安装、测试、lint、类型检查；不在本地运行 Next build/dev |
-| 迁移 CI | `.github/workflows/supabase-db-push.yml`：Supabase CLI 固定 `2.117.0`、`production` environment、并发锁、main 手动触发保护 |
+| CI | `.github/workflows/ci.yml`：Node、锁文件安装、测试、lint、类型检查；不在本地运行 Next build/dev |
+| 迁移 CI | `.github/workflows/supabase-db-push.yml`：Supabase CLI 固定 `2.117.0`、`production` environment、并发锁、main 触发保护 |
 | GitHub secrets | `SUPABASE_ACCESS_TOKEN`、`SUPABASE_DB_PASSWORD`；后续可拆到 `production` environment secrets |
 | Vercel 环境变量 | `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`、`CWB_AUTH_SECRET`；有隔离项目时 Preview/Production 使用不同 Supabase 配置，单项目模式明确记录共享凭据和只读边界 |
-| GitHub/Vercel 门禁 | `main` 已开启 required PR、`ci` required check、conversation resolution、线性历史，禁止 force push/删除；Vercel Preview/Deployment Checks 仍待配置 |
+| 分支保护 | 允许直接 push `main`；保留禁止 force push/删除；Vercel Preview/Deployment Checks 仍待配置 |
+
 
 ## 工具 / 凭据缺失时的补救
 

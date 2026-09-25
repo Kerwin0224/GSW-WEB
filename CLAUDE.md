@@ -62,4 +62,4 @@ This repo uses a single-context domain docs layout. See `docs/agents/domain.md`.
 
 **发布/迁移/预览/回滚**：先读 `docs/agents/deployment.md`；需要核对 Vercel、Supabase、GitHub、Next.js 官方能力时，再读 `docs/agents/deployment-workflow-research.md`。
 
-核心门禁：`main` 受保护且只接受 PR；在 `web/` 执行 `npm ci`、`npm test`、`npm run lint`、`npx tsc --noEmit`；真实 Next build 交给 Vercel Preview。Supabase 不起本地栈，schema 只新增 migration，生产迁移由 `supabase-db-push` 串行执行。Preview 优先使用隔离凭据；若保持单项目，只做只读或事务回滚验证。生产发布按 Vercel candidate → migration → 真实身份探针 → Promote 执行。Vercel 正式项目是 `gsw-web`，Root Directory=`web`、Framework=Next.js。
+核心门禁：本地在 `web/` 执行 `npm ci`、`npm test`、`npm run lint`、`npx tsc --noEmit` 后，直接 commit/push `main`；高风险变更才临时使用分支和 PR。Supabase 不起本地栈，schema 只新增 migration，生产迁移由 `supabase-db-push` 串行执行。`main` push 后 Vercel 生产部署与 migration 可能并发，迁移失败用 forward migration 修复。Preview 优先使用隔离凭据；若保持单项目，只做只读或事务回滚验证。Vercel 正式项目是 `gsw-web`，Root Directory=`web`、Framework=Next.js。

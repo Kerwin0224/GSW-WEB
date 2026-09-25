@@ -1,6 +1,6 @@
 # main 分支的迁移文件变更会自动推送到 Supabase 生产项目。
 # 密钥：repo Settings → Secrets → Actions里的 SUPABASE_ACCESS_TOKEN 和 SUPABASE_DB_PASSWORD。
-# 生产迁移必须串行；Vercel candidate 只有在本 workflow 和运行时探针通过后才能 promote。
+# 生产迁移与 Vercel 生产部署由同一次 main push 触发；迁移必须可被后续 forward fix 修复。
 name: supabase-db-push
 
 on:

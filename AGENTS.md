@@ -21,11 +21,11 @@ AI 能力层：Vercel AI SDK
 
 ## 交付门禁
 
-- **分支**：`main` 是生产分支；功能、修复、迁移和配置都从最新 `main` 建短命分支，经 PR 合并。普通小修也走 PR，紧急修复必须记录 incident、批准人和绕过原因。
-- **提交前**：在 `web/` 执行 `npm ci`、`npm test`、`npm run lint`、`npx tsc --noEmit`；不把本地 `npm run dev` 或本地 production build 当验证，真实 build 由 Vercel Preview 负责。
-- **迁移**：schema 只新增 `web/supabase/migrations/<timestamp>_*.sql`，不修改 baseline，不直接改远端 Dashboard/Table Editor；PR 做 `supabase db push --dry-run`，生产由 `supabase-db-push` workflow 执行。
+- **分支**：`main` 是生产分支；本项目默认在本地完成门禁后直接提交并 push `main`。高风险变更可以临时使用分支和 PR 做复核；禁止 force push 和删除分支。
+- **提交前**：在 `web/` 执行 `npm ci`、`npm test`、`npm run lint`、`npx tsc --noEmit`；不把本地 `npm run dev` 或本地 production build 当验证，真实 build 由 Vercel 负责。
+- **迁移**：schema 只新增 `web/supabase/migrations/<timestamp>_*.sql`，不修改 baseline，不直接改远端 Dashboard/Table Editor；push 前做 `supabase db push --dry-run`，生产由 `supabase-db-push` workflow 执行。
 - **兼容性**：迁移先扩展、后使用、再清理；删除列、收紧 policy、破坏性 RLS 变更拆到后续版本，保证旧代码与新 schema 可短期共存。
-- **生产顺序**：Vercel 生产 candidate、Supabase migration、必要的真实身份 RLS 探针全部成功后，才允许切换生产流量；迁移失败时不发布 candidate。
+- **生产顺序**：`main` push 会同时触发 Vercel 生产部署和 `supabase-db-push`；两者按 expand-compatible 约束并发，迁移失败不自动 down，使用新的 forward migration 修复。
 - **环境隔离**：Vercel Preview 优先使用第二个 Free Supabase 项目；若保持单项目，Preview 只做只读或事务回滚验证，不在生产库执行业务写入。
 - **回滚边界**：Vercel 回滚只回滚应用代码；Supabase schema、RLS、grant 和数据用新的 forward migration/补偿修复处理。
 - **正式项目**：Vercel 生产项目唯一使用 `gsw-web`，Root Directory=`web`、Framework=Next.js；`classical-chinese-workbench` 是错误空壳项目，不得作为发布目标。

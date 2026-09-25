@@ -204,19 +204,14 @@ merge main
 
 ### 10.3 发布
 
-**推荐路径（staged production）：**
+**本项目采用单人直推模式：**
 
-1. 确认 Vercel Production Branch=`main`、Root Directory=`web`、Next.js preset/build command 正确，并关闭 `Auto-assign Custom Production Domains`。这些是控制台设置，需实际核验后写入事实表。[Vercel Project Settings](https://vercel.com/docs/project-configuration/project-settings)、[Vercel Configuring a Build](https://vercel.com/docs/builds/configure-a-build)
-2. 合并 PR。Vercel 开始构建 candidate；GitHub production migration job 在同一 main commit 上串行执行 `db push`。此时不切生产域，旧应用继续服务。
-3. 迁移 job 成功并确认 migration history；若变更 RLS/grant/trigger，运行匹配的真实身份 allow/deny 探针。探针必须先证明身份解析成功，再看允许/拒绝结果，不能只看一个 0。
-4. 所有检查通过后，在 Vercel 手工 Promote candidate；Promote 不重新构建。记录 commit SHA、migration filenames、Actions run URL、Vercel deployment URL、变量作用域版本。
-5. 生产抽验关键路径并观察 Vercel runtime/build logs、应用日志、Supabase advisor/error。任何失败先停止 Promote；已经 Promote 则按回滚边界处理。
+1. 本地完成门禁和迁移 dry-run/探针后，直接 push `main`。Vercel 自动构建并分配生产域名，GitHub production migration job 在同一 main commit 上执行 `db push`；两者可能并发。
+2. `main` push 后同时观察 Vercel production deployment、Actions `ci` 和 `supabase-db-push`，任何一项失败都记录并处理。
+3. 迁移必须 expand-compatible；drop、rename、收紧 policy 等破坏性变更拆到后续发布。
+4. 代码异常用 Vercel Instant Rollback；schema、RLS、grant 和数据异常用新的 forward migration 或补偿脚本。
 
-**若暂不启用 staged production：**
-
-- 明确写成“Vercel production 与 Supabase migration 并发”，不能写“迁移先于代码”。
-- 只允许 expand-compatible migration；任何 drop/rename/收紧 policy 的破坏性迁移拆到后续发布。
-- 监控 Vercel deployment 与 migration Actions 两个独立信号；Actions 失败时不要继续人工依赖“代码已上线”作为成功标准。
+**可选的 staged production：** 高风险变更仍可临时使用分支、PR 和关闭 Auto-assign Custom Production Domains，人工 Promote；单人日常发布不需要这层流程。
 
 ### 10.4 热更新 / 小修
 
@@ -321,7 +316,7 @@ merge main
 ## 14. 规范实施记录（2026-09-25）
 
 - 根目录本地 Vercel 链接已改为 `gsw-web`；`.vercel` 仍被 `.gitignore` 忽略。
-- 已通过 Vercel API 核验并设置 `gsw-web`：`autoAssignCustomDomains=false`、`rootDirectory=web`、`framework=nextjs`、Production Branch=`main`。这会把后续 main 部署保持为 candidate，需人工 Promote。
+- 已通过 Vercel API 核验 `gsw-web`：`rootDirectory=web`、`framework=nextjs`、Production Branch=`main`；直推模式下开启 `autoAssignCustomDomains`。
 - 已新增 `.github/workflows/ci.yml`，对 PR 和 main 执行锁定依赖安装、测试、lint、TypeScript 检查；不在工作流中运行 Next build/dev。
 - `.github/workflows/supabase-db-push.yml` 已固定 Supabase CLI `2.117.0`，增加 `production` environment、串行 concurrency、手动触发分支保护和迁移历史记录。
 - `web/.env.local.example` 已补上 server-only `CWB_AUTH_SECRET`；真实值仍只存放在 Vercel/GitHub secret manager。
