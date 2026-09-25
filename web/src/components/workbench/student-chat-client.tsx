@@ -23,6 +23,7 @@ import { ThinkingIndicator } from '@/components/workbench/thinking-indicator';
 import { ChatComposer } from '@/components/workbench/chat-composer';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { SessionRow } from '@/components/workbench/session-row';
+import { SpaceTabs } from '@/components/workbench/space-tabs';
 import type { DailyArchiveSummary, ProjectSummary, StudentConversationInitial } from '@/lib/data/student';
 import type { StudentSpace } from '@/lib/data/spaces';
 import {
@@ -31,7 +32,6 @@ import {
   shouldReplaceStudentConversationHref,
   type StudentAssignmentData,
 } from '@/lib/student-chat-contract';
-import { SPACE_COLOR_DOT_CLASSES } from '@/lib/space-colors';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useSidebarScroll } from '@/hooks/use-sidebar-scroll';
@@ -500,34 +500,20 @@ export function StudentChatClient({
       )}
       sidebar={(<>
           {spaces.length > 0 ? (
-            <section className="rounded-2xl border border-border/65 bg-card/86 p-3 shadow-soft">
-              <div className="mb-3 flex items-start justify-between gap-3 px-1">
+            <section className="space-y-3">
+              <div className="flex items-end justify-between gap-3 px-1">
                 <div>
                   <p className="font-heading text-lg">学习空间</p>
-                  <p className="mt-1 text-xs text-muted-foreground">空间是项目与会话的一级作用域；切换后只看到该空间的学习数据。</p>
+                  <p className="mt-1 text-xs text-muted-foreground">切换空间，项目、会话和挑战会一起切换。</p>
                 </div>
-                <Badge variant="outline">{spaces.length}</Badge>
+                <Badge variant="outline">{spaces.length} 个空间</Badge>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {spaces.map((space) => {
-                  const active = space.id === activeSpaceId;
-                  return (
-                    <button
-                      key={space.id}
-                      type="button"
-                      onClick={() => switchSpace(space.id)}
-                      aria-pressed={active}
-                      className={cn('min-h-11 cursor-pointer rounded-xl border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', active ? 'border-primary/55 bg-primary/10 text-primary' : 'border-border/65 bg-background/76 hover:bg-muted')}
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <span className={cn('size-2 rounded-full', SPACE_COLOR_DOT_CLASSES[space.colorKey])} aria-hidden="true" />
-                        {space.subject || '未设置科目'}
-                      </span>
-                      <span className="ml-2">{space.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              <SpaceTabs
+                items={spaces.map((space) => ({ id: space.id, name: space.name, subject: space.subject, colorKey: space.colorKey }))}
+                activeId={activeSpaceId}
+                onSelect={switchSpace}
+                ariaLabel="选择学习空间"
+              />
             </section>
           ) : null}
           <section className="rounded-2xl border border-border/65 bg-card/86 p-3 shadow-soft">

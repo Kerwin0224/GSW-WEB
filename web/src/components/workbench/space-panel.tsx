@@ -3,17 +3,17 @@
 import { useActionState, useState } from 'react';
 import { Check, Loader2, Plus, Save, X } from 'lucide-react';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { EmptyState } from '@/components/workbench/state-surfaces';
+import { SpaceTabs } from '@/components/workbench/space-tabs';
 import { archiveSpaceAction, saveSpaceAction, setSpaceClassAction, setSpaceStudentAction, type SpaceStudentOption, type TeacherSpace } from '@/lib/data/spaces';
 import type { TeacherClass } from '@/lib/data/teacher';
 import type { ActionState } from '@/lib/data/common';
-import { SPACE_COLOR_DOT_CLASSES, SPACE_COLOR_KEYS, SPACE_COLOR_LABELS } from '@/lib/space-colors';
+import { SPACE_COLOR_KEYS, SPACE_COLOR_LABELS, SPACE_COLOR_VALUES } from '@/lib/space-colors';
 import type { SpaceColorKey } from '@/lib/supabase/database.types';
 import { cn } from '@/lib/utils';
 
@@ -36,43 +36,33 @@ export function SpacePanel({ spaces, classes, studentOptions, defaultSubject }: 
   const current = spaces.find((space) => space.id === selectedId) ?? spaces[0];
 
   return (
-    <Card className="border-border/70 bg-card/88 shadow-soft">
-      <CardHeader>
-        <CardTitle className="font-heading">学习空间</CardTitle>
-        <CardDescription>
-          一个空间 = 一套归类口径 + 一批学生。除了整班加入，也可以从任教班级学生中单独加入；每个空间有自己的科目和颜色。
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          {spaces.map((space) => (
-            <Button
-              key={space.id}
-              type="button"
-              size="sm"
-              variant={!creating && selectedId === space.id ? 'default' : 'outline'}
-              onClick={() => { setSelectedId(space.id); setCreating(false); }}
-              className="cursor-pointer"
-            >
-              <span className="flex items-center gap-1.5">
-                <span className={cn('size-2 rounded-full', SPACE_COLOR_DOT_CLASSES[space.colorKey])} aria-hidden="true" />
-                {space.subject || '未设置科目'}
-              </span>
-              {space.name}
-              <Badge variant={!creating && selectedId === space.id ? 'secondary' : 'outline'}>{space.studentCount} 人</Badge>
-            </Button>
-          ))}
+    <Card className="gap-0 rounded-none border-x-0 border-border/70 bg-card/35 py-0 shadow-none ring-0">
+      <CardHeader className="border-b border-border/60 px-5 py-5 sm:px-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <CardTitle className="font-heading text-xl">空间编目</CardTitle>
+            <CardDescription className="mt-1 max-w-2xl">每个科目有自己的空间。学生进入空间后，项目、会话和挑战都在这个范围内。</CardDescription>
+          </div>
           <Button type="button" size="sm" variant={creating ? 'default' : 'outline'} onClick={() => setCreating(true)} className="cursor-pointer">
             <Plus className="mr-1 size-4" aria-hidden="true" />新建空间
           </Button>
         </div>
+      </CardHeader>
+      <CardContent className="space-y-5 px-5 py-5 sm:px-6">
+        <SpaceTabs
+          items={spaces.map((space) => ({ id: space.id, name: space.name, subject: space.subject, colorKey: space.colorKey, count: space.studentCount, hint: `${space.subject || '未设置科目'} · ${space.studentCount} 名学生` }))}
+          activeId={selectedId}
+          onSelect={(id) => { setSelectedId(id); setCreating(false); }}
+          ariaLabel="选择教师空间"
+          emptyLabel="还没有空间，先为每个科目建立一个空间。"
+        />
 
         {creating ? (
           <SpaceEditor key="new" classes={classes} studentOptions={studentOptions} defaultSubject={defaultSubject} />
         ) : current ? (
           <SpaceEditor key={current.id} space={current} classes={classes} studentOptions={studentOptions} defaultSubject={defaultSubject} />
         ) : (
-          <EmptyState title="还没有学习空间" description="建一个空间，写下归类口径，再把你的班或学生拉进来。" />
+          <EmptyState title="还没有学习空间" description="从一个科目开始，写下它如何归类，再把对应学生加入。" />
         )}
       </CardContent>
     </Card>
@@ -94,7 +84,8 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject }: { space
   const availableStudents = studentOptions.filter((student) => !directStudentIds.has(student.id));
 
   return (
-    <div className="space-y-4 rounded-lg border border-border/65 bg-background/78 p-4">
+    <div className="grid gap-6 border-y border-border/65 bg-background/45 p-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+      <div className="space-y-4 p-5 sm:p-6 lg:border-r lg:border-border/60">
       <form action={action} className="space-y-3">
         {space ? <input type="hidden" name="space_id" value={space.id} /> : null}
         <div className="space-y-2">
@@ -106,12 +97,25 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject }: { space
           <Input id="space-subject" name="subject" value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="例如：语文" maxLength={40} />
           <p className="text-xs text-muted-foreground">科目会展示给学生；留空时显示“未设置科目”。</p>
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="space-color">空间颜色</Label>
-          <select id="space-color" name="color_key" value={colorKey} onChange={(event) => setColorKey(event.target.value as SpaceColorKey)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
-            {SPACE_COLOR_KEYS.map((key) => <option key={key} value={key}>{SPACE_COLOR_LABELS[key]}</option>)}
-          </select>
-        </div>
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">空间书脊色</legend>
+          <div role="radiogroup" aria-label="空间书脊色" className="grid grid-cols-3 gap-2">
+            {SPACE_COLOR_KEYS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                role="radio"
+                aria-checked={colorKey === key}
+                onClick={() => setColorKey(key)}
+                className={cn('flex min-h-10 items-center gap-2 border px-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', colorKey === key ? 'border-primary/60 bg-primary/8 text-foreground' : 'border-border/60 bg-background/60 text-muted-foreground hover:bg-muted/50')}
+              >
+                <span className="h-5 w-1.5 shrink-0" style={{ backgroundColor: SPACE_COLOR_VALUES[key] }} aria-hidden="true" />
+                <span className="truncate">{SPACE_COLOR_LABELS[key]}</span>
+              </button>
+            ))}
+          </div>
+          <input type="hidden" name="color_key" value={colorKey} />
+        </fieldset>
         <div className="space-y-2">
           <Label htmlFor="space-theme">归类主题</Label>
           <Textarea id="space-theme" name="theme" value={theme} onChange={(event) => setTheme(event.target.value)} placeholder={THEME_PLACEHOLDER} className="min-h-36" />
@@ -139,7 +143,10 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject }: { space
           </Button>
         </div>
       </form>
+      </div>
+      <div className="space-y-4 p-5 sm:p-6">
 
+      {!space ? <div className="rounded-lg border border-dashed border-border/70 bg-background/55 p-4 text-sm leading-6 text-muted-foreground">空间创建后，这里会显示任教班级和可以直接加入的学生。现在先写清空间身份和归类主题。</div> : null}
       {space ? <ArchiveButton spaceId={space.id} /> : null}
 
       {space ? (
@@ -147,29 +154,30 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject }: { space
           <div className="space-y-2">
             <p className="text-sm font-medium">已拉入的班</p>
             {space.classes.length === 0 ? <p className="text-xs text-muted-foreground">还没有拉班；也可以从下面单独加入学生。</p> : (
-              <div className="flex flex-wrap gap-2">{space.classes.map((klass) => <ClassChip key={klass.classId} spaceId={space.id} classId={klass.classId} label={`${klass.className}（${klass.studentCount} 人）`} intent="remove" />)}</div>
+              <div className="grid gap-2">{space.classes.map((klass) => <ClassChip key={klass.classId} spaceId={space.id} classId={klass.classId} label={`${klass.className}（${klass.studentCount} 人）`} intent="remove" />)}</div>
             )}
           </div>
           <div className="space-y-2">
             <p className="text-sm font-medium">可以拉入的班</p>
             {availableClasses.length === 0 ? <p className="text-xs text-muted-foreground">你任教的所有班都已在空间里。</p> : (
-              <div className="flex flex-wrap gap-2">{availableClasses.map((klass) => <ClassChip key={klass.classId} spaceId={space.id} classId={klass.classId} label={`${klass.className}（${klass.studentCount} 人）`} intent="add" />)}</div>
+              <div className="grid gap-2">{availableClasses.map((klass) => <ClassChip key={klass.classId} spaceId={space.id} classId={klass.classId} label={`${klass.className}（${klass.studentCount} 人）`} intent="add" />)}</div>
             )}
           </div>
           <div className="space-y-2 border-t border-border/50 pt-3">
             <p className="text-sm font-medium">直接加入的学生</p>
             {space.directStudents.length === 0 ? <p className="text-xs text-muted-foreground">暂无直接加入的学生。</p> : (
-              <div className="flex flex-wrap gap-2">{space.directStudents.map((student) => <StudentChip key={student.id} spaceId={space.id} studentId={student.id} label={`${student.displayName}（${studentOptionById.get(student.id)?.className ?? '学生'}）`} intent="remove" />)}</div>
+              <div className="grid gap-2">{space.directStudents.map((student) => <StudentChip key={student.id} spaceId={space.id} studentId={student.id} label={`${student.displayName}（${studentOptionById.get(student.id)?.className ?? '学生'}）`} intent="remove" />)}</div>
             )}
           </div>
           <div className="space-y-2">
             <p className="text-sm font-medium">可以加入的学生</p>
             {availableStudents.length === 0 ? <p className="text-xs text-muted-foreground">任教班级学生都已直接加入。</p> : (
-              <div className="flex flex-wrap gap-2">{availableStudents.map((student) => <StudentChip key={student.id} spaceId={space.id} studentId={student.id} label={`${student.displayName}（${student.className}）`} intent="add" />)}</div>
+              <div className="grid gap-2">{availableStudents.map((student) => <StudentChip key={student.id} spaceId={space.id} studentId={student.id} label={`${student.displayName}（${student.className}）`} intent="add" />)}</div>
             )}
           </div>
         </div>
       ) : null}
+      </div>
     </div>
   );
 }
@@ -182,7 +190,7 @@ function ClassChip({ spaceId, classId, label, intent }: { spaceId: string; class
       <input type="hidden" name="space_id" value={spaceId} />
       <input type="hidden" name="class_id" value={classId} />
       <input type="hidden" name="intent" value={intent} />
-      <Button type="submit" size="sm" variant={intent === 'add' ? 'outline' : 'secondary'} disabled={pending} className="cursor-pointer">
+      <Button type="submit" size="sm" variant={intent === 'add' ? 'outline' : 'secondary'} disabled={pending} className="flex w-full cursor-pointer items-center justify-between gap-2 text-left">
         {pending
           ? <Loader2 className="mr-1 size-3 animate-spin" aria-hidden="true" />
           : intent === 'add' ? <Plus className="mr-1 size-3" aria-hidden="true" /> : <X className="mr-1 size-3" aria-hidden="true" />}
@@ -205,7 +213,7 @@ function StudentChip({ spaceId, studentId, label, intent }: { spaceId: string; s
       <input type="hidden" name="space_id" value={spaceId} />
       <input type="hidden" name="student_id" value={studentId} />
       <input type="hidden" name="intent" value={intent} />
-      <Button type="submit" size="sm" variant={intent === 'add' ? 'outline' : 'secondary'} disabled={pending} className="cursor-pointer">
+      <Button type="submit" size="sm" variant={intent === 'add' ? 'outline' : 'secondary'} disabled={pending} className="flex w-full cursor-pointer items-center justify-between gap-2 text-left">
         {pending ? <Loader2 className="mr-1 size-3 animate-spin" aria-hidden="true" /> : intent === 'add' ? <Plus className="mr-1 size-3" aria-hidden="true" /> : <X className="mr-1 size-3" aria-hidden="true" />}
         {label}
       </Button>

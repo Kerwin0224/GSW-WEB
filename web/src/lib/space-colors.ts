@@ -19,3 +19,12 @@ export const SPACE_COLOR_DOT_CLASSES: Record<SpaceColorKey, string> = {
   bamboo: 'bg-lime-600',
   plum: 'bg-fuchsia-600',
 };
+
+export const SPACE_COLOR_VALUES: Record<SpaceColorKey, string> = {
+  ink: '#2D2D2D',
+  pine: '#2F6B57',
+  cinnabar: '#B6483C',
+  moon: '#6C7EA6',
+  bamboo: '#6E8B4B',
+  plum: '#9A5573',
+};
