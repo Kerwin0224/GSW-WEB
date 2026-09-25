@@ -91,13 +91,15 @@ test('判定函数对 anon 开放 execute（RLS 以调用者身份求值）', ()
     '绝不能 revoke from anon：那会让策略自己失效');
 });
 
-test('空间不拥有学习数据，但学生会话可以绑定空间', () => {
+test('空间拥有项目与会话作用域，且两者必须一致', () => {
   const text = allMigrationsText();
 
-  assert.doesNotMatch(text, /alter table public\.projects\s+add column[^;]*space_id/i, '项目不复制空间归属');
-  assert.match(text, /alter table public\.conversations\s+add column if not exists space_id/i, '会话应保存学生选中的空间');
-  assert.match(text, /conversations_validate_space_contract/, '会话空间必须经过可访问性校验');
-  assert.match(newestFunctionBody('validate_conversation_space_contract'), /tg_op = 'INSERT'/, '归档或软删已有会话时不应重新校验已失效空间');
+  assert.match(text, /alter table public\.projects\s+add column if not exists space_id/i, '项目必须保存所属空间');
+  assert.match(text, /alter table public\.conversations\s+add column if not exists space_id/i, '会话必须保存所属空间');
+  assert.match(text, /projects_owner_space_name_normalized_key/, '同名项目必须按空间隔离');
+  assert.match(text, /validate_project_space_contract/, '项目空间必须经过合同校验');
+  assert.match(newestFunctionBody('validate_project_space_contract'), /project space % is not in the owner school/, '项目空间必须与学生同校');
+  assert.match(newestFunctionBody('validate_conversation_space_contract'), /conversation space % must match project space %/, '会话空间必须与项目空间一致');
   assert.doesNotMatch(text, /alter table public\.conversations\s+add column[^;]*class_id/i, '空间不能替换会话的行政班归属');
   assert.doesNotMatch(text, /drop index if exists public\.class_memberships_one_student_class_idx/);
 });

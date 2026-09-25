@@ -15,7 +15,7 @@ import { createStudentProject } from '@/lib/data/student-projects';
  * 学生自建项目。此前项目只能由 AI 从提问中识别产生，
  * 学生想围绕"自己的专题"（例：文言虚词笔记）组织学习就没有入口。
  */
-export function StudentProjectCreateButton() {
+export function StudentProjectCreateButton({ spaceId }: { spaceId?: string | null }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
@@ -28,6 +28,7 @@ export function StudentProjectCreateButton() {
     startTransition(async () => {
       const formData = new FormData();
       formData.set('name', title);
+      if (spaceId) formData.set('space_id', spaceId);
       formData.set('subtitle', subtitle);
       const result = await createStudentProject(formData);
       if (!result.ok) {
@@ -44,7 +45,7 @@ export function StudentProjectCreateButton() {
 
   return (
     <>
-      <Button type="button" variant="outline" onClick={() => setOpen(true)}>
+      <Button type="button" variant="outline" disabled={!spaceId} title={spaceId ? '在当前空间创建项目' : '请先从学习提问页选择空间'} onClick={() => setOpen(true)}>
         <Plus className="mr-2 size-4" aria-hidden="true" />
         自定义项目
       </Button>

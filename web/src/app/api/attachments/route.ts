@@ -94,16 +94,17 @@ async function ensureConversation({
       .from('projects')
       .select('id')
       .eq('owner_id', profileId)
+      .eq('space_id', spaceId ?? null)
       .eq('name', concreteProjectTitle)
       .maybeSingle();
     if (existingError) return { ok: false as const, message: `附件项目查重失败：${existingError.message}` };
-    resolvedProjectId = existingProject?.id;
+    resolvedProjectId = existingProject?.id ?? undefined;
   }
 
   if (workspace === 'student' && !resolvedProjectId && concreteProjectTitle) {
     const { data: project, error } = await supabase
       .from('projects')
-      .insert({ owner_id: profileId, name: concreteProjectTitle, classification_state: 'manual' })
+      .insert({ owner_id: profileId, space_id: spaceId ?? null, name: concreteProjectTitle, classification_state: 'manual' })
       .select('id')
       .single();
     if (error) return { ok: false as const, message: `附件项目创建失败：${error.message}` };

@@ -110,8 +110,8 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['prompt_presets']['Insert']>;
       };
       projects: {
-        Row: { id: string; owner_id: string; class_id: string | null; name: string; subtitle: string | null; classification_state: 'pending' | 'classified' | 'failed' | 'manual'; highest_bloom_level: number | null; created_at: string; updated_at: string };
-        Insert: { id?: string; owner_id: string; class_id?: string | null; name: string; subtitle?: string | null; classification_state?: 'pending' | 'classified' | 'failed' | 'manual'; highest_bloom_level?: number | null };
+        Row: { id: string; owner_id: string; class_id: string | null; space_id: string | null; name: string; subtitle: string | null; classification_state: 'pending' | 'classified' | 'failed' | 'manual'; highest_bloom_level: number | null; created_at: string; updated_at: string };
+        Insert: { id?: string; owner_id: string; class_id?: string | null; space_id?: string | null; name: string; subtitle?: string | null; classification_state?: 'pending' | 'classified' | 'failed' | 'manual'; highest_bloom_level?: number | null };
         Update: Partial<Database['public']['Tables']['projects']['Insert']>;
       };
       conversations: {

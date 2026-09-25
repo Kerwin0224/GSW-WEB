@@ -24,11 +24,13 @@ async function ensureProject(
   ownerId: string,
   name: string,
   subtitle: string | null,
+  spaceId: string,
 ) {
   const { data: existingProject, error: existingError } = await supabase
     .from('projects')
     .select('id,name')
     .eq('owner_id', ownerId)
+    .eq('space_id', spaceId)
     .eq('name', name)
     .maybeSingle();
 
@@ -40,7 +42,7 @@ async function ensureProject(
 
   const { data: project, error } = await supabase
     .from('projects')
-    .insert({ owner_id: ownerId, name, subtitle, classification_state: 'classified' })
+    .insert({ owner_id: ownerId, space_id: spaceId, name, subtitle, classification_state: 'classified' })
     .select('id,name')
     .single();
 
@@ -148,7 +150,11 @@ async function resolveProjectAssignment({
   requestId: string;
   spaceId?: string | null;
 }): Promise<ProjectAssignment> {
-  const { data: ownedNames } = await supabase.from('projects').select('name').eq('owner_id', ownerId);
+  const { data: ownedNames } = await supabase
+    .from('projects')
+    .select('name')
+    .eq('owner_id', ownerId)
+    .eq('space_id', spaceId ?? null);
   const knownNames = (ownedNames ?? []).map((row) => row.name).filter((title): title is string => Boolean(title));
   // 归类口径来自学生所属空间的**空间主题**；没有可用空间时用内置默认口径。
   // 只在首问归类时解析一次，不进提问热路径。
@@ -157,6 +163,18 @@ async function resolveProjectAssignment({
     ? await classifyProjectFromQuestion(projectModel, userText, knownNames, { criteria: rule.criteria })
     : { name: null, subtitle: null, failure: 'model-unavailable' as const };
   const name = classified.name ?? null;
+
+  if (!spaceId) {
+    await writeLogEvent({
+      level: 'warn',
+      area: 'api',
+      event: 'project_classification_fallback',
+      requestId,
+      route: '/api/student/chat',
+      context: { reason: 'no-space-scope' },
+    });
+    return { kind: 'archive', projectId: null, name: null };
+  }
 
   if (!name) {
     await writeLogEvent({
@@ -177,7 +195,7 @@ async function resolveProjectAssignment({
     return { kind: 'archive', projectId: null, name: null };
   }
 
-  const project = await ensureProject(supabase, ownerId, name, classified.subtitle ?? null);
+  const project = await ensureProject(supabase, ownerId, name, classified.subtitle ?? null, spaceId);
   return { kind: 'project', projectId: project.id, name: project.name };
 }
 
@@ -222,6 +240,7 @@ export async function POST(req: Request) {
     const isRegeneration = parsed.data.trigger === 'regenerate-message';
     let conversation: ConversationContext | null = null;
     let immediateAssignment: ProjectAssignment | null = null;
+    let effectiveSpaceId: string | null = parsed.data.spaceId ?? null;
 
     if (parsed.data.conversationId) {
       const { data: existingConversation, error: existingConversationError } = await supabase
@@ -247,6 +266,7 @@ export async function POST(req: Request) {
         return Response.json({ error: error instanceof Error ? error.message : '教师核实状态检查失败' }, { status: 500 });
       }
       projectId = conversation.project_id ?? undefined;
+      effectiveSpaceId = conversation.space_id ?? null;
       classifiedProjectName = getConversationProjectTitle(conversation) ?? null;
     }
 
@@ -265,20 +285,24 @@ export async function POST(req: Request) {
     if (!hadConversation && projectId) {
       const { data: ownedProject, error: ownedProjectError } = await supabase
         .from('projects')
-        .select('id,name')
+        .select('id,name,space_id')
         .eq('id', projectId)
         .eq('owner_id', role.data.id)
         .maybeSingle();
       if (ownedProjectError) return Response.json({ error: `项目校验失败：${ownedProjectError.message}` }, { status: 500 });
       if (!ownedProject) return Response.json({ error: '项目不存在或不可访问' }, { status: 404 });
+      if (ownedProject.space_id && effectiveSpaceId && ownedProject.space_id !== effectiveSpaceId) {
+        return Response.json({ error: '项目不属于当前空间' }, { status: 409 });
+      }
       projectId = ownedProject.id;
+      effectiveSpaceId = ownedProject.space_id ?? effectiveSpaceId;
       classifiedProjectName = classifiedProjectName ?? normalizeConcreteProjectTitle(ownedProject.name);
     }
 
     if (!conversation) {
       const { data: newConversation, error: conversationError } = await supabase
         .from('conversations')
-        .insert({ owner_id: role.data.id, project_id: projectId ?? null, space_id: parsed.data.spaceId ?? null, source: 'student_chat', title: userText.slice(0, 80) })
+        .insert({ owner_id: role.data.id, project_id: projectId ?? null, space_id: effectiveSpaceId, source: 'student_chat', title: userText.slice(0, 80) })
         // 见 attachments route：与 deleted-at 守护测试形式一致，不影响 insert 本身。
         .is('deleted_at', null)
         .select('id,project_id,space_id,projects(name)')
@@ -291,7 +315,7 @@ export async function POST(req: Request) {
     }
 
     if (shouldClassifyProject) {
-      projectAssignmentPromise = resolveProjectAssignment({ supabase, ownerId: role.data.id, userText, projectModel, requestId, spaceId: conversation.space_id ?? parsed.data.spaceId ?? null })
+      projectAssignmentPromise = resolveProjectAssignment({ supabase, ownerId: role.data.id, userText, projectModel, requestId, spaceId: effectiveSpaceId })
         .catch(async (error) => {
           await writeLogEvent({
             level: 'error',

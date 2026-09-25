@@ -15,7 +15,7 @@ import { getStudentChallengeProjects, getStudentProject, getStudentWorkspace, ty
 import { cn } from '@/lib/utils';
 
 type ChallengeFilter = 'all' | 'waiting' | 'active' | 'reinforce' | 'complete';
-type ChallengePageSearchParams = { projectId?: string | string[]; q?: string | string[]; status?: string | string[]; page?: string | string[] };
+type ChallengePageSearchParams = { projectId?: string | string[]; spaceId?: string | string[]; q?: string | string[]; status?: string | string[]; page?: string | string[] };
 
 // 挑战页左侧项目列表每页条数。选中项目若不在本页，详情仍单独加载。
 const CHALLENGE_PAGE_SIZE = 20;
@@ -57,7 +57,10 @@ function getLatestActionablePractice(practices: ProjectDetail['practices']) {
 
 export default async function ChallengePage({ searchParams }: { searchParams?: Promise<ChallengePageSearchParams> }) {
   const params = await searchParams;
-  const [workspace, projectsResult] = await Promise.all([getStudentWorkspace(), getStudentChallengeProjects()]);
+  const [workspace, projectsResult] = await Promise.all([
+    getStudentWorkspace({ spaceId: firstParam(params?.spaceId) }),
+    getStudentChallengeProjects({ spaceId: firstParam(params?.spaceId) }),
+  ]);
   if (!workspace.ok) return <div className="p-6"><ErrorState title="挑战入口加载失败" description={workspace.message} /></div>;
   if (!projectsResult.ok) return <div className="p-6"><ErrorState title="挑战练习加载失败" description={projectsResult.message} /></div>;
 
@@ -66,6 +69,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
   const activeFilter = normalizeFilter(firstParam(params?.status));
   const page = parsePageParam(params?.page);
   const requestedProjectId = firstParam(params?.projectId);
+  const spaceId = firstParam(params?.spaceId) ?? '';
   const queryMatchedProjects = projects.filter((project) => matchesQuery(project, query));
   const filteredProjects = queryMatchedProjects.filter((project) => matchesFilter(project, activeFilter));
   const pageCount = Math.max(1, Math.ceil(filteredProjects.length / CHALLENGE_PAGE_SIZE));
@@ -86,6 +90,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
     const nextStatus = overrides?.status ?? activeFilter;
     const nextPage = overrides?.page ?? currentPage;
     if (projectId) search.set('projectId', projectId);
+    if (spaceId) search.set('spaceId', spaceId);
     if (nextQuery) search.set('q', nextQuery);
     if (nextStatus !== 'all') search.set('status', nextStatus);
     if (nextPage > 1) search.set('page', String(nextPage));
@@ -107,7 +112,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
           description="选一篇学过的文章，完成当前层级的挑战题。"
         />
         <div className="flex shrink-0 flex-wrap gap-2">
-          <Button nativeButton={false} render={<Link href="/student/me" />} variant="outline">
+          <Button nativeButton={false} render={<Link href={buildHref()} />} variant="outline">
             学习情况
           </Button>
         </div>

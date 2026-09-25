@@ -10,6 +10,7 @@ export type ConversationSummaryRow = {
   title: string | null;
   updated_at: string;
   project_id?: string | null;
+  space_id?: string | null;
   conversation_messages?: Array<{ id: string }> | null;
 };
 export type ConversationMessageRow = Pick<Database['public']['Tables']['conversation_messages']['Row'], 'id' | 'role' | 'content' | 'parts'>;

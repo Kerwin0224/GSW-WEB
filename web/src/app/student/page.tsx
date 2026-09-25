@@ -6,38 +6,41 @@ import { listStudentSpaces } from '@/lib/data/spaces';
 
 export default async function StudentChatPage({ searchParams }: { searchParams?: Promise<{ projectId?: string; conversationId?: string; spaceId?: string }> }) {
   const params = await searchParams;
-  const [workspace, projectsResult, conversationResult, spacesResult] = await Promise.all([
-    getStudentWorkspace(),
-    getStudentProjects(),
-    params?.conversationId ? getStudentConversation(params.conversationId) : Promise.resolve(null),
+  const [spacesResult, conversationResult] = await Promise.all([
     listStudentSpaces(),
+    params?.conversationId ? getStudentConversation(params.conversationId) : Promise.resolve(null),
+  ]);
+
+  if (!spacesResult.ok) {
+    return <div className="p-6"><ErrorState title="学习空间加载失败" description={spacesResult.message} /></div>;
+  }
+  if (conversationResult && !conversationResult.ok) {
+    return <div className="p-6"><ErrorState title="会话加载失败" description={conversationResult.message} /></div>;
+  }
+
+  const spaces = spacesResult.data;
+  const initialConversation = conversationResult?.ok ? conversationResult.data ?? undefined : undefined;
+  const requestedSpaceId = initialConversation?.spaceId ?? params?.spaceId;
+  const activeSpaceId = requestedSpaceId && spaces.some((space) => space.id === requestedSpaceId)
+    ? requestedSpaceId
+    : spaces[0]?.id ?? null;
+  const [workspace, projectsResult] = await Promise.all([
+    getStudentWorkspace({ spaceId: activeSpaceId }),
+    getStudentProjects({ spaceId: activeSpaceId }),
   ]);
 
   if (!workspace.ok) {
-    return (
-      <div className="p-6">
-        <ErrorState title="学习提问加载失败" description={workspace.message} />
-      </div>
-    );
+    return <div className="p-6"><ErrorState title="学习提问加载失败" description={workspace.message} /></div>;
   }
 
-  if (conversationResult && !conversationResult.ok) {
-    return (
-      <div className="p-6">
-        <ErrorState title="会话加载失败" description={conversationResult.message} />
-      </div>
-    );
-  }
-
-  const initialConversation = conversationResult?.ok ? conversationResult.data ?? undefined : undefined;
   const projects = projectsResult.ok ? projectsResult.data : [];
-  const initialActiveProjectId = initialConversation ? initialConversation.projectId : params?.projectId;
-  // Key 只承载“需要整机重建”的维度：切换会话或 finalize 状态翻转。
-  // 消息内容变化走 StudentChatClient 内部 initialConversationSignature watch 平滑 setMessages，
-  // 避免把 parts 序列化进 key 导致教师修订一到达就 unmount 客户端、丢失学生输入与排队状态。
-  const chatClientKey = initialConversation
-    ? `${initialConversation.id}|${initialConversation.conversationFinalized ? 'finalized' : 'open'}`
-    : initialActiveProjectId ?? 'archive';
+  const initialActiveProjectId = initialConversation
+    ? initialConversation.projectId
+    : params?.projectId && projects.some((project) => project.id === params.projectId)
+      ? params.projectId
+      : undefined;
+  // 空间也属于整机重建维度：切换空间必须重新装载该空间的项目与会话。
+  const chatClientKey = `${activeSpaceId ?? 'unscoped'}|${initialConversation?.id ?? initialActiveProjectId ?? 'blank'}|${initialConversation?.conversationFinalized ? 'finalized' : 'open'}`;
   return (
     <div className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-[100rem] flex-col px-3 py-3 sm:px-5 lg:h-[calc(100svh-3.5rem)] lg:overflow-hidden">
       <Card className="relative flex min-h-0 flex-1 overflow-hidden border-primary/20 bg-card/92 shadow-ink backdrop-blur-xl">
@@ -52,8 +55,8 @@ export default async function StudentChatPage({ searchParams }: { searchParams?:
             dailyArchive={workspace.data.dailyArchive}
             initialActiveProjectId={initialActiveProjectId}
             initialConversation={initialConversation}
-            spaces={spacesResult.ok ? spacesResult.data : []}
-            activeSpaceId={params?.spaceId ?? initialConversation?.spaceId ?? ''}
+            spaces={spaces}
+            activeSpaceId={activeSpaceId ?? ''}
           />
         </CardContent>
       </Card>

@@ -6,7 +6,7 @@ import { WorkspaceHero, SectionHeader } from '@/components/workbench/workspace-h
 import { BloomBadge } from '@/components/workbench/bloom-badge';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { Pagination } from '@/components/workbench/pagination';
-import { parsePageParam } from '@/lib/pagination';
+import { firstParam, parsePageParam } from '@/lib/pagination';
 import { ProjectCard } from '@/components/workbench/project-card';
 import { StudentProjectCreateButton } from '@/components/workbench/student-project-create-button';
 import { getStudentProfileSummary } from '@/lib/data/student';
@@ -15,10 +15,11 @@ import { CognitiveProfileMatrix } from './cognitive-profile-matrix';
 // 每页项目数。卡片是三列网格，12 = 4 行整，避免末行残缺。
 const PROJECTS_PAGE_SIZE = 12;
 
-export default async function StudentProfilePage({ searchParams }: { searchParams?: Promise<{ page?: string | string[] }> }) {
+export default async function StudentProfilePage({ searchParams }: { searchParams?: Promise<{ page?: string | string[]; spaceId?: string | string[] }> }) {
   const params = await searchParams;
   const page = parsePageParam(params?.page);
-  const result = await getStudentProfileSummary({ page, pageSize: PROJECTS_PAGE_SIZE });
+  const spaceId = firstParam(params?.spaceId);
+  const result = await getStudentProfileSummary({ spaceId, page, pageSize: PROJECTS_PAGE_SIZE });
   if (!result.ok) return <div className="p-6"><ErrorState title="学习看板加载失败" description={result.message} /></div>;
   const {
     distribution,
@@ -36,8 +37,8 @@ export default async function StudentProfilePage({ searchParams }: { searchParam
       <WorkspaceHero
         title="学习记录"
         description="按项目查看提问记录、挑战练习和已经通过的层级。"
-        primaryAction={{ label: '学习提问', href: '/student' }}
-        secondaryAction={{ label: '挑战练习', href: '/student/challenge' }}
+        primaryAction={{ label: '学习提问', href: spaceId ? `/student?spaceId=${spaceId}` : '/student' }}
+        secondaryAction={{ label: '挑战练习', href: spaceId ? `/student/challenge?spaceId=${spaceId}` : '/student/challenge' }}
         metrics={[
           { label: '项目', value: totalProjects, hint: '有学习记录的项目' },
           { label: '提问记录', value: questionCount, hint: '累计提问次数' },
@@ -50,19 +51,19 @@ export default async function StudentProfilePage({ searchParams }: { searchParam
         <SectionHeader
           title="我的项目"
           description="选择项目，开始新的学习提问；也可以围绕自己的专题自建项目。"
-          action={<StudentProjectCreateButton />}
+          action={<StudentProjectCreateButton spaceId={spaceId} />}
         />
         {totalProjects === 0 ? (
           <EmptyState
             title="还没有项目记录"
             description="提出第一个学习问题后，学习记录会按识别到的归属保存。"
-            action={<Button nativeButton={false} render={<Link href="/student">开始提问</Link>} />}
+            action={<Button nativeButton={false} render={<Link href={spaceId ? `/student?spaceId=${spaceId}` : '/student'}>开始提问</Link>} />}
           />
         ) : (
           <>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {projects.map((project) => (
-                <ProjectCard key={project.id} project={project} />
+                <ProjectCard key={project.id} project={project} spaceId={spaceId} />
               ))}
             </div>
             <Pagination
@@ -70,7 +71,13 @@ export default async function StudentProfilePage({ searchParams }: { searchParam
               pageSize={PROJECTS_PAGE_SIZE}
               total={totalProjects}
               itemLabel="个项目"
-              buildHref={(target) => (target > 1 ? `/student/me?page=${target}` : '/student/me')}
+              buildHref={(target) => {
+                const query = new URLSearchParams();
+                if (spaceId) query.set('spaceId', spaceId);
+                if (target > 1) query.set('page', String(target));
+                const suffix = query.toString();
+                return suffix ? `/student/me?${suffix}` : '/student/me';
+              }}
             />
           </>
         )}
@@ -86,7 +93,7 @@ export default async function StudentProfilePage({ searchParams }: { searchParam
             <EmptyState
               title="等待第一次挑战"
               description="完成第一次挑战后，这里会出现各层级的通过情况。"
-              action={<Button nativeButton={false} render={<Link href="/student/challenge">去挑战</Link>} />}
+              action={<Button nativeButton={false} render={<Link href={spaceId ? `/student/challenge?spaceId=${spaceId}` : '/student/challenge'}>去挑战</Link>} />}
             />
           )}
           {hasRecords ? <CognitiveProfileMatrix rows={projectBloomMatrix} /> : null}
@@ -97,7 +104,13 @@ export default async function StudentProfilePage({ searchParams }: { searchParam
               pageSize={PROJECTS_PAGE_SIZE}
               total={totalProjects}
               itemLabel="个项目"
-              buildHref={(target) => (target > 1 ? `/student/me?page=${target}` : '/student/me')}
+              buildHref={(target) => {
+                const query = new URLSearchParams();
+                if (spaceId) query.set('spaceId', spaceId);
+                if (target > 1) query.set('page', String(target));
+                const suffix = query.toString();
+                return suffix ? `/student/me?${suffix}` : '/student/me';
+              }}
             />
           ) : null}
           <div className="mt-6 rounded-lg border border-border/60 bg-background/60 p-4">

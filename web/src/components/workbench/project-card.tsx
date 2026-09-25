@@ -35,7 +35,7 @@ function BloomMiniBar({ project }: { project: ProjectCardData }) {
   );
 }
 
-export function ProjectCard({ project }: { project: ProjectCardData }) {
+export function ProjectCard({ project, spaceId }: { project: ProjectCardData; spaceId?: string | null }) {
   const confirmedLevel = project.challengeProgress.confirmedLevel;
   const nextLabel = project.challengeProgress.isComplete ? '已完成全部六层挑战' : `继续 L${project.challengeProgress.nextLevel} 挑战`;
 
@@ -96,7 +96,7 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
       <CardFooter className="pt-0">
         <Button
           nativeButton={false}
-          render={<a href={`/student?projectId=${project.id}`}><BookOpen className="mr-2 size-4" aria-hidden="true" />进入项目提问</a>}
+          render={<a href={`/student?projectId=${project.id}${spaceId ? `&spaceId=${spaceId}` : ''}`}><BookOpen className="mr-2 size-4" aria-hidden="true" />进入项目提问</a>}
           className="min-h-11 w-full cursor-pointer rounded-lg"
         />
       </CardFooter>

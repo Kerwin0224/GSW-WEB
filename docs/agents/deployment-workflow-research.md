@@ -321,5 +321,6 @@ merge main
 - `.github/workflows/supabase-db-push.yml` 已固定 Supabase CLI `2.117.0`，增加 `production` environment、串行 concurrency、手动触发分支保护和迁移历史记录。
 - `web/.env.local.example` 已补上 server-only `CWB_AUTH_SECRET`；真实值仍只存放在 Vercel/GitHub secret manager。
 - 可选控制面操作：创建或指定第二个 Free Supabase 项目并填入 Preview 变量；若不创建，则在部署文档中明确单项目只读/事务回滚边界。另需为 `gsw-web` 添加 Deployment Checks，并确认错误 Vercel 项目的 Git 归属后再断开或归档。
+- 2026-09-26 根据产品反馈重定义空间语义：空间现在拥有一级项目与会话作用域；新增 `projects.space_id`、历史数据回填、项目/会话一致性触发器，并让学生提问、挑战、学习记录按当前空间过滤。第 3.2 节“学习数据一列不加”的旧设计结论已被本次产品裁定 supersede。
 
 > 第 0～13 节保留实施前的研究快照；当前执行规则以根目录 `AGENTS.md` 和 `docs/agents/deployment.md` 为准。

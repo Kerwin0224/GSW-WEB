@@ -468,7 +468,7 @@ export function StudentChatClient({
     const params = new URLSearchParams(window.location.search);
     if (nextSpaceId) params.set('spaceId', nextSpaceId);
     else params.delete('spaceId');
-    // 切空间要回到空白入口：归类口径只在新会话首问时生效，留在旧会话里切是没意义的。
+    // 切空间就是切换项目与会话的完整作用域，回到该空间的空白入口。
     params.delete('conversationId');
     params.delete('projectId');
     const query = params.toString();
@@ -476,6 +476,7 @@ export function StudentChatClient({
   }, []);
 
   const blocked = conversationLocked ? finalizedConversationBlockedReason : providerBlocked;
+  const activeSpaceName = spaces.find((space) => space.id === activeSpaceId)?.name ?? '未归类空间';
 
   return (
     <>
@@ -503,7 +504,7 @@ export function StudentChatClient({
               <div className="mb-3 flex items-start justify-between gap-3 px-1">
                 <div>
                   <p className="font-heading text-lg">学习空间</p>
-                  <p className="mt-1 text-xs text-muted-foreground">切到哪个空间，新会话就按那个空间的归类口径理解你的问题。</p>
+                  <p className="mt-1 text-xs text-muted-foreground">空间是项目与会话的一级作用域；切换后只看到该空间的学习数据。</p>
                 </div>
                 <Badge variant="outline">{spaces.length}</Badge>
               </div>
@@ -514,7 +515,7 @@ export function StudentChatClient({
                     <button
                       key={space.id}
                       type="button"
-                      onClick={() => switchSpace(active ? '' : space.id)}
+                      onClick={() => switchSpace(space.id)}
                       aria-pressed={active}
                       className={cn('min-h-11 cursor-pointer rounded-xl border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', active ? 'border-primary/55 bg-primary/10 text-primary' : 'border-border/65 bg-background/76 hover:bg-muted')}
                     >
@@ -532,15 +533,15 @@ export function StudentChatClient({
           <section className="rounded-2xl border border-border/65 bg-card/86 p-3 shadow-soft">
             <div className="mb-3 flex items-start justify-between gap-3 px-1">
               <div>
-                <p className="font-heading text-lg">项目</p>
-                <p className="mt-1 text-xs text-muted-foreground">选择项目开始新会话；问题聚焦哪个学习主题，就会自动归入对应项目。</p>
+                <p className="font-heading text-lg">{activeSpaceName} · 项目</p>
+                <p className="mt-1 text-xs text-muted-foreground">这里只列当前空间的项目；点击项目后，新会话会继承这个空间。</p>
               </div>
               <Badge variant="outline">{projects.length}</Badge>
             </div>
             {projects.length === 0 ? (
               <EmptyState
-                title="先自然提问"
-                description="系统识别到归属后会在这里保存学习记录。"
+                title={`${activeSpaceName}还没有项目`}
+                description={`在${activeSpaceName}里提出第一个问题，系统会按这个空间的归类口径创建项目。`}
                 className="bg-background/60"
               />
             ) : (
@@ -588,12 +589,12 @@ export function StudentChatClient({
                               key={session.id}
                               session={session}
                               current={session.id === conversationId}
-                              href={`/student?conversationId=${session.id}`}
+                              href={`/student?conversationId=${session.id}${activeSpaceId ? `&spaceId=${activeSpaceId}` : ''}`}
                               onDelete={() => { setDeleteTarget({ id: session.id, title: session.title, projectId: project.id }); setDeleteError(''); }}
                             />
                           ))}
                           <Link
-                            href={`/student/challenge?projectId=${project.id}`}
+                            href={`/student/challenge?projectId=${project.id}${activeSpaceId ? `&spaceId=${activeSpaceId}` : ''}`}
                             className="mt-1 flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-accent/45 bg-accent/8 px-2 py-2 text-xs text-accent-foreground/85 transition-colors hover:border-accent/70 hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             <Swords className="size-3.5 shrink-0" aria-hidden="true" />
@@ -611,8 +612,8 @@ export function StudentChatClient({
           <section className="rounded-2xl border border-border/65 bg-card/86 p-3 shadow-soft">
             <div className="mb-3 flex items-start justify-between gap-3 px-1">
               <div>
-                <p className="font-heading text-lg">其他会话</p>
-                <p className="mt-1 text-xs text-muted-foreground">未归入项目的会话保存在这里，可回看续问。</p>
+                <p className="font-heading text-lg">{activeSpaceName} · 未归项目会话</p>
+                <p className="mt-1 text-xs text-muted-foreground">这些会话还没有归入项目，但仍然属于当前空间。</p>
               </div>
               <Badge variant="secondary">{dailyArchive.sessions.length}</Badge>
             </div>
@@ -627,7 +628,7 @@ export function StudentChatClient({
                     key={session.id}
                     session={session}
                     current={session.id === conversationId}
-                    href={`/student?conversationId=${session.id}`}
+                    href={`/student?conversationId=${session.id}${activeSpaceId ? `&spaceId=${activeSpaceId}` : ''}`}
                     onDelete={() => { setDeleteTarget({ id: session.id, title: session.title }); setDeleteError(''); }}
                   />
                 ))}

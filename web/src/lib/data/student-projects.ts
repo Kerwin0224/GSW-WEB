@@ -32,13 +32,16 @@ export async function createStudentProject(formData: FormData): Promise<CreateSt
   const name = normalizeConcreteProjectTitle(String(formData.get('name') ?? ''));
   if (!name) return { ok: false, message: '请填写有效的项目名称（不超过 80 字，且不能是系统占位名）。' };
   const subtitle = normalizeProjectSubtitle(String(formData.get('subtitle') ?? ''));
+  const spaceId = String(formData.get('space_id') ?? '').trim();
+  if (!spaceId) return { ok: false, message: '请先选择一个学习空间，再创建项目。' };
 
   const supabase = await createClient();
-  // 幂等：同学生同标题复用既有项目，不报"已存在"——学生的意图是"进入这个项目"，不是"建一个记录"。
+  // 幂等：同一空间内的同名项目复用，跨空间同名项目互不覆盖。
   const { data: existing, error: existingError } = await supabase
     .from('projects')
     .select('id,name')
     .eq('owner_id', role.data.id)
+    .eq('space_id', spaceId)
     .eq('name', name)
     .maybeSingle();
   if (existingError) return { ok: false, message: `项目查重失败：${existingError.message}` };
@@ -48,6 +51,7 @@ export async function createStudentProject(formData: FormData): Promise<CreateSt
     .from('projects')
     .insert({
       owner_id: role.data.id,
+      space_id: spaceId,
       name,
       subtitle,
       // manual：明确是学生自建，不是 AI 识别结果，教师核实页可据此区分来源。

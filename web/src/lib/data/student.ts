@@ -134,7 +134,7 @@ function buildChallengeProgress(practices: PracticeSummaryRow[]): ProjectChallen
   };
 }
 
-export async function getStudentWorkspace(): Promise<DataResult<StudentWorkspace>> {
+export async function getStudentWorkspace(options: { spaceId?: string | null } = {}): Promise<DataResult<StudentWorkspace>> {
   const role = await requireRole('student');
   if (!role.ok) return role;
   const caps = await getCapabilities(['student_chat', 'bloom_classification', 'project_classification', 'practice_generation', 'practice_evaluation']);
@@ -142,13 +142,18 @@ export async function getStudentWorkspace(): Promise<DataResult<StudentWorkspace
   const projectClassificationBlocked = caps.project_classification.ready ? undefined : caps.project_classification.blockedReason ?? '缺少 project_classification 真实模型能力配置。';
 
   const supabase = await createClient();
-  const { data: archiveConversations, error: archiveError } = await supabase
+  const spaceId = options.spaceId;
+  let archiveQuery = supabase
     .from('conversations')
-    .select('id,title,updated_at,project_id,conversation_messages(id)')
+    .select('id,title,updated_at,project_id,space_id,conversation_messages(id)')
     .eq('owner_id', role.data.id)
     .eq('source', 'student_chat')
     .is('project_id', null)
-    .is('deleted_at', null)
+    .is('deleted_at', null);
+  if (spaceId !== undefined) {
+    archiveQuery = spaceId === null ? archiveQuery.is('space_id', null) : archiveQuery.eq('space_id', spaceId);
+  }
+  const { data: archiveConversations, error: archiveError } = await archiveQuery
     .order('updated_at', { ascending: false })
     .limit(8);
   if (archiveError) return fail('error', `日常会话归档加载失败：${archiveError.message}`);
@@ -165,10 +170,11 @@ export async function getStudentWorkspace(): Promise<DataResult<StudentWorkspace
   });
 }
 
-export async function getStudentProjects(options: { page?: number; pageSize?: number } = {}): Promise<DataResult<ProjectSummary[]>> {
+export async function getStudentProjects(options: { spaceId?: string | null; page?: number; pageSize?: number } = {}): Promise<DataResult<ProjectSummary[]>> {
   const role = await requireRole('student');
   if (!role.ok) return role;
   const supabase = await createClient();
+  const spaceId = options.spaceId;
 
   // 分页为可选：不传 pageSize 时保持全量（供需要完整项目树的调用方，如提问侧边栏）。
   const paginated = typeof options.pageSize === 'number';
@@ -177,15 +183,18 @@ export async function getStudentProjects(options: { page?: number; pageSize?: nu
 
   // 单次查询：通过嵌套 select 拉取项目 + 关联会话 + 挑战记录，
   // 消除原来 N 个项目 × 4 次查询的 N+1 问题。
-  const projectsQuery = supabase
+  let projectsQuery = supabase
     .from('projects')
     .select(`
       *,
-      conversations!conversations_project_id_fkey(id,title,updated_at,project_id,deleted_at,conversation_messages(id)),
+      conversations!conversations_project_id_fkey(id,title,updated_at,project_id,space_id,deleted_at,conversation_messages(id)),
       practice_records(target_bloom_level,achieved,evaluation_state,created_at)
     `)
-    .eq('owner_id', role.data.id)
-    .order('updated_at', { ascending: false });
+    .eq('owner_id', role.data.id);
+  if (spaceId !== undefined) {
+    projectsQuery = spaceId === null ? projectsQuery.is('space_id', null) : projectsQuery.eq('space_id', spaceId);
+  }
+  projectsQuery = projectsQuery.order('updated_at', { ascending: false });
 
   const { data: projects, error } = paginated
     ? await projectsQuery.range((page - 1) * pageSize, page * pageSize - 1)
@@ -225,9 +234,9 @@ export async function getStudentProjects(options: { page?: number; pageSize?: nu
 
   const summaries = (projects ?? []).map((raw) => {
     const project = raw as unknown as ProjectRow;
-    // 过滤已删除会话，取最近 5 条
+    // 过滤已删除会话和当前空间之外的会话，取最近 5 条
     const activeConversations = (project.conversations ?? [])
-      .filter((c) => c.deleted_at === null)
+      .filter((c) => c.deleted_at === null && (spaceId === undefined || (spaceId === null ? c.space_id == null : c.space_id === spaceId)))
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
       .slice(0, 5);
     const practices = (project.practice_records ?? [])
@@ -269,13 +278,19 @@ export async function getStudentProjects(options: { page?: number; pageSize?: nu
  */
 export type ChallengeProjectSummary = Pick<ProjectSummary, 'id' | 'name' | 'subtitle' | 'questionCount' | 'challengeProgress'>;
 
-export async function getStudentChallengeProjects(): Promise<DataResult<ChallengeProjectSummary[]>> {
+export async function getStudentChallengeProjects(options: { spaceId?: string | null } = {}): Promise<DataResult<ChallengeProjectSummary[]>> {
   const role = await requireRole('student');
   if (!role.ok) return role;
   const supabase = await createClient();
+  const spaceId = options.spaceId;
+  let projectsQuery = supabase.from('projects').select('id,name,subtitle,updated_at').eq('owner_id', role.data.id);
+  if (spaceId !== undefined) {
+    projectsQuery = spaceId === null ? projectsQuery.is('space_id', null) : projectsQuery.eq('space_id', spaceId);
+  }
+  projectsQuery = projectsQuery.order('updated_at', { ascending: false });
 
   const [{ data: projects, error }, { data: practices, error: practiceError }, { data: messages, error: messageError }] = await Promise.all([
-    supabase.from('projects').select('id,name,subtitle,updated_at').eq('owner_id', role.data.id).order('updated_at', { ascending: false }),
+    projectsQuery,
     supabase.from('practice_records').select('project_id,target_bloom_level,achieved,evaluation_state,created_at').eq('student_id', role.data.id),
     supabase
       .from('conversation_messages')
@@ -375,7 +390,7 @@ export async function getStudentProject(projectId: string): Promise<DataResult<P
  * 分页之后项目列表只覆盖当前页，而页顶指标与层级分布是"全部项目"口径，
  * 必须来自独立聚合查询。这三条查询都只取窄列/计数，不拉会话与消息正文。
  */
-export async function getStudentProjectStats(): Promise<DataResult<{
+export async function getStudentProjectStats(options: { spaceId?: string | null } = {}): Promise<DataResult<{
   projectCount: number;
   questionCount: number;
   challengeCount: number;
@@ -385,24 +400,32 @@ export async function getStudentProjectStats(): Promise<DataResult<{
   const role = await requireRole('student');
   if (!role.ok) return role;
   const supabase = await createClient();
+  const spaceId = options.spaceId;
+  let projectsQuery = supabase.from('projects').select('id,highest_bloom_level').eq('owner_id', role.data.id);
+  if (spaceId !== undefined) {
+    projectsQuery = spaceId === null ? projectsQuery.is('space_id', null) : projectsQuery.eq('space_id', spaceId);
+  }
+  const projectsResult = await projectsQuery;
+  if (projectsResult.error) return fail('error', `项目统计失败：${projectsResult.error.message}`);
+  const projectRows = (projectsResult.data ?? []) as Array<{ id: string; highest_bloom_level: number | null }>;
+  const projectIds = projectRows.map((row) => row.id);
+  if (projectIds.length === 0) {
+    return ok({ projectCount: 0, questionCount: 0, challengeCount: 0, awaitingChallengeCount: 0, distribution: BLOOM_LEVELS.map((level) => ({ level, count: 0 })) });
+  }
 
-  const [projectsResult, questionsResult, practicesResult] = await Promise.all([
-    // highest_bloom_level 由 practice_records 触发器维护，读它即可得到"已通过最高层级"。
-    supabase.from('projects').select('highest_bloom_level').eq('owner_id', role.data.id),
+  const [questionsResult, practicesResult] = await Promise.all([
     supabase
       .from('conversation_messages')
       .select('id, conversations!inner(owner_id,project_id,deleted_at)', { count: 'exact', head: true })
       .eq('conversations.owner_id', role.data.id)
+      .in('conversations.project_id', projectIds)
       .is('conversations.deleted_at', null)
-      .eq('role', 'user')
-      .not('conversations.project_id', 'is', null),
-    supabase.from('practice_records').select('id', { count: 'exact', head: true }).eq('student_id', role.data.id),
+      .eq('role', 'user'),
+    supabase.from('practice_records').select('id', { count: 'exact', head: true }).eq('student_id', role.data.id).in('project_id', projectIds),
   ]);
-  if (projectsResult.error) return fail('error', `项目统计失败：${projectsResult.error.message}`);
   if (questionsResult.error) return fail('error', `提问统计失败：${questionsResult.error.message}`);
   if (practicesResult.error) return fail('error', `挑战统计失败：${practicesResult.error.message}`);
 
-  const projectRows = (projectsResult.data ?? []) as Array<{ highest_bloom_level: number | null }>;
   return ok({
     projectCount: projectRows.length,
     questionCount: questionsResult.count ?? 0,
@@ -415,7 +438,7 @@ export async function getStudentProjectStats(): Promise<DataResult<{
   });
 }
 
-export async function getStudentProfileSummary(options: { page?: number; pageSize?: number } = {}): Promise<DataResult<{
+export async function getStudentProfileSummary(options: { spaceId?: string | null; page?: number; pageSize?: number } = {}): Promise<DataResult<{
   distribution: Array<{ level: number; count: number }>;
   projectBloomMatrix: ProjectBloomMatrixRow[];
   projects: ProjectSummary[];
@@ -424,7 +447,10 @@ export async function getStudentProfileSummary(options: { page?: number; pageSiz
   challengeCount: number;
   awaitingChallengeCount: number;
 }>> {
-  const [projects, stats] = await Promise.all([getStudentProjects(options), getStudentProjectStats()]);
+  const [projects, stats] = await Promise.all([
+    getStudentProjects(options),
+    getStudentProjectStats({ spaceId: options.spaceId }),
+  ]);
   if (!projects.ok) return projects;
   if (!stats.ok) return stats;
   const projectBloomMatrix: ProjectBloomMatrixRow[] = projects.data.map((project) => ({
