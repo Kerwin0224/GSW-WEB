@@ -86,6 +86,32 @@ INSERT INTO public.class_memberships (class_id, profile_id, role) VALUES
   ('00000000-0000-0000-0000-0000000000ab', '00000000-0000-0000-0000-00000000000b', 'student'),
   ('00000000-0000-0000-0000-0000000000ab', '00000000-0000-0000-0000-00000000000c', 'student');
 
+-- 多空间演示：每个科目老师一个空间，演示学生跨空间归属。
+UPDATE public.profiles
+   SET subject = CASE login_id
+     WHEN '20150101' THEN '语文'
+     WHEN '20180001' THEN '数学'
+   END
+ WHERE login_id IN ('20150101', '20180001');
+
+INSERT INTO public.spaces (id, school_id, owner_id, name, theme, subject, color_key)
+VALUES
+  ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-00000000f101', '00000000-0000-0000-0000-000000000002', '语文·篇目空间', '语文按篇目归类；问知识点时归到对应知识点。', '语文', 'cinnabar'),
+  ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-00000000f102', '00000000-0000-0000-0000-000000000005', '数学·知识点空间', '数学按知识点归类，例如一次函数、全等三角形。', '数学', 'pine')
+ON CONFLICT (id) DO UPDATE SET
+  theme = EXCLUDED.theme,
+  subject = EXCLUDED.subject,
+  color_key = EXCLUDED.color_key;
+
+INSERT INTO public.space_classes (space_id, class_id, created_by) VALUES
+  ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000aa', '00000000-0000-0000-0000-000000000002'),
+  ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000ab', '00000000-0000-0000-0000-000000000005')
+ON CONFLICT (space_id, class_id) DO NOTHING;
+
+INSERT INTO public.space_members (space_id, student_id, created_by) VALUES
+  ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000005')
+ON CONFLICT (space_id, student_id) DO NOTHING;
+
 -- 本地会话签名密钥：current_app_user_id() / write_app_log_event 的 header 验签
 -- 依赖 private.runtime_secrets.cwb_auth_secret（生产值由 Vercel 环境变量对应，
 -- 此处为本地固定演示值），不供给则 RLS 身份头路径全部退化为匿名。
