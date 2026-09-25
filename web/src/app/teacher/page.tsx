@@ -6,15 +6,18 @@ import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { SpacePanel } from '@/components/workbench/space-panel';
 import { buildAuditHref } from '@/components/workbench/audit/presentation';
 import { WorkspaceHero } from '@/components/workbench/workspace-hero';
+import { getProfile } from '@/lib/auth';
 import { getTeacherAnalytics, getTeacherAuditQueue, getTeacherClasses } from '@/lib/data/teacher';
-import { listTeacherSpaces } from '@/lib/data/spaces';
+import { listTeacherSpaces, listTeacherStudentOptions } from '@/lib/data/spaces';
 
 export default async function TeacherChatPage() {
-  const [analyticsResult, auditResult, teacherClassesResult, spacesResult] = await Promise.all([
+  const [profile, analyticsResult, auditResult, teacherClassesResult, spacesResult, studentOptionsResult] = await Promise.all([
+    getProfile(),
     getTeacherAnalytics(),
     getTeacherAuditQueue(),
     getTeacherClasses(),
     listTeacherSpaces(),
+    listTeacherStudentOptions(),
   ]);
 
   if (!analyticsResult.ok) {
@@ -134,7 +137,12 @@ export default async function TeacherChatPage() {
 
       <section className="space-y-4">
         {spacesResult.ok ? (
-          <SpacePanel spaces={spacesResult.data} classes={teacherClassesResult.ok ? teacherClassesResult.data : []} />
+          <SpacePanel
+            spaces={spacesResult.data}
+            classes={teacherClassesResult.ok ? teacherClassesResult.data : []}
+            studentOptions={studentOptionsResult.ok ? studentOptionsResult.data : []}
+            defaultSubject={profile?.subject ?? ''}
+          />
         ) : (
           <ErrorState title="学习空间加载失败" description={spacesResult.message} />
         )}

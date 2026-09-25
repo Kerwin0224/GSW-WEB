@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { writeLogEvent } from '@/lib/observability/server-log-store';
-import { extractTextFromParts, getCapabilities, jsonForDatabase, requireRole, resolveEnvSecret, resolveLanguageModel } from '@/lib/data/common';
+import { extractTextFromParts, getCapabilities, jsonForDatabase, requireRole, resolveLanguageModel } from '@/lib/data/common';
 import { toPersistedAssistantParts } from '@/lib/chat-message-parts';
 import { isStudentConversationFinalized } from '@/lib/data/conversation-finalization';
 import { resolveClassificationRule } from '@/lib/data/classification-rule';
@@ -73,7 +73,7 @@ const optionalProjectTitleField = z.preprocess(
 
 const bodySchema = z.object({
   messages: z.unknown(),
-  // 学生当前选中的空间。只影响新会话的归类口径，不落库——见 classification-rule.ts 的解析顺序。
+  // 学生当前选中的空间。新会话会持久化这个字段，已有会话优先使用自身绑定的空间。
   spaceId: optionalUuidField,
   conversationId: optionalUuidField,
   projectId: optionalProjectIdField,
@@ -97,6 +97,7 @@ type StudentChatMessage = UIMessage<unknown, StudentChatData>;
 type ConversationContext = {
   id: string;
   project_id: string | null;
+  space_id: string | null;
   projects?: { name: string } | { name: string }[] | null;
 };
 type StoredConversationMessage = {
@@ -225,7 +226,7 @@ export async function POST(req: Request) {
     if (parsed.data.conversationId) {
       const { data: existingConversation, error: existingConversationError } = await supabase
         .from('conversations')
-        .select('id,project_id,projects(name)')
+        .select('id,project_id,space_id,projects(name)')
         .eq('id', parsed.data.conversationId)
         .eq('owner_id', role.data.id)
         .eq('source', 'student_chat')
@@ -277,10 +278,10 @@ export async function POST(req: Request) {
     if (!conversation) {
       const { data: newConversation, error: conversationError } = await supabase
         .from('conversations')
-        .insert({ owner_id: role.data.id, project_id: projectId ?? null, source: 'student_chat', title: userText.slice(0, 80) })
+        .insert({ owner_id: role.data.id, project_id: projectId ?? null, space_id: parsed.data.spaceId ?? null, source: 'student_chat', title: userText.slice(0, 80) })
         // 见 attachments route：与 deleted-at 守护测试形式一致，不影响 insert 本身。
         .is('deleted_at', null)
-        .select('id,project_id,projects(name)')
+        .select('id,project_id,space_id,projects(name)')
         .single();
       if (conversationError) return Response.json({ error: `会话创建失败：${conversationError.message}` }, { status: 500 });
       conversation = newConversation as ConversationContext;
@@ -290,7 +291,7 @@ export async function POST(req: Request) {
     }
 
     if (shouldClassifyProject) {
-      projectAssignmentPromise = resolveProjectAssignment({ supabase, ownerId: role.data.id, userText, projectModel, requestId, spaceId: parsed.data.spaceId ?? null })
+      projectAssignmentPromise = resolveProjectAssignment({ supabase, ownerId: role.data.id, userText, projectModel, requestId, spaceId: conversation.space_id ?? parsed.data.spaceId ?? null })
         .catch(async (error) => {
           await writeLogEvent({
             level: 'error',

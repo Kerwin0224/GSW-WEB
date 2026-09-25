@@ -90,6 +90,7 @@ export function AdminUsersTable({ users }: { users: AdminUserListItem[] }) {
             <TableHead>姓名</TableHead>
             <TableHead>账号</TableHead>
             <TableHead>角色</TableHead>
+            <TableHead>科目</TableHead>
             <TableHead>状态</TableHead>
             <TableHead>班级归属</TableHead>
             <TableHead>最近管理活动</TableHead>
@@ -111,6 +112,7 @@ export function AdminUsersTable({ users }: { users: AdminUserListItem[] }) {
                 <TableCell className="font-medium">{user.displayName}</TableCell>
                 <TableCell className="font-mono text-xs">{user.loginId ?? '未设置账号'}</TableCell>
                 <TableCell><Badge variant="outline">{roleConfig[user.role].label}</Badge></TableCell>
+                <TableCell className="text-sm text-muted-foreground">{user.subject || '未设置'}</TableCell>
                 <TableCell><Badge variant={user.status === 'active' ? 'secondary' : 'destructive'}>{statusLabel(user.status)}</Badge></TableCell>
                 <TableCell className="text-sm text-muted-foreground">{user.assignmentSummary}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{user.recentActivityLabel}</TableCell>

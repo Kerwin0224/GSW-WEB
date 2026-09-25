@@ -15,9 +15,9 @@ import type { CsvUserPreview } from '@/lib/data/admin';
 
 type ImportResponse = CsvUserPreview | { error: string; preview?: CsvUserPreview };
 
-const SAMPLE = `display_name,login_id,role,class_name
-陈砚秋,20260101,student,高一(1)班
-沈立行,20180001,teacher,高一(1)班`;
+const SAMPLE = `display_name,login_id,role,subject,class_name
+陈砚秋,20260101,student,,高一(1)班
+沈立行,20180001,teacher,语文,高一(1)班`;
 
 export function UserImportDialog() {
   const router = useRouter();
@@ -62,7 +62,7 @@ export function UserImportDialog() {
         </Button>
       )}
       title="CSV 导入账号"
-      description="先检查整批数据；任一行有误都会阻止提交。表头必须包含 display_name、login_id、role，class_name 可选。"
+      description="先检查整批数据；任一行有误都会阻止提交。教师行必须填写 subject，其他表头按示例提供。"
       icon={<Upload className="size-5" />}
       className="sm:max-w-4xl"
       footer={(
@@ -108,6 +108,7 @@ export function UserImportDialog() {
                     <TableHead>姓名</TableHead>
                     <TableHead>账号</TableHead>
                     <TableHead>角色</TableHead>
+                    <TableHead>科目</TableHead>
                     <TableHead>班级</TableHead>
                     <TableHead>状态</TableHead>
                   </TableRow>
@@ -119,6 +120,7 @@ export function UserImportDialog() {
                       <TableCell>{row.displayName || '-'}</TableCell>
                       <TableCell className="font-mono text-xs">{row.loginId || '-'}</TableCell>
                       <TableCell>{row.role ?? '-'}</TableCell>
+                      <TableCell>{row.subject ?? '-'}</TableCell>
                       <TableCell>{row.className ?? '-'}</TableCell>
                       <TableCell>
                         <Badge variant={row.status === 'valid' ? 'secondary' : 'destructive'}>

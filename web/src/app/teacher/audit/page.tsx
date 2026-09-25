@@ -1,15 +1,11 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { AuditWorkspace } from '@/components/workbench/audit/audit-workspace';
 import { ErrorState } from '@/components/workbench/state-surfaces';
-import { parsePageParam } from '@/lib/pagination';
+import { firstParam, parsePageParam } from '@/lib/pagination';
 import { getTeacherAuditQueue, getTeacherAuditSession, type AuditSessionDetail, type TeacherAuditQueueStatus } from '@/lib/data/teacher';
 
 type AuditPageSearchParams = { page?: string | string[]; status?: string | string[]; session?: string | string[] };
 
-function firstParam(value: string | string[] | undefined): string {
-  const raw = Array.isArray(value) ? value[0] : value;
-  return typeof raw === 'string' ? raw.trim() : '';
-}
 
 function parseStatus(value: string | string[] | undefined): TeacherAuditQueueStatus {
   return firstParam(value) === 'all' ? 'all' : 'pending';
@@ -28,7 +24,7 @@ export default async function TeacherAuditPage({ searchParams }: { searchParams?
   const params = await searchParams;
   const page = parsePageParam(params?.page);
   const status = parseStatus(params?.status);
-  const sessionParam = firstParam(params?.session);
+  const sessionParam = firstParam(params?.session)?.trim() ?? '';
   const sessionId = uuidPattern.test(sessionParam) ? sessionParam : '';
 
   const queueResult = await getTeacherAuditQueue({ page, status });

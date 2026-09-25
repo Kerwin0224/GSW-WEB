@@ -100,6 +100,7 @@ export function SchoolDetailClient({ school, users, classes }: {
                     </span>
                     <span className="flex shrink-0 items-center gap-1.5">
                       <Badge variant="outline" className="text-xs">{user.role === 'admin' ? '校管理员' : user.role === 'teacher' ? '教师' : '学生'}</Badge>
+                      {user.role === 'teacher' ? <Badge variant="secondary" className="text-xs">{user.subject || '未设置科目'}</Badge> : null}
                       {user.mustChangePassword ? <Badge variant="secondary" className="text-xs">待改密</Badge> : null}
                       {user.status === 'disabled' ? <Badge variant="destructive" className="text-xs">停用</Badge> : null}
                     </span>

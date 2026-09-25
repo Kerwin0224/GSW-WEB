@@ -11,7 +11,7 @@ import { BLOOM_LEVELS, toBloomLevel, type BloomLevel } from '@/lib/bloom-levels'
 
 export type ProjectSessionSummary = { id: string; title: string; messageCount: number; updatedLabel: string; projectId?: string };
 export type ProjectLevelSummary = { level: BloomLevel; pathQuestionCount: number; confirmedChallengeCount: number };
-export type StudentConversationInitial = { id: string; title: string; projectId?: string; conversationFinalized: boolean; messages: UIMessage[] };
+export type StudentConversationInitial = { id: string; title: string; projectId?: string; spaceId?: string; conversationFinalized: boolean; messages: UIMessage[] };
 export type ProjectBloomMatrixRow = {
   id: string;
   name: string;
@@ -320,7 +320,7 @@ export async function getStudentConversation(conversationId: string): Promise<Da
   const supabase = await createClient();
   const { data: conversation, error: conversationError } = await supabase
     .from('conversations')
-    .select('id,title,project_id')
+    .select('id,title,project_id,space_id')
     .eq('id', conversationId)
     .eq('owner_id', role.data.id)
     .eq('source', 'student_chat')
@@ -343,6 +343,7 @@ export async function getStudentConversation(conversationId: string): Promise<Da
     return ok({
       id: conversation.id,
       title: conversation.title ?? '未命名会话',
+      spaceId: conversation.space_id ?? undefined,
       projectId: conversation.project_id ?? undefined,
       conversationFinalized,
       messages: (messages ?? []).map((message) => toInitialMessageWithBloom(message as ConversationMessageWithBloomRow)),

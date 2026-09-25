@@ -243,9 +243,6 @@ export async function readRecentAppEvents(limit = 80, filters: AppEventFilters =
   }
 }
 
-export async function readFilteredAppEvents(filters: AppEventFilters = {}, limit = 80): Promise<StoredLogEvent[]> {
-  return readRecentAppEvents(limit, filters);
-}
 
 export async function getLogFileStatus() {
   const app = await stat(APP_LOG_FILE).catch(() => null);

@@ -62,8 +62,9 @@ Open `http://127.0.0.1:3000`.
 
 ```bash
 cd web
+npx tsc --noEmit
 npm run lint
-npm run build
+npm test
 ```
 
 Static legacy checks:
@@ -78,11 +79,10 @@ Expected result: no runtime dependency on the deleted legacy stack and no email-
 
 | Document | Purpose |
 | --- | --- |
-| [Product source of truth](docs/PRODUCT_SOURCE_OF_TRUTH.md) | Stable read order for current product planning |
-| [PRD decision](docs/prd_decision_v1.md) | Current four-module product boundary |
-| [Demo scope](docs/demo_scope_v1.md) | Current demo flows and explicitly deferred scope |
-| [Architecture](docs/ARCHITECTURE.md) | `web/` architecture and data flow |
-| [Team handoff](docs/TEAM_HANDOFF.md) | Collaboration and cleanup notes |
+| [Domain context](CONTEXT.md) | Product language and invariants |
+| [Design notes](DESIGN.md) | Current interface and product design notes |
+| [Deployment workflow](docs/agents/deployment.md) | Cloud Supabase and Vercel workflow |
+| [Architecture decisions](docs/adr/) | Accepted product and data-model decisions |
 
 ## Project Structure
 
@@ -92,11 +92,10 @@ classical-chinese-workbench/
 │   ├── src/app/           # App Router pages and route handlers
 │   ├── src/components/    # shadcn/ui and product components
 │   ├── src/lib/           # auth, Supabase clients, data helpers
-│   └── supabase/          # local Supabase migrations for this app
-├── docs/                  # Current product and architecture docs
-├── .trellis/              # Workflow, specs, and task context
-├── .agents/               # Project-local agent skills
-└── models/                # Optional local model placeholders, not product runtime
+│   └── supabase/          # cloud schema migrations for this app
+├── docs/                  # deployment, domain, and architecture docs
+├── .claude/               # project-local agent skills
+└── .scratch/              # issue and verification artifacts
 ```
 
 ## What NOT to reintroduce

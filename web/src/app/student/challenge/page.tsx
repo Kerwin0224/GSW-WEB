@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { BloomBadge } from '@/components/workbench/bloom-badge';
 import { ChallengeClient } from '@/components/workbench/challenge-client';
-import { Pagination, parsePageParam } from '@/components/workbench/pagination';
+import { Pagination } from '@/components/workbench/pagination';
+import { firstParam, parsePageParam } from '@/lib/pagination';
 import { BlockedState, EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { SectionHeader } from '@/components/workbench/workspace-hero';
 import { getStudentChallengeProjects, getStudentProject, getStudentWorkspace, type ChallengeProjectSummary, type ProjectDetail } from '@/lib/data/student';
@@ -27,9 +28,6 @@ const challengeFilters: Array<{ value: ChallengeFilter; label: string; descripti
   { value: 'complete', label: '已完成', description: '六层挑战均已通过' },
 ];
 
-function singleParam(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 function normalizeFilter(value: string | undefined): ChallengeFilter {
   return challengeFilters.some((filter) => filter.value === value) ? (value as ChallengeFilter) : 'all';
@@ -64,10 +62,10 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
   if (!projectsResult.ok) return <div className="p-6"><ErrorState title="挑战练习加载失败" description={projectsResult.message} /></div>;
 
   const projects = projectsResult.data;
-  const query = (singleParam(params?.q) ?? '').trim();
-  const activeFilter = normalizeFilter(singleParam(params?.status));
+  const query = (firstParam(params?.q) ?? '').trim();
+  const activeFilter = normalizeFilter(firstParam(params?.status));
   const page = parsePageParam(params?.page);
-  const requestedProjectId = singleParam(params?.projectId);
+  const requestedProjectId = firstParam(params?.projectId);
   const queryMatchedProjects = projects.filter((project) => matchesQuery(project, query));
   const filteredProjects = queryMatchedProjects.filter((project) => matchesFilter(project, activeFilter));
   const pageCount = Math.max(1, Math.ceil(filteredProjects.length / CHALLENGE_PAGE_SIZE));

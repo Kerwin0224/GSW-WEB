@@ -51,6 +51,18 @@ test('request body keeps project context for a new project-entry conversation', 
   });
 });
 
+test('request body carries the selected space for a new conversation', () => {
+  assert.deepEqual(buildStudentChatRequestBody({
+    projectId: 'project-1',
+    projectTitle: '静夜思',
+    spaceId: 'space-1',
+  }), {
+    projectId: 'project-1',
+    projectTitle: '静夜思',
+    spaceId: 'space-1',
+  });
+});
+
 test('request body prefers existing conversation over project context', () => {
   assert.deepEqual(buildStudentChatRequestBody({
     conversationId: 'conversation-1',

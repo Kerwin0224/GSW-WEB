@@ -2,7 +2,8 @@ import { AdminLogViewer, type AdminLogLoadState } from '@/components/workbench/a
 import { SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { requireProfile } from '@/lib/auth';
 import { presentLogEvent } from '@/lib/observability/admin-log-presentation';
-import { readFilteredAppEvents, type AppEventFilters } from '@/lib/observability/server-log-store';
+import { readRecentAppEvents, type AppEventFilters } from '@/lib/observability/server-log-store';
+import { firstParam } from '@/lib/pagination';
 
 export default async function AdminLogsPage({
   searchParams,
@@ -15,18 +16,14 @@ export default async function AdminLogsPage({
   await requireProfile('admin');
 
   const params = await searchParams;
-  const pick = (key: string) => {
-    const value = params[key];
-    return Array.isArray(value) ? value[0] : value;
-  };
-  const level = pick('level');
+  const level = firstParam(params.level);
   const filters: AppEventFilters = {
     level: level === 'debug' || level === 'info' || level === 'warn' || level === 'error' ? level : undefined,
-    traceId: pick('trace_id'),
-    userId: pick('user_id'),
-    search: pick('q'),
+    traceId: firstParam(params.trace_id),
+    userId: firstParam(params.user_id),
+    search: firstParam(params.q),
   };
-  const loadState: AdminLogLoadState = await readFilteredAppEvents(filters, 120).then(
+  const loadState: AdminLogLoadState = await readRecentAppEvents(120, filters).then(
     (events) => ({ kind: 'loaded', events: events.map(presentLogEvent) }),
     (error) => {
       if (error instanceof Error) {

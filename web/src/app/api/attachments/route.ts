@@ -23,6 +23,7 @@ const metadataSchema = z.object({
   projectId: z.string().uuid().optional(),
   projectTitle: z.string().trim().min(1).max(80).optional(),
   presetId: z.string().uuid().optional(),
+  spaceId: z.string().uuid().optional(),
 });
 
 type ConversationRow = Database['public']['Tables']['conversations']['Row'];
@@ -59,6 +60,7 @@ async function ensureConversation({
   projectId,
   projectTitle,
   presetId,
+  spaceId,
   title,
 }: {
   conversationId?: string;
@@ -67,6 +69,7 @@ async function ensureConversation({
   projectId?: string;
   projectTitle?: string;
   presetId?: string;
+  spaceId?: string;
   title: string;
 }) {
   const supabase = await createClient();
@@ -109,7 +112,7 @@ async function ensureConversation({
 
   // zod 4.6 起 supabase insert 的泛型对异形联合不再放行，显式标注让两个分支共享同一插入类型
   const insert: Database['public']['Tables']['conversations']['Insert'] = workspace === 'student'
-    ? { owner_id: profileId, project_id: resolvedProjectId, source: 'student_chat' as const, title }
+    ? { owner_id: profileId, project_id: resolvedProjectId, space_id: spaceId ?? null, source: 'student_chat' as const, title }
     : { owner_id: profileId, source: 'teacher_chat' as const, prompt_preset_id: presetId, title };
   // .is('deleted_at', null) 在 INSERT + returning 里作用于 returning 行过滤；
   // 新行默认 deleted_at=null 所以仍会返回。保留它是为了让 deleted-at 守护
@@ -151,6 +154,7 @@ export async function POST(req: Request) {
       projectId: metadata.data.projectId,
       projectTitle: metadata.data.projectTitle,
       presetId: metadata.data.presetId,
+      spaceId: metadata.data.spaceId,
       title: file.name.slice(0, 80),
     });
     if (!conversation.ok) return jsonError(conversation.message, 409);

@@ -2,15 +2,13 @@
   "name": "classical-chinese-workbench-web",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test --experimental-strip-types src/lib/__tests__/*.test.ts",
-    "dev:logged": "mkdir -p .logs && next dev 2>&1 | tee .logs/next-dev.log",
-    "logs:tail": "mkdir -p .logs && touch .logs/next-dev.log .logs/app-events.jsonl && tail -n 120 -f .logs/next-dev.log .logs/app-events.jsonl",
-    "clean": "rm -rf .next"
+    "test": "node --test --experimental-strip-types src/lib/__tests__/*.test.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.52",

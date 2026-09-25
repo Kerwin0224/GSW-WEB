@@ -1,6 +1,6 @@
-# main 分支的迁移文件变更会自动推送到 Supabase 云端。
-# 密钥：repo Settings → Secrets → Actions 里的 SUPABASE_ACCESS_TOKEN 和 SUPABASE_DB_PASSWORD。
-# 为什么只监听 migrations 目录：schema 变更与代码部署解耦，其他文件改动不触发迁移。
+# main 分支的迁移文件变更会自动推送到 Supabase 生产项目。
+# 密钥：repo Settings → Secrets → Actions里的 SUPABASE_ACCESS_TOKEN 和 SUPABASE_DB_PASSWORD。
+# 生产迁移必须串行；Vercel candidate 只有在本 workflow 和运行时探针通过后才能 promote。
 name: supabase-db-push
 
 on:
@@ -10,25 +10,41 @@ on:
       - 'web/supabase/migrations/**'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-migration
+  cancel-in-progress: false
+
 jobs:
   push-migrations:
+    if: github.ref == 'refs/heads/main'
+    environment: production
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
-          version: latest
+          version: 2.117.0
 
-      - name: Link project（.temp 不入库，CI 需显式 link）
+      - name: Link production project
         working-directory: web
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: supabase link --project-ref fxlfjwlwvsnjbgxmjtog
 
-      - name: Push migrations to cloud project
+      - name: Push migrations to production
         working-directory: web
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: supabase db push --linked
+
+      - name: Record migration history
+        working-directory: web
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase migration list --linked

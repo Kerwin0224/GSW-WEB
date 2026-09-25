@@ -1,13 +1,13 @@
 # 部署与后端工作流（GitHub → Vercel / Supabase）
 
-GitHub 是唯一 hub：代码和 schema 都从提交流出，Vercel 和 Supabase 只对 GitHub 做反应，任何一方都不脱离 Git 单独改。
+GitHub 是代码和迁移的源事实；Vercel/Supabase 的配置、部署和验证结果必须回写到仓库或发布记录，任何平台变更都要可追溯。
 
 ## 硬性约束
 
 - **Supabase 就是云端开发：永不起本地栈。**
   **不要** `supabase start` / `db reset` / `test db` / `supabase status`，**不要** Docker，
   **不要** `npm run dev` 起服务去做后端验证。本机不维护本地 Supabase 容器栈，也不该去建。
-  数据库只有一个真源：云端项目 `fxlfjwlwvsnjbgxmjtog`。
+  生产数据库只有一个真源：云端项目 `fxlfjwlwvsnjbgxmjtog`；Preview 使用独立项目或明确的只读边界。
   这条曾经被违反过：文档把「运行时验证」写成「去 Studio 粘一下」，于是 agent 把本该自己
   跑完的验证推给用户。**CLI 的 `--linked` 系列就是云端开发面，跑得动就别找别的路。**
 
@@ -27,13 +27,11 @@ GitHub 是唯一 hub：代码和 schema 都从提交流出，Vercel 和 Supabase
   **本表把它列为「未验证」而不是「可用」，也先别去试**：它会把差异写成迁移文件、
   并可能记进云端迁移历史，试错成本落在生产上。真要用，先跟用户确认。
 
-- **全免费档**：不升级任何付费计划，不开启 Supabase Branching / Marketplace 集成（已评估过，见 git 历史）。遇到可能触发计费的操作（升级计划、付费 add-on、超配额）先停下告知用户。
-- **`web/supabase/migrations/00000000000000_baseline_schema.sql` 只读**：它是 2026-09 从云端 dump 的真实 DDL（旧的清单式 baseline 已废弃，云端迁移历史已 repair 对齐为该 baseline）。schema 变更一律新增迁移文件。
-- **Vercel 预览部署连的是生产数据库**：预览环境只做只读/轻量验证。需要写数据的验证，用 `.scratch/` 里的 `begin; … rollback;` 探针走 `db query`，不要为了测试在预览里真写。
-- **`supabase db push` 本地推不动**：它要 `SUPABASE_DB_PASSWORD`，只存在 GitHub secret 里。**迁移落地只有一条路：push main → CI `supabase-db-push` 自动推。**
-- **云端平台行为以官方文档为准**：Vercel / Supabase / GitHub 的控制台入口、API 端点、CLI 用法，动手前用 `find-docs` skill 查当前文档；这三家改版频繁，凭训练记忆下结论会踩坑。
-  CLI 子命令同理：动手前先 `supabase <命令> --help` 看一眼当下有哪些子命令与 flag，
-  这次就是漏看 `db query` 才绕了一大圈。
+- **全免费档**：不升级任何付费计划，不开启 Supabase Branching / Marketplace 集成。遇到可能触发计费的操作先停下告知用户。
+- **`web/supabase/migrations/00000000000000_baseline_schema.sql` 只读**：schema 变更一律新增迁移文件，不修改 baseline。
+- **生产与预览隔离**：生产 ref 为 `fxlfjwlwvsnjbgxmjtog`；有第二个 Free Supabase 项目时优先用于 Preview。若保持单项目，Preview 只做只读或 `BEGIN … ROLLBACK` 探针，不对生产库执行业务写入。
+- **`supabase db push` 本地推不动**：它需要 GitHub secret 中的数据库密码；生产迁移只通过 `supabase-db-push` workflow 执行。
+- **平台事实以官方文档为准**：Vercel、Supabase、GitHub 的控制台/API/CLI 语法先用 `find-docs` 查询；CLI 子命令先执行 `supabase <命令> --help` 核对当前参数，再运行命令。
 
 ## 日常流程
 
@@ -124,70 +122,60 @@ GitHub 是唯一 hub：代码和 schema 都从提交流出，Vercel 和 Supabase
 
 ### 新功能
 
-1. 开分支 → 写迁移 + 代码 → **按上节在云端验证**（`db push --dry-run` 看顺序，
-   `db query` 跑探针看运行时行为）。没有「本地先跑一遍」这一步。
-2. push 分支 → Vercel 自动出预览部署（链接见 PR 或 Vercel dashboard）。
-3. merge main → Vercel 自动更新生产，CI 自动推送迁移。迁移先于新代码生效，
-   所以迁移必须**向后兼容**（加列加表、加策略；删表删列要等下一次发布）。
+1. 从最新 `main` 建短命分支，把代码、迁移、配置和测试放进同一个 PR；在 `web/` 完成测试、lint、类型检查。
+2. 有迁移时先执行 `supabase db push --dry-run --linked`，再用 `db query` 跑最小探针；RLS、grant、触发器变更必须覆盖真实身份。
+3. push 分支后等待 Vercel Preview `READY` 和 `ci` workflow；有隔离项目时 Preview 连接隔离凭据，单项目模式只做只读或事务回滚验证。
+4. 合并 `main` 后按“生产发布”顺序执行：Vercel candidate → Supabase migration → RLS/运行时探针 → 切换生产流量。迁移失败时不切换 candidate。
 
 ## Git 工作流（与 Vercel 配合）
 
-main = 生产分支，改动按风险分流：
+`main` 是受保护的生产分支，所有变更通过 PR 合并：
 
 | 改动类型 | 流程 |
 |---|---|
-| 文档、注释、单文件小修 | 直接 commit 到 main 并 push；生产部署即构建验证，异常时 Vercel 控制台 Instant Rollback 回退 |
-| 依赖升级、schema 迁移、多文件重构 | 短命分支 + PR：Vercel 预览验证构建（预览 **仅由 PR 触发**，项目 Preview Deployments 设为 Only PRs，只推分支不触发），预览 READY 后 merge，生产自动更新 |
+| 文档、注释、单文件小修 | 短命分支 + PR；通过 `ci` 与 Vercel Preview 后合并 |
+| 依赖升级、schema 迁移、多文件重构 | 同一分支和 PR 提交代码、迁移、配置、测试；迁移顺序和兼容性必须明确 |
+| 紧急修复 | 记录 incident、批准人和绕过原因；补齐 PR、测试、Preview 与发布记录 |
 
-注意：预览部署域有 Vercel SSO 保护，外部 curl 探活只能在生产域做；预览的 READY 状态即构建验证。
+PR 必须通过 `ci`、Vercel Preview `READY`；含迁移时还要有云端 dry-run 证据。Vercel Production 使用 staged/manual promotion，main push 不直接获得生产域名。
 
-## 上线流程（固定三段，按顺序执行）
+## 生产发布（固定顺序）
 
-**第一段：提交前自动门禁（agent 在本地完成，不过全不提交）**
+**第一段：合并前门禁**
 
-| 门禁 | 命令 |
+| 门禁 | 命令或证据 |
 |---|---|
 | 测试 | `npm test` |
 | 类型 | `npx tsc --noEmit` |
 | lint | `npm run lint`（0 error，历史 warning 不新增） |
-| 迁移顺序 | `supabase db push --dry-run --linked`（有迁移时必跑；**不是** `db reset`） |
-| 变更图 | GitNexus `detect_changes({scope:"all"})`，不是 clean 不提交 |
+| 迁移顺序 | `supabase db push --dry-run --linked`（有迁移时必跑） |
+| 变更图 | GitNexus `detect_changes({scope:"all"})`，不能是 partial/truncated |
 
-⚠️ 这一段的 `--dry-run` 只证明「迁移推得动」。**改动 RLS 策略的迁移还要在第三段补探针**——
-见第三段第 3 条。
+**第二段：Preview 验证**
 
-**第二段：预览人工验证（PR READY 后，验证清单给到用户）**
+Preview 有独立项目时连接隔离凭据；单项目模式连接生产项目时只允许只读或可回滚夹具。AI 网关、登录和真实交互链路需要登录账号人工抽验；清单要写明动作和期望结果。Preview 失败或执行了未经批准的生产写入时，不进入合并。
 
-预览连生产库且有 SSO，AI 网关真实链路与交互手感无法自动化，必须登录用户照清单点一遍。清单要求具体到动作和期望结果（例：空白入口问 X → 应归入《Y》）。注意：同一分支反复推送时预览 URL 不变，需强制刷新。
+**第三段：合并后发布**
 
-**第三段：merge 后生产观察（容易漏，固定四件事）**
+1. Vercel 为合并提交生成 Production candidate，保持自定义生产域名不变。
+2. `supabase-db-push` 使用 `production` environment 和并发锁执行迁移；失败立即停止发布。
+3. 执行 `supabase migration list --linked`、`supabase db advisors --linked` 和必要的 RLS/运行时探针。
+4. 探针通过后，在 Vercel 将 candidate promote 到生产；记录 deployment URL、commit、migration list 和探针结果。
+5. 发布后抽验登录、关键读写路径、AI 请求和日志；异常时回滚应用代码，数据库用新的 forward migration 修复。
 
-1. 确认 `gh run list --workflow=supabase-db-push.yml` 结论 success（迁移先于代码生效）。
-   **CI 绿只说明 DDL 跑通了，什么都不证明策略是对的**——继续下一条。
-2. **动过 RLS 策略 / 触发器 / 权限的迁移，跑一次探针**（写法见上节）：
-   `supabase db query --linked -f <探针.sql>`。顺带 `supabase db advisors --linked`
-   看一眼有没有新增 warn。这是唯一能发现策略递归与收窄过头的环节。
-3. 在生产域按同一份清单抽验关键路径。
-4. 查有没有新增 error / 关键 fallback 事件：
+**回滚边界**：Vercel Instant Rollback 只回滚应用代码。Supabase schema、RLS、grant 和数据不做自动 down migration，使用兼容的 forward migration 或补偿脚本。
 
-   ```sql
-   select level, event, count(*) from public.app_log_events
-    where created_at > now() - interval '1 hour' group by 1,2 order by 3 desc;
-   ```
+## 自动化与控制面待办
 
-   异常时 Vercel Instant Rollback 秒回代码；schema 变更保持向后兼容（加列加表），无需回滚库。
-
-## 已固化的自动化（现状清单）
-
-| 项 | 值 |
+| 项 | 状态或规则 |
 |---|---|
-| Vercel 项目 | `gsw-web`，Root Directory=`web`，main 分支=生产 |
-| 生产域名 | https://gsw-web-kerwin01130224-1532s-projects.vercel.app |
-| 自定义域名 | https://www.04251688.xyz（裸域 308 跳转到 www）；DNS 在 Cloudflare 免费档，两条 CNAME（`@` 和 `www`）指向 `f3c6fcae1a46b090.vercel-dns-017.com`，均 DNS only（灰色云，勿开代理）；域名在 Vercel 侧经 TXT 验证使用（曾被旧账号占用，占用权未释放，续期/迁移见 Vercel 工单通道） |
-| Supabase 项目 ref | `fxlfjwlwvsnjbgxmjtog` |
-| 迁移 CI | `.github/workflows/supabase-db-push.yml`（migrations 变更触发，支持 workflow_dispatch 手动跑） |
-| GitHub secrets | `SUPABASE_ACCESS_TOKEN`、`SUPABASE_DB_PASSWORD` |
-| Vercel 环境变量（手动管理） | `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`、`CWB_AUTH_SECRET` |
+| Vercel 正式项目 | `gsw-web`，Root Directory=`web`，Framework=Next.js，main=Production |
+| 错误项目 | `classical-chinese-workbench` 是 Root=`/`、Framework=Other 的空壳项目；确认别名和部署归属后再断开 Git 或归档，暂不自动删除 |
+| PR CI | `.github/workflows/ci.yml`：Node、锁文件安装、测试、lint、类型检查；不在本地运行 Next build/dev |
+| 迁移 CI | `.github/workflows/supabase-db-push.yml`：Supabase CLI 固定 `2.117.0`、`production` environment、并发锁、main 手动触发保护 |
+| GitHub secrets | `SUPABASE_ACCESS_TOKEN`、`SUPABASE_DB_PASSWORD`；后续可拆到 `production` environment secrets |
+| Vercel 环境变量 | `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`、`CWB_AUTH_SECRET`；有隔离项目时 Preview/Production 使用不同 Supabase 配置，单项目模式明确记录共享凭据和只读边界 |
+| GitHub/Vercel 门禁 | `main` 已开启 required PR、`ci` required check、conversation resolution、线性历史，禁止 force push/删除；Vercel Preview/Deployment Checks 仍待配置 |
 
 ## 工具 / 凭据缺失时的补救
 

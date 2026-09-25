@@ -1,11 +1,8 @@
 const SCHOOL_ACCOUNT_PATTERN = /^\d{8}$/;
 
-export function normalizeSchoolLoginId(value: string) {
-  return value.trim();
-}
 
 export function validateSchoolLoginId(value: string) {
-  const loginId = normalizeSchoolLoginId(value);
+  const loginId = value.trim();
   if (!loginId) return { ok: false as const, message: '请输入学号或工号。' };
   if (loginId.includes('@')) return { ok: false as const, message: '请使用学号或工号登录。' };
   if (!SCHOOL_ACCOUNT_PATTERN.test(loginId)) {

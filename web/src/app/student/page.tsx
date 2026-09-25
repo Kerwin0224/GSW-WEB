@@ -53,7 +53,7 @@ export default async function StudentChatPage({ searchParams }: { searchParams?:
             initialActiveProjectId={initialActiveProjectId}
             initialConversation={initialConversation}
             spaces={spacesResult.ok ? spacesResult.data : []}
-            activeSpaceId={params?.spaceId ?? ''}
+            activeSpaceId={params?.spaceId ?? initialConversation?.spaceId ?? ''}
           />
         </CardContent>
       </Card>

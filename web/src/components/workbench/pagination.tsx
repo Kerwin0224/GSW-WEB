@@ -4,7 +4,6 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-export { parsePageParam } from '@/lib/pagination';
 
 /**
  * 服务端分页条。页码放在 URL（searchParam）里，天然可分享、可前进后退，

@@ -27,3 +27,4 @@ output/
 output-*.png
 *-playwright-*.png
 .vercel
+.cloudflare/cache/

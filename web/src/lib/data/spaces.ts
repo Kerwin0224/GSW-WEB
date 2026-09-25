@@ -3,50 +3,47 @@
 /**
  * spaces.ts —— 空间的读写面。
  *
- * 空间属于**老师**：老师建空间、写主题、通过班批量拉学生；学生切换自己被拉进去的空间。
+ * 空间属于**老师**：老师建空间、写主题、通过班批量拉学生，也可以从自己任教的班级学生中单独加入；学生切换自己被拉进去的空间。
  *
- * 这个模块刻意不提供「加成员 / 移成员」类接口。成员关系由 space_classes 一条边派生
- * （一行 = 该班全部学生都在内），所以对外只有「拉班 / 取消拉班」。这样班册变动零维护
- * （新生自动进、退学自动出），全库没有第二份名册需要同步。
+ * 班级成员仍由 space_classes 派生（一行 = 该班全部学生都在内），直接成员由 space_members
+ * 单独记录。两类成员都经过 RLS 和空间所属校验；移出只影响空间可见性，不删除学习数据。
  *
- * 代价是明确的：不支持「只拉班里的部分学生」与「逐个移出学生」。要支持就得引入
- * 第二份名册真源，而那份真源不响应班册变化、学生转学后会留孤儿行。
- *
- * 写入口只有两个：create_space RPC（建空间 + 写主题 + 首次拉班，一次调用）与
- * 对 space_classes 的直接增删。两者都是 security invoker —— RLS 仍是唯一防线，
- * 应用层不做租户过滤（与 admin.ts 的口径一致：DB 是唯一闸门）。
+ * 写入口包括：create_space RPC（建空间 + 写主题/科目/颜色 + 首次拉班）、space_classes
+ * 班级增删、space_members 学生增删。全部是 security invoker，RLS 是唯一租户闸门。
  */
 
 import { revalidatePath } from 'next/cache';
 
 import { createClient } from '@/lib/supabase/server';
+import type { SpaceColorKey } from '@/lib/supabase/database.types';
+import { SPACE_COLOR_KEYS } from '@/lib/space-colors';
 import { fail, ok, requireRole, type ActionState, type DataResult } from './common';
 
+
 export type SpaceClassSummary = { classId: string; className: string; studentCount: number };
+export type SpaceStudentSummary = { id: string; displayName: string; loginId: string | null; className?: string | null };
+export type SpaceStudentOption = { id: string; displayName: string; loginId: string | null; className: string };
 
 export type TeacherSpace = {
   id: string;
   name: string;
   theme: string;
+  subject: string | null;
+  colorKey: SpaceColorKey;
   classes: SpaceClassSummary[];
-  /** 空间覆盖的学生总数（各班去重后；MVP 一个学生只属一个班，直接相加即可）。 */
+  directStudents: SpaceStudentSummary[];
   studentCount: number;
 };
 
-/** 学生视角：只要够渲染切换器。 */
-export type StudentSpace = { id: string; name: string };
+/** 学生视角：空间名称、科目和颜色都足够渲染切换器。 */
+export type StudentSpace = { id: string; name: string; subject: string | null; colorKey: SpaceColorKey };
 
 function revalidateSpaceSurfaces() {
   revalidatePath('/teacher');
   revalidatePath('/student');
 }
 
-/**
- * 我建的（活跃）空间，含已拉的班与各班学生数。
- *
- * 学生数取 class_memberships 的 role='student' 计数而非另立名册——名册的唯一真源
- * 就是班级成员关系，这里只是聚合它。
- */
+/** 我建的活跃空间，含班级派生成员和直接加入的学生。 */
 export async function listTeacherSpaces(): Promise<DataResult<TeacherSpace[]>> {
   const role = await requireRole('teacher');
   if (!role.ok) return role;
@@ -54,7 +51,7 @@ export async function listTeacherSpaces(): Promise<DataResult<TeacherSpace[]>> {
 
   const { data: spaces, error } = await supabase
     .from('spaces')
-    .select('id,name,theme,space_classes(class_id,classes(name))')
+    .select('id,name,theme,subject,color_key,space_classes(class_id,classes(name)),space_members(student_id)')
     .eq('owner_id', role.data.id)
     .eq('status', 'active')
     .order('created_at', { ascending: true });
@@ -64,21 +61,41 @@ export async function listTeacherSpaces(): Promise<DataResult<TeacherSpace[]>> {
     id: string;
     name: string;
     theme: string;
+    subject: string | null;
+    color_key: SpaceColorKey;
     space_classes: Array<{ class_id: string; classes: { name: string | null } | Array<{ name: string | null }> | null }> | null;
+    space_members: Array<{ student_id: string }> | null;
   };
   const rows = (spaces ?? []) as unknown as Row[];
   const classIds = Array.from(new Set(rows.flatMap((row) => (row.space_classes ?? []).map((edge) => edge.class_id))));
+  const directStudentIds = Array.from(new Set(rows.flatMap((row) => (row.space_members ?? []).map((member) => member.student_id))));
 
   const studentCountByClass = new Map<string, number>();
+  const classStudentIdsByClass = new Map<string, string[]>();
   if (classIds.length > 0) {
     const { data: memberships, error: membershipError } = await supabase
       .from('class_memberships')
-      .select('class_id')
+      .select('class_id,profile_id')
       .in('class_id', classIds)
       .eq('role', 'student');
     if (membershipError) return fail('error', `班级学生数加载失败：${membershipError.message}`);
-    for (const membership of (memberships ?? []) as Array<{ class_id: string }>) {
+    for (const membership of (memberships ?? []) as Array<{ class_id: string; profile_id: string }>) {
       studentCountByClass.set(membership.class_id, (studentCountByClass.get(membership.class_id) ?? 0) + 1);
+      const ids = classStudentIdsByClass.get(membership.class_id) ?? [];
+      ids.push(membership.profile_id);
+      classStudentIdsByClass.set(membership.class_id, ids);
+    }
+  }
+
+  const profileById = new Map<string, { display_name: string; login_id: string | null }>();
+  if (directStudentIds.length > 0) {
+    const { data: profiles, error: profileError } = await supabase
+      .from('profiles')
+      .select('id,display_name,login_id')
+      .in('id', directStudentIds);
+    if (profileError) return fail('error', `空间学生资料加载失败：${profileError.message}`);
+    for (const profile of (profiles ?? []) as Array<{ id: string; display_name: string; login_id: string | null }>) {
+      profileById.set(profile.id, { display_name: profile.display_name, login_id: profile.login_id });
     }
   }
 
@@ -91,22 +108,67 @@ export async function listTeacherSpaces(): Promise<DataResult<TeacherSpace[]>> {
         studentCount: studentCountByClass.get(edge.class_id) ?? 0,
       };
     });
+    const derivedStudentIds = new Set((row.space_classes ?? []).flatMap((edge) => classStudentIdsByClass.get(edge.class_id) ?? []));
+    const directStudents = (row.space_members ?? []).flatMap((member) => {
+      const profile = profileById.get(member.student_id);
+      return profile ? [{ id: member.student_id, displayName: profile.display_name, loginId: profile.login_id }] : [];
+    });
+    const extraDirectStudents = directStudents.filter((student) => !derivedStudentIds.has(student.id));
     return {
       id: row.id,
       name: row.name,
       theme: row.theme,
+      subject: row.subject,
+      colorKey: row.color_key,
       classes,
-      studentCount: classes.reduce((sum, klass) => sum + klass.studentCount, 0),
+      directStudents,
+      studentCount: classes.reduce((sum, klass) => sum + klass.studentCount, 0) + extraDirectStudents.length,
     };
   }));
 }
 
-/**
- * 学生视角：我被拉进去的空间。
- *
- * 不加任何学生侧过滤——`spaces_select` 策略里的 is_my_space(id) 已经就是
- * 「我在这个空间的某个班里，且空间所有者仍任教该班」。查不到就是空。
- */
+/** 教师任教班级里的学生，作为空间直接成员的可选名册。 */
+export async function listTeacherStudentOptions(): Promise<DataResult<SpaceStudentOption[]>> {
+  const role = await requireRole('teacher');
+  if (!role.ok) return role;
+  const supabase = await createClient();
+  const { data: teacherClasses, error: classError } = await supabase
+    .from('class_memberships')
+    .select('class_id,classes(name)')
+    .eq('profile_id', role.data.id)
+    .eq('role', 'teacher');
+  if (classError) return fail('error', `任教班级加载失败：${classError.message}`);
+  const classRows = (teacherClasses ?? []) as Array<{ class_id: string; classes: { name: string | null } | Array<{ name: string | null }> | null }>;
+  if (classRows.length === 0) return ok([]);
+
+  const classNameById = new Map(classRows.map((row) => {
+    const klass = Array.isArray(row.classes) ? row.classes[0] : row.classes;
+    return [row.class_id, klass?.name?.trim() || '未命名班级'] as const;
+  }));
+  const { data: memberships, error: studentError } = await supabase
+    .from('class_memberships')
+    .select('class_id,profile_id,profiles!inner(id,display_name,login_id,status)')
+    .in('class_id', classRows.map((row) => row.class_id))
+    .eq('role', 'student');
+  if (studentError) return fail('error', `学生名册加载失败：${studentError.message}`);
+
+  const options = new Map<string, SpaceStudentOption>();
+  for (const row of (memberships ?? []) as Array<{
+    class_id: string;
+    profile_id: string;
+    profiles: { id: string; display_name: string; login_id: string | null; status: string } | Array<{ id: string; display_name: string; login_id: string | null; status: string }> | null;
+  }>) {
+    const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+    if (!profile || profile.status !== 'active') continue;
+    const existing = options.get(profile.id);
+    const className = classNameById.get(row.class_id) ?? '未命名班级';
+    if (existing) existing.className = Array.from(new Set([...existing.className.split('、'), className])).join('、');
+    else options.set(profile.id, { id: profile.id, displayName: profile.display_name, loginId: profile.login_id, className });
+  }
+  return ok(Array.from(options.values()));
+}
+
+/** 学生视角：我被拉进去的空间。 */
 export async function listStudentSpaces(): Promise<DataResult<StudentSpace[]>> {
   const role = await requireRole('student');
   if (!role.ok) return role;
@@ -114,19 +176,15 @@ export async function listStudentSpaces(): Promise<DataResult<StudentSpace[]>> {
 
   const { data, error } = await supabase
     .from('spaces')
-    .select('id,name')
+    .select('id,name,subject,color_key')
     .eq('status', 'active')
     .order('created_at', { ascending: true });
   if (error) return fail('error', `空间加载失败：${error.message}`);
-  return ok((data ?? []) as StudentSpace[]);
+  return ok((data ?? []).map((space) => ({ id: space.id, name: space.name, subject: space.subject, colorKey: space.color_key })));
 }
 
 /**
- * 建空间 或 改已有空间（名字 / 主题 / 首次拉班）。表单驱动的单一入口。
- *
- * 走 create_space RPC 而不是裸 insert：建空间、写主题、拉一个班是三张表的写，
- * 收在一次调用里调用方就不必自己保证顺序与事务性。RPC 是幂等的（同名活跃空间复用），
- * 所以表单重复提交不会建出两个空间。
+ * 建空间或改已有空间。科目和颜色属于空间，归类规则仍由 theme 单独表达。
  */
 export async function saveSpaceAction(_previous: ActionState, formData: FormData): Promise<ActionState> {
   const role = await requireRole('teacher');
@@ -135,23 +193,22 @@ export async function saveSpaceAction(_previous: ActionState, formData: FormData
   const spaceId = String(formData.get('space_id') ?? '').trim();
   const name = String(formData.get('name') ?? '').trim();
   const theme = String(formData.get('theme') ?? '').trim();
+  const subject = String(formData.get('subject') ?? '').trim();
+  const colorKey = String(formData.get('color_key') ?? 'pine').trim();
   const classId = String(formData.get('class_id') ?? '').trim();
   if (!name) return { ok: false, message: '请填写空间名称。', errors: { name: '空间名称不能为空。' } };
+  if (!subject) return { ok: false, message: '请填写空间科目。', errors: { subject: '空间科目不能为空。' } };
+  if (subject.length > 40) return { ok: false, message: '科目名称不能超过 40 个字符。', errors: { subject: '科目名称过长。' } };
+  if (!SPACE_COLOR_KEYS.includes(colorKey as SpaceColorKey)) return { ok: false, message: '请选择有效的空间颜色。' };
 
   const supabase = await createClient();
-
-  // 有 space_id 就是改已有空间。改名走不了 RPC（RPC 按 (owner, name) 幂等，改名会被
-  // 当成建一个新空间），所以直接 update —— RLS 的 spaces_update 策略管着权限。
   if (spaceId) {
-    const { error } = await supabase.from('spaces').update({ name, theme }).eq('id', spaceId);
+    const { error } = await supabase.from('spaces').update({ name, theme, subject: subject || null, color_key: colorKey as SpaceColorKey }).eq('id', spaceId);
     if (error) return { ok: false, message: `空间保存失败：${error.message}` };
     revalidateSpaceSurfaces();
     return { ok: true, message: '空间已保存。' };
   }
 
-  // 新建前先查同名：create_space 按 (owner, name) 幂等复用，命中就走 update set theme
-  // 并返回同一个 uuid。调用方拿不到「新建 vs 复用」的信号，老师会以为建了第二个空间，
-  // 实际是把第一个空间的口径改了——而 theme 就是归类提示词本身。
   const { data: existing, error: existingError } = await supabase
     .from('spaces')
     .select('id')
@@ -160,20 +217,43 @@ export async function saveSpaceAction(_previous: ActionState, formData: FormData
     .eq('status', 'active')
     .maybeSingle();
   if (existingError) return { ok: false, message: `空间查重失败：${existingError.message}` };
-  if (existing) {
-    return { ok: false, message: `已存在同名空间「${name}」。换个名字，或直接编辑它。`, errors: { name: '空间名称重复。' } };
-  }
+  if (existing) return { ok: false, message: `已存在同名空间「${name}」。换个名字，或直接编辑它。`, errors: { name: '空间名称重复。' } };
 
-  // 新建：建空间 + 写主题 + 首次拉班是三张表的写，收在一次 RPC 调用里。
-  const { error } = await supabase.rpc('create_space', {
+  const { error } = await supabase.rpc('create_space_v2', {
     p_name: name,
     p_theme: theme,
     p_class_id: classId || null,
+    p_subject: subject || null,
+    p_color_key: colorKey as SpaceColorKey,
   });
   if (error) return { ok: false, message: `空间保存失败：${error.message}` };
 
   revalidateSpaceSurfaces();
   return { ok: true, message: classId ? '空间已建好，该班学生已进入这个空间。' : '空间已建好。' };
+}
+
+/** 直接加入或移出一个学生；班级派生成员仍由 space_classes 管理。 */
+export async function setSpaceStudentAction(_previous: ActionState, formData: FormData): Promise<ActionState> {
+  const role = await requireRole('teacher');
+  if (!role.ok) return { ok: false, message: role.message };
+
+  const spaceId = String(formData.get('space_id') ?? '').trim();
+  const studentId = String(formData.get('student_id') ?? '').trim();
+  const intent = String(formData.get('intent') ?? '').trim();
+  if (!spaceId || !studentId) return { ok: false, message: '缺少空间或学生。' };
+
+  const supabase = await createClient();
+  if (intent === 'remove') {
+    const { error } = await supabase.from('space_members').delete().eq('space_id', spaceId).eq('student_id', studentId);
+    if (error) return { ok: false, message: `移出学生失败：${error.message}` };
+    revalidateSpaceSurfaces();
+    return { ok: true, message: '已移出该学生。' };
+  }
+
+  const { error } = await supabase.from('space_members').insert({ space_id: spaceId, student_id: studentId, created_by: role.data.id });
+  if (error) return { ok: false, message: `加入学生失败：${error.message}` };
+  revalidateSpaceSurfaces();
+  return { ok: true, message: '已加入该学生。' };
 }
 
 /**

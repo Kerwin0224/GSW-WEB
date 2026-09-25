@@ -27,11 +27,11 @@ import type { DailyArchiveSummary, ProjectSummary, StudentConversationInitial } 
 import type { StudentSpace } from '@/lib/data/spaces';
 import {
   buildStudentChatRequestBody,
-  buildStudentConversationHref,
   shouldClassifyProjectForStudentTurn,
   shouldReplaceStudentConversationHref,
   type StudentAssignmentData,
 } from '@/lib/student-chat-contract';
+import { SPACE_COLOR_DOT_CLASSES } from '@/lib/space-colors';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useSidebarScroll } from '@/hooks/use-sidebar-scroll';
@@ -178,15 +178,14 @@ export function StudentChatClient({
   const chatTransport = useMemo(() => new DefaultChatTransport<StudentChatMessage>({
     api: '/api/student/chat',
     fetch: chatFetch,
-    // 当前空间随每次请求带上：服务端只在「新建会话的首问」用它挑归类口径，
-    // 已有会话继承自己的项目，不受它影响。不落库，所以没有需要同步的状态。
+    // 当前空间随每次请求带上；服务端会把它写入新会话，已有会话优先使用自身绑定的空间。
     body: activeSpaceId ? { spaceId: activeSpaceId } : {},
   }), [chatFetch, activeSpaceId]);
   const initialConversationSignature = useMemo(() => initialConversation
     ? JSON.stringify({
       id: initialConversation.id,
       projectId: initialConversation.projectId ?? '',
-      conversationFinalized: initialConversation.conversationFinalized,
+      spaceId: initialConversation.spaceId ?? '',
       messages: initialConversation.messages.map((message) => ({
         id: message.id,
         role: message.role,
@@ -260,8 +259,9 @@ export function StudentChatClient({
     conversationId: conversationIdRef.current || conversationId,
     projectId: activeProjectIdRef.current || activeProjectId,
     projectTitle: activeProjectTitleRef.current || activeProject?.name,
+    spaceId: activeSpaceId,
     fallback,
-  }), [activeProject?.name, activeProjectId, activeProjectIdRef, activeProjectTitleRef, conversationId]);
+  }), [activeProject?.name, activeProjectId, activeProjectIdRef, activeProjectTitleRef, activeSpaceId, conversationId]);
 
   const handleDequeue = useCallback((next: QueuedStudentMessage) => {
     setLastSubmittedInput(next.text);
@@ -338,11 +338,12 @@ export function StudentChatClient({
     const form = new FormData();
     form.set('file', file);
     form.set('metadata', JSON.stringify(conversationId
-      ? { workspace: 'student', conversationId }
+      ? { workspace: 'student', conversationId, spaceId: activeSpaceId || undefined }
       : {
           workspace: 'student',
           projectId: activeProjectId || undefined,
           projectTitle: activeProject?.name,
+          spaceId: activeSpaceId || undefined,
         }));
     try {
       const response = await fetch('/api/attachments', { method: 'POST', body: form });
@@ -517,7 +518,11 @@ export function StudentChatClient({
                       aria-pressed={active}
                       className={cn('min-h-11 cursor-pointer rounded-xl border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', active ? 'border-primary/55 bg-primary/10 text-primary' : 'border-border/65 bg-background/76 hover:bg-muted')}
                     >
-                      {space.name}
+                      <span className="flex items-center gap-1.5">
+                        <span className={cn('size-2 rounded-full', SPACE_COLOR_DOT_CLASSES[space.colorKey])} aria-hidden="true" />
+                        {space.subject || '未设置科目'}
+                      </span>
+                      <span className="ml-2">{space.name}</span>
                     </button>
                   );
                 })}

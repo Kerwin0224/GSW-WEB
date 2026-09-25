@@ -44,16 +44,19 @@ export function buildStudentChatRequestBody({
   conversationId,
   projectId,
   projectTitle,
+  spaceId,
   fallback,
 }: {
   conversationId?: string;
   projectId?: string;
   projectTitle?: string;
+  spaceId?: string;
   fallback?: Record<string, unknown>;
 }) {
-  if (conversationId) return { conversationId };
-  if (projectId) return projectTitle ? { projectId, projectTitle } : { projectId };
-  return fallback ?? {};
+  const space = spaceId ? { spaceId } : {};
+  if (conversationId) return { conversationId, ...space };
+  if (projectId) return { projectId, ...(projectTitle ? { projectTitle } : {}), ...space };
+  return { ...(fallback ?? {}), ...space };
 }
 
 export function buildStudentConversationHref(conversationId: string) {

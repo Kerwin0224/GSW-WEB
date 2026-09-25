@@ -40,6 +40,7 @@ export const accountPasswordSchema = z
   });
 
 export const avatarUpdateSchema = z.object({ avatarKey: avatarKeySchema });
+export const subjectUpdateSchema = z.object({ subject: z.string().trim().max(40, '科目不能超过 40 个字符') });
 
 const postgresUuidSchema = z.string().regex(
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,

@@ -29,6 +29,7 @@ export type OrgSchoolUser = {
   loginId: string | null;
   displayName: string;
   role: 'admin' | 'teacher' | 'student';
+  subject: string | null;
   status: 'active' | 'disabled';
   mustChangePassword: boolean;
   createdAt: string;
@@ -157,7 +158,7 @@ export async function getOrgSchoolDetail(schoolId: string): Promise<DataResult<{
 
   const [{ data: schoolRow, error: schoolError }, { data: users, error: usersError }, { data: classes, error: classesError }] = await Promise.all([
     supabase.from('schools').select('id, name, status, created_at').eq('id', schoolId).maybeSingle(),
-    supabase.from('profiles').select('id, login_id, display_name, role, status, must_change_password, created_at')
+    supabase.from('profiles').select('id, login_id, display_name, role, subject, status, must_change_password, created_at')
       .eq('school_id', schoolId).in('role', ['admin', 'teacher', 'student']).order('created_at', { ascending: true }),
     supabase.from('classes').select('id, name, grade, status').eq('school_id', schoolId).order('created_at', { ascending: true }),
   ]);
@@ -173,6 +174,7 @@ export async function getOrgSchoolDetail(schoolId: string): Promise<DataResult<{
       loginId: row.login_id,
       displayName: row.display_name,
       role: row.role as OrgSchoolUser['role'],
+      subject: row.subject,
       status: row.status as OrgSchoolUser['status'],
       mustChangePassword: row.must_change_password,
       createdAt: row.created_at,
@@ -199,7 +201,7 @@ export async function createSchoolAdmin(formData: FormData): Promise<ActionState
   if (!owned.ok) return { ok: false, message: owned.message };
 
   const supabase = await createClient();
-  const { data: profileId, error: provisionError } = await supabase.rpc('provision_school_account', {
+  const { error: provisionError } = await supabase.rpc('provision_school_account', {
     p_login_id: loginId,
     p_display_name: displayName,
     p_role: 'admin',

@@ -91,15 +91,33 @@ test('判定函数对 anon 开放 execute（RLS 以调用者身份求值）', ()
     '绝不能 revoke from anon：那会让策略自己失效');
 });
 
-test('成员关系由班派生：学习数据表一列不加', () => {
+test('空间不拥有学习数据，但学生会话可以绑定空间', () => {
   const text = allMigrationsText();
 
-  // 「成员由班派生」这一选择的价值全在这里：空间不拥有任何学习数据，
-  // 所以整个模块可以被删除而不牵动 projects / conversations。
-  assert.doesNotMatch(text, /alter table public\.projects\s+add column[^;]*space_id/i);
-  assert.doesNotMatch(text, /alter table public\.conversations\s+add column[^;]*space_id/i);
-  // 单例闸门不该被本次改动碰到：「一个学生一个行政班」是学校侧的真理，与多空间正交。
+  assert.doesNotMatch(text, /alter table public\.projects\s+add column[^;]*space_id/i, '项目不复制空间归属');
+  assert.match(text, /alter table public\.conversations\s+add column if not exists space_id/i, '会话应保存学生选中的空间');
+  assert.match(text, /conversations_validate_space_contract/, '会话空间必须经过可访问性校验');
+  assert.match(newestFunctionBody('validate_conversation_space_contract'), /tg_op = 'INSERT'/, '归档或软删已有会话时不应重新校验已失效空间');
+  assert.doesNotMatch(text, /alter table public\.conversations\s+add column[^;]*class_id/i, '空间不能替换会话的行政班归属');
   assert.doesNotMatch(text, /drop index if exists public\.class_memberships_one_student_class_idx/);
+});
+
+test('空间支持直接学生成员，且成员可见性仍走 is_my_space', () => {
+  const text = allMigrationsText();
+  assert.match(text, /create table if not exists public\.space_members/);
+  assert.match(text, /primary key \(space_id, student_id\)/);
+  assert.match(newestPolicy('space_members_manage'), /valid_space_member\(space_id, student_id\)/);
+  assert.match(newestFunctionBody('is_my_space'), /from public\.space_members sm/);
+  assert.match(newestFunctionBody('valid_space_member'), /p\.role = 'student'/);
+});
+
+test('空间科目和颜色是结构化字段，并可由教师自助维护默认科目', () => {
+  const text = allMigrationsText();
+  assert.match(text, /alter table public\.profiles\s+add column if not exists subject text/);
+  assert.match(text, /alter table public\.spaces\s+add column if not exists subject text/);
+  assert.match(text, /add column if not exists color_key text not null default 'pine'/);
+  assert.match(text, /update_own_subject\(text\)/);
+  assert.match(text, /create or replace function public\.create_space_v2\([\s\S]*p_color_key text default 'pine'/);
 });
 
 test('建空间与拉班各只有一个写入口', () => {

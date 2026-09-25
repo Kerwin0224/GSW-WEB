@@ -4,6 +4,7 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export const APP_ROLES = ['org_admin', 'admin', 'teacher', 'student'] as const;
 export type AppRole = (typeof APP_ROLES)[number];
 export type AvatarKey = 'ink' | 'pine' | 'cinnabar' | 'moon' | 'bamboo' | 'plum';
+export type SpaceColorKey = 'ink' | 'pine' | 'cinnabar' | 'moon' | 'bamboo' | 'plum';
 export type ModelTier = 'flash' | 'advanced';
 export type ProviderCapability =
   | 'student_chat'
@@ -33,8 +34,8 @@ export interface Database {
   public: {
     Tables: {
       profiles: {
-        Row: { id: string; login_id: string | null; display_name: string; role: AppRole; status: 'active' | 'disabled'; avatar_key: AvatarKey; session_version: number; must_change_password: boolean; organization_id: string | null; school_id: string | null; created_at: string; updated_at: string };
-        Insert: { id: string; login_id?: string | null; display_name: string; role: AppRole; status?: 'active' | 'disabled'; avatar_key?: AvatarKey; must_change_password?: boolean; organization_id?: string | null; school_id?: string | null };
+        Row: { id: string; login_id: string | null; display_name: string; role: AppRole; status: 'active' | 'disabled'; avatar_key: AvatarKey; session_version: number; must_change_password: boolean; subject: string | null; organization_id: string | null; school_id: string | null; created_at: string; updated_at: string };
+        Insert: { id: string; login_id?: string | null; display_name: string; role: AppRole; status?: 'active' | 'disabled'; avatar_key?: AvatarKey; must_change_password?: boolean; subject?: string | null; organization_id?: string | null; school_id?: string | null };
         Update: Partial<Database['public']['Tables']['profiles']['Insert']>;
       };
       organizations: {
@@ -62,11 +63,17 @@ export interface Database {
        * school_id 不可变、owner 必须是同校教师，两条都由触发器钉住，不靠应用层自觉。
        */
       spaces: {
-        Row: { id: string; school_id: string; owner_id: string; name: string; theme: string; status: 'active' | 'archived'; created_at: string; updated_at: string };
-        Insert: { id?: string; school_id: string; owner_id: string; name: string; theme?: string; status?: 'active' | 'archived' };
+        Row: { id: string; school_id: string; owner_id: string; name: string; theme: string; subject: string | null; color_key: SpaceColorKey; status: 'active' | 'archived'; created_at: string; updated_at: string };
+        Insert: { id?: string; school_id: string; owner_id: string; name: string; theme?: string; subject?: string | null; color_key?: SpaceColorKey; status?: 'active' | 'archived' };
         Update: Partial<Database['public']['Tables']['spaces']['Insert']>;
       };
-      /** 成员关系就是这条边：一行 = 该班全部学生都在这个空间里。 */
+      /** 直接加入空间的学生；班级成员仍由 space_classes 派生。 */
+      space_members: {
+        Row: { space_id: string; student_id: string; created_by: string | null; created_at: string };
+        Insert: { space_id: string; student_id: string; created_by?: string | null };
+        Update: Partial<Database['public']['Tables']['space_members']['Insert']>;
+      };
+      /** 班级派生成员关系：一行代表该班全部学生。 */
       space_classes: {
         Row: { space_id: string; class_id: string; created_by: string | null; created_at: string };
         Insert: { space_id: string; class_id: string; created_by?: string | null };
@@ -108,8 +115,8 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['projects']['Insert']>;
       };
       conversations: {
-        Row: { id: string; owner_id: string; class_id: string | null; project_id: string | null; source: InteractionSource; prompt_preset_id: string | null; title: string | null; deleted_at: string | null; finalized_at: string | null; created_at: string; updated_at: string };
-        Insert: { id?: string; owner_id: string; class_id?: string | null; project_id?: string | null; source: InteractionSource; prompt_preset_id?: string | null; title?: string | null; deleted_at?: string | null; finalized_at?: string | null };
+        Row: { id: string; owner_id: string; class_id: string | null; project_id: string | null; space_id: string | null; source: InteractionSource; prompt_preset_id: string | null; title: string | null; deleted_at: string | null; finalized_at: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; owner_id: string; class_id?: string | null; project_id?: string | null; space_id?: string | null; source: InteractionSource; prompt_preset_id?: string | null; title?: string | null };
         Update: Partial<Database['public']['Tables']['conversations']['Insert']>;
       };
       conversation_messages: {
@@ -150,15 +157,19 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
-      /** 建空间 + 写主题 + 拉一个班，一次调用；同名活跃空间幂等复用。 */
-      create_space: {
-        Args: { p_name: string; p_theme: string; p_class_id?: string | null };
+      /** 建空间 + 写主题/科目/颜色 + 拉一个班；同名活跃空间幂等复用。 */
+      create_space_v2: {
+        Args: { p_name: string; p_theme: string; p_class_id?: string | null; p_subject?: string | null; p_color_key?: SpaceColorKey };
         Returns: string;
       };
       /** 再拉一个班。返回新增边数：0 表示本来就在。 */
       pull_class_into_space: {
         Args: { p_space_id: string; p_class_id: string };
         Returns: number;
+      };
+      update_own_subject: {
+        Args: { p_subject: string | null };
+        Returns: string | null;
       };
       change_own_password: {
         Args: { p_current_password: string; p_new_password: string };

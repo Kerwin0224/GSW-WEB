@@ -30,6 +30,7 @@ export default async function SettingsPage() {
         displayName={profile.display_name}
         loginId={profile.login_id ?? ''}
         mustChangePassword={profile.must_change_password}
+        subject={profile.subject}
       />
     </AppShell>
   );

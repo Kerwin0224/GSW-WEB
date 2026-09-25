@@ -14,9 +14,6 @@
 import { formatBloomLevelCriteria } from './bloom-levels.ts';
 import { looksLikeTitleLine, normalizeConcreteProjectTitle, normalizeProjectSubtitle } from './project-title.ts';
 
-// ─── 项目标题规范化（已迁至 project-title.ts，此处重导出保持调用点稳定）────────
-
-export { normalizeConcreteProjectTitle, normalizeProjectSubtitle } from './project-title.ts';
 
 // ─── 已知标题直查 ────────────────────────────────────────────────────────────
 

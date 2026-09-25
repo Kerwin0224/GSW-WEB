@@ -28,6 +28,10 @@ const passwordResponseSchema = z.union([
   z.object({ ok: z.literal(true), message: z.string() }),
   z.object({ error: z.string() }),
 ]);
+const subjectResponseSchema = z.union([
+  z.object({ ok: z.literal(true), subject: z.string().nullable() }),
+  z.object({ error: z.string() }),
+]);
 
 type Feedback =
   | { readonly kind: 'idle'; readonly message: '' }
@@ -38,6 +42,7 @@ type AccountSettingsProps = {
   readonly displayName: string;
   readonly loginId: string;
   readonly accountRole: AppRole;
+  readonly subject?: string | null;
   /** 初始密码=学号/工号的账号首登未改密时为 true，页面顶部展示强制提示。 */
   readonly mustChangePassword?: boolean;
 };
@@ -46,14 +51,18 @@ type PasswordField = 'currentPassword' | 'newPassword' | 'confirmPassword';
 
 const idleFeedback: Feedback = { kind: 'idle', message: '' };
 
-export function AccountSettings({ avatarKey, displayName, loginId, accountRole, mustChangePassword = false }: AccountSettingsProps) {
+export function AccountSettings({ avatarKey, displayName, loginId, accountRole, subject = null, mustChangePassword = false }: AccountSettingsProps) {
   const router = useRouter();
   const [savedAvatarKey, setSavedAvatarKey] = useState(avatarKey);
   const [selectedAvatarKey, setSelectedAvatarKey] = useState(avatarKey);
+  const [savedSubject, setSavedSubject] = useState(subject ?? '');
+  const [selectedSubject, setSelectedSubject] = useState(subject ?? '');
   const [avatarFeedback, setAvatarFeedback] = useState<Feedback>(idleFeedback);
+  const [subjectFeedback, setSubjectFeedback] = useState<Feedback>(idleFeedback);
   const [passwordFeedback, setPasswordFeedback] = useState<Feedback>(idleFeedback);
   const [invalidPasswordField, setInvalidPasswordField] = useState<PasswordField | null>(null);
   const [isSavingAvatar, setIsSavingAvatar] = useState(false);
+  const [isSavingSubject, setIsSavingSubject] = useState(false);
   const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   const saveAvatar = async () => {
@@ -84,6 +93,32 @@ export function AccountSettings({ avatarKey, displayName, loginId, accountRole, 
       setAvatarFeedback({ kind: 'error', message: '网络连接失败，请稍后重试。' });
     } finally {
       setIsSavingAvatar(false);
+    }
+  };
+
+  const saveSubject = async () => {
+    setIsSavingSubject(true);
+    setSubjectFeedback(idleFeedback);
+    try {
+      const response = await fetch('/api/account/subject', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ subject: selectedSubject }),
+      });
+      const parsed = subjectResponseSchema.safeParse(await response.json());
+      if (!parsed.success || !response.ok || !('ok' in parsed.data)) {
+        setSubjectFeedback({ kind: 'error', message: parsed.success && 'error' in parsed.data ? parsed.data.error : '科目保存失败，请稍后重试。' });
+        return;
+      }
+      setSavedSubject(parsed.data.subject ?? '');
+      setSelectedSubject(parsed.data.subject ?? '');
+      setSubjectFeedback({ kind: 'success', message: '任教学科已更新。' });
+      router.refresh();
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      setSubjectFeedback({ kind: 'error', message: '网络连接失败，请稍后重试。' });
+    } finally {
+      setIsSavingSubject(false);
     }
   };
 
@@ -218,6 +253,26 @@ export function AccountSettings({ avatarKey, displayName, loginId, accountRole, 
                 {isSavingAvatar ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}
                 {isSavingAvatar ? '保存中' : '保存头像'}
               </Button>
+
+              {accountRole === 'teacher' ? (
+                <div className="space-y-3 border-t border-border/60 pt-5">
+                  <div className="space-y-2">
+                    <Label htmlFor="subject">任教学科</Label>
+                    <Input id="subject" value={selectedSubject} onChange={(event) => setSelectedSubject(event.target.value)} placeholder="例如：语文" maxLength={40} />
+                    <p className="text-xs text-muted-foreground">新建空间时会默认使用这个科目；已有空间仍可在空间编辑中单独调整。</p>
+                  </div>
+                  {subjectFeedback.kind !== 'idle' ? (
+                    <Alert variant={subjectFeedback.kind === 'error' ? 'destructive' : 'default'} role={subjectFeedback.kind === 'error' ? 'alert' : 'status'}>
+                      <AlertTitle>{subjectFeedback.kind === 'error' ? '科目未保存' : '保存成功'}</AlertTitle>
+                      <AlertDescription>{subjectFeedback.message}</AlertDescription>
+                    </Alert>
+                  ) : null}
+                  <Button type="button" size="lg" disabled={isSavingSubject || selectedSubject.trim() === (savedSubject ?? '')} onClick={() => void saveSubject()} className="w-full sm:w-auto">
+                    {isSavingSubject ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}
+                    {isSavingSubject ? '保存中' : '保存任教学科'}
+                  </Button>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         )}

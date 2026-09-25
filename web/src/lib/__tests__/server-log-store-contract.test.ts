@@ -35,7 +35,7 @@ test('persists authentication-boundary logs through a one-time server-signed RPC
 test('surfaces a log read failure when both persistence channels are unavailable', () => {
   const source = readFileSync(serverLogStorePath, 'utf8');
   const readStart = source.indexOf('export async function readRecentAppEvents');
-  const readEnd = source.indexOf('export async function readFilteredAppEvents');
+  const readEnd = source.indexOf('export async function getLogFileStatus');
 
   const readRecentSource = source.slice(readStart, readEnd);
 

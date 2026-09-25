@@ -12,14 +12,12 @@ import { UserImportDialog } from '@/components/workbench/user-import-dialog';
 import { SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { getAdminUsers, type AdminProfileStatus } from '@/lib/data/admin';
 import type { AppRole } from '@/lib/supabase/database.types';
+import { firstParam } from '@/lib/pagination';
 
 type AdminUsersPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-function firstParam(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 function parseRole(value: string | undefined): AppRole | 'all' {
   return value === 'admin' || value === 'teacher' || value === 'student' ? value : 'all';

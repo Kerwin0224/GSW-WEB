@@ -5,7 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { WorkspaceHero, SectionHeader } from '@/components/workbench/workspace-hero';
 import { BloomBadge } from '@/components/workbench/bloom-badge';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
-import { Pagination, parsePageParam } from '@/components/workbench/pagination';
+import { Pagination } from '@/components/workbench/pagination';
+import { parsePageParam } from '@/lib/pagination';
 import { ProjectCard } from '@/components/workbench/project-card';
 import { StudentProjectCreateButton } from '@/components/workbench/student-project-create-button';
 import { getStudentProfileSummary } from '@/lib/data/student';

@@ -23,13 +23,14 @@ Commit `web/.env.local.example`; never commit `web/.env.local`.
 
 Supabase stores shared, auditable metadata: provider rows, model IDs, `secret_ref`, masked last-four values, MCP capabilities, prompt presets, roles/classes/projects/audit/export data.
 
-Local/deploy env or a secret manager stores runtime authority: `OPENAI_API_KEY`, `AI_GATEWAY_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, MCP bridge tokens/commands/env, proxy settings, and local model paths/binaries.
+Local/deploy env or a secret manager stores runtime authority: `OPENAI_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY`.
 
 Missing config is a blocked state. Do not add mock providers, default models, deleted API fallback, or email login.
 
 ## Quality gate
 
 ```bash
+npx tsc --noEmit
 npm run lint
-npm run build
+npm test
 ```

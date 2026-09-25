@@ -54,10 +54,3 @@ export async function requireProfile(role?: AppRole): Promise<Profile> {
 export async function requireProfileForPasswordChange(role?: AppRole): Promise<Profile> {
   return loadProfile(role);
 }
-
-/** Compatibility shim for older pages while they are migrated. Uses verified school-account session and Supabase profile only. */
-export async function getUser(): Promise<{ sub: string; role: AppRole } | null> {
-  const profile = await getProfile();
-  if (!profile || profile.status !== 'active') return null;
-  return { sub: profile.id, role: profile.role };
-}

@@ -39,6 +39,7 @@ export type AdminUserListItem = {
   displayName: string;
   loginId: string | null;
   role: AppRole;
+  subject: string | null;
   status: AdminProfileStatus;
   createdAt: string;
   recentActivityLabel: string;
@@ -50,6 +51,7 @@ export type CsvUserPreviewRow = {
   displayName: string;
   loginId: string;
   role: AppRole | null;
+  subject: string | null;
   className: string | null;
   status: 'valid' | 'invalid';
   errors: string[];
@@ -378,6 +380,7 @@ export async function getAdminUsers(filters: AdminUserFilters = {}) {
       displayName: user.display_name,
       loginId: user.login_id,
       role: user.role,
+      subject: user.subject,
       status: user.status,
       createdAt: user.created_at,
       recentActivityLabel: user.updated_at !== user.created_at
@@ -882,12 +885,14 @@ export async function previewUserCsv(csvText: string): Promise<CsvUserPreview> {
     const displayName = row.display_name?.trim() ?? '';
     const loginId = row.login_id?.trim() ?? '';
     const role = isAppRole(row.role?.trim() ?? '') ? row.role.trim() as AppRole : null;
+    const subject = row.subject?.trim() || null;
     const className = row.class_name?.trim() || null;
     const errors: string[] = [];
     if (!displayName) errors.push('缺少 display_name');
     if (!loginId) errors.push('缺少 login_id');
     if (!role) errors.push('role 必须是 admin / teacher / student');
-    return { rowNumber: index + 2, displayName, loginId, role, className, status: errors.length > 0 ? 'invalid' : 'valid', errors } satisfies CsvUserPreviewRow;
+    if (role === 'teacher' && !subject) errors.push('教师缺少 subject');
+    return { rowNumber: index + 2, displayName, loginId, role, subject, className, status: errors.length > 0 ? 'invalid' : 'valid', errors } satisfies CsvUserPreviewRow;
   });
   return { rows, validCount: rows.filter((row) => row.status === 'valid').length, invalidCount: rows.filter((row) => row.status === 'invalid').length };
 }
@@ -914,6 +919,10 @@ export async function importUsersFromCsv(csvText: string): Promise<{ ok: true; i
     });
     if (provisionError || !profileId) return { ok: false, message: `第 ${row.rowNumber} 行账号导入失败：${provisionError?.message ?? 'unknown'}`, preview };
     const profileIdText = String(profileId);
+    if (row.role === 'teacher') {
+      const { error: subjectError } = await supabase.from('profiles').update({ subject: row.subject }).eq('id', profileIdText);
+      if (subjectError) return { ok: false, message: `第 ${row.rowNumber} 行教师科目保存失败：${subjectError.message}`, preview };
+    }
     if (row.className && row.role !== 'admin') {
       const { data: classRow, error: classError } = await supabase.from('classes').upsert({ name: row.className, school_id: caller.school_id, created_by: caller.id }, { onConflict: 'school_id,name' }).select('id').single();
       if (classError) return { ok: false, message: `第 ${row.rowNumber} 行班级导入失败：${classError.message}`, preview };

@@ -21,7 +21,6 @@ export function OrgSchoolsClient({ schools, organizationName, operatorName }: {
 
   const submitCreate = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = event.currentTarget;
     const formData = new FormData(event.currentTarget);
     startTransition(async () => {
       const result = await createSchool(formData);

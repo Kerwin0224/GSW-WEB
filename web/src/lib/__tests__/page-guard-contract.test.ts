@@ -79,8 +79,8 @@ test('逃生口不查 must_change_password，且只有改密页用它', () => {
   // 会让这条断言恒真，连同后面两条 doesNotMatch 一起空转。先显式判缺失，再切函数体。
   const escapeHatchStart = auth.indexOf('export async function requireProfileForPasswordChange');
   assert.notEqual(escapeHatchStart, -1, 'auth.ts 应导出 requireProfileForPasswordChange');
-  // 切到该函数自己的收尾大括号为止，不能一直切到文件末尾：否则下方 getUser 等无关代码
-  // 也被圈进断言范围，它里面一旦出现 must_change_password 就会误报，逼人削弱这条断言。
+  // 切到该函数自己的收尾大括号为止，不能一直切到文件末尾：否则 auth.ts 后续代码
+  // 也被圈进断言范围，后续出现 must_change_password 就会误报。
   const escapeHatchEnd = auth.indexOf('\n}\n', escapeHatchStart);
   const escapeHatch = auth.slice(escapeHatchStart, escapeHatchEnd === -1 ? undefined : escapeHatchEnd + 2);
 
@@ -103,8 +103,8 @@ test('逃生口不查 must_change_password，且只有改密页用它', () => {
   assert.deepEqual(strayUsers, [], `逃生口只给 /settings 用，别处用它等于关掉首登改密防护，实得：${strayUsers.join('、')}`);
 });
 
-/** 页面级守卫的合法写法，就这三种：常规入口 / 改密逃生口 / 根路由拿 getUser 分流。 */
-const PAGE_GUARD = /await (?:requireProfile|requireProfileForPasswordChange|getUser)\(/;
+/** 页面级守卫的合法写法：常规入口、改密逃生口、根路由资料分流。 */
+const PAGE_GUARD = /await (?:requireProfile|requireProfileForPasswordChange|getProfile)\(/;
 
 /** src/app 下所有 page.tsx。api/* 与 auth/callback 是 route handler，天然不在候选内。 */
 const pageFiles = sourceFilesUnder(appDir).filter((file) => basename(file) === 'page.tsx');
@@ -154,12 +154,12 @@ test('没有已鉴权 layout 祖先的页面必须自带页面级守卫', () => 
   assert.deepEqual(
     unguarded,
     [],
-    `这些页面没有已鉴权 layout 兜底，必须自己 await requireProfile / requireProfileForPasswordChange / getUser：${unguarded.join('、')}`,
+    `这些页面没有已鉴权 layout 兜底，必须自己 await requireProfile / requireProfileForPasswordChange / getProfile：${unguarded.join('、')}`,
   );
 });
 
 /**
- * 服务端日志读取（readRecentAppEvents / readFilteredAppEvents / getLogFileStatus）自身没有角色
+ * 服务端日志读取（readRecentAppEvents / getLogFileStatus）自身没有角色
  * 守卫，不像 lib/data/* 那样内部走 requireRole。admin/logs 的数据路径上再没有别的守卫，软导航
  * 进来时 layout 不重渲染，日志会直接渲染出去——这条规则主要是为它立的。
  *

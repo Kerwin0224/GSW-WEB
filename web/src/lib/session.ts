@@ -28,9 +28,6 @@ export function createDatabaseSessionSignature(userId: string, sessionVersion = 
   return createHmac('sha256', getAuthSecret()).update(subject).digest('hex');
 }
 
-export function createSessionToken(session: SessionClaims) {
-  return createSessionTokenWithSecret(session, getAuthSecret());
-}
 
 export function parseSessionToken(token?: string | null): AppSession | null {
   return parseSessionTokenWithSecret(token, getAuthSecret());
@@ -42,7 +39,7 @@ export async function getAppSession() {
 }
 
 export function attachSessionCookie(response: NextResponse, session: SessionClaims) {
-  response.cookies.set(CWB_SESSION_COOKIE, createSessionToken(session), {
+  response.cookies.set(CWB_SESSION_COOKIE, createSessionTokenWithSecret(session, getAuthSecret()), {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',

@@ -10,9 +10,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { EmptyState } from '@/components/workbench/state-surfaces';
-import { archiveSpaceAction, saveSpaceAction, setSpaceClassAction, type TeacherSpace } from '@/lib/data/spaces';
+import { archiveSpaceAction, saveSpaceAction, setSpaceClassAction, setSpaceStudentAction, type SpaceStudentOption, type TeacherSpace } from '@/lib/data/spaces';
 import type { TeacherClass } from '@/lib/data/teacher';
 import type { ActionState } from '@/lib/data/common';
+import { SPACE_COLOR_DOT_CLASSES, SPACE_COLOR_KEYS, SPACE_COLOR_LABELS } from '@/lib/space-colors';
+import type { SpaceColorKey } from '@/lib/supabase/database.types';
+import { cn } from '@/lib/utils';
 
 const idle: ActionState = { ok: false, message: '' };
 
@@ -23,17 +26,13 @@ const THEME_PLACEHOLDER = `只写「这个空间按什么分类」，不用管�
 /**
  * 老师的学习空间管理。
  *
- * 产品语义：空间属于老师，老师可管多个班，**通过班批量拉学生**——拉一个班就是加一条边，
- * 该班学生全部自动在内。所以这里没有「挑学生」这一步，界面也不该有。
- *
- * 归类主题与结构化返回协议是分开的：老师只写「怎么归类」（语义部分），
+ * 产品语义：空间属于老师；老师可以整班加入，也可以从任教班级学生中单独加入。
+ * 班级成员自动派生，直接成员单独记录；归类主题与结构化返回协议分开，主题只写语义部分。
  * 两行输出协议由系统在提示词末尾强制拼接，见 lib/classification-prompts.ts。
  */
-export function SpacePanel({ spaces, classes }: { spaces: TeacherSpace[]; classes: TeacherClass[] }) {
+export function SpacePanel({ spaces, classes, studentOptions, defaultSubject }: { spaces: TeacherSpace[]; classes: TeacherClass[]; studentOptions: SpaceStudentOption[]; defaultSubject: string }) {
   const [selectedId, setSelectedId] = useState(spaces[0]?.id ?? '');
   const [creating, setCreating] = useState(spaces.length === 0);
-  // 收敛到第一个：归档当前选中项后 spaces 里就没有它了，
-  // 否则会出现「上方芯片还在高亮、下方显示『还没有学习空间』」的自相矛盾。
   const current = spaces.find((space) => space.id === selectedId) ?? spaces[0];
 
   return (
@@ -41,7 +40,7 @@ export function SpacePanel({ spaces, classes }: { spaces: TeacherSpace[]; classe
       <CardHeader>
         <CardTitle className="font-heading">学习空间</CardTitle>
         <CardDescription>
-          一个空间 = 一套归类口径 + 一批学生。拉一个班进来，该班学生就都在里面；之后班册有变动（转学、插班）会跟着走，不需要维护名册。
+          一个空间 = 一套归类口径 + 一批学生。除了整班加入，也可以从任教班级学生中单独加入；每个空间有自己的科目和颜色。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -55,6 +54,10 @@ export function SpacePanel({ spaces, classes }: { spaces: TeacherSpace[]; classe
               onClick={() => { setSelectedId(space.id); setCreating(false); }}
               className="cursor-pointer"
             >
+              <span className="flex items-center gap-1.5">
+                <span className={cn('size-2 rounded-full', SPACE_COLOR_DOT_CLASSES[space.colorKey])} aria-hidden="true" />
+                {space.subject || '未设置科目'}
+              </span>
               {space.name}
               <Badge variant={!creating && selectedId === space.id ? 'secondary' : 'outline'}>{space.studentCount} 人</Badge>
             </Button>
@@ -65,25 +68,30 @@ export function SpacePanel({ spaces, classes }: { spaces: TeacherSpace[]; classe
         </div>
 
         {creating ? (
-          <SpaceEditor key="new" classes={classes} />
+          <SpaceEditor key="new" classes={classes} studentOptions={studentOptions} defaultSubject={defaultSubject} />
         ) : current ? (
-          <SpaceEditor key={current.id} space={current} classes={classes} />
+          <SpaceEditor key={current.id} space={current} classes={classes} studentOptions={studentOptions} defaultSubject={defaultSubject} />
         ) : (
-          <EmptyState title="还没有学习空间" description="建一个空间，写下归类口径，再把你的班拉进来。" />
+          <EmptyState title="还没有学习空间" description="建一个空间，写下归类口径，再把你的班或学生拉进来。" />
         )}
       </CardContent>
     </Card>
   );
 }
 
-function SpaceEditor({ space, classes }: { space?: TeacherSpace; classes: TeacherClass[] }) {
+function SpaceEditor({ space, classes, studentOptions, defaultSubject }: { space?: TeacherSpace; classes: TeacherClass[]; studentOptions: SpaceStudentOption[]; defaultSubject: string }) {
   const [state, action, pending] = useActionState(saveSpaceAction, idle);
   const [name, setName] = useState(space?.name ?? '');
+  const [subject, setSubject] = useState(space?.subject ?? defaultSubject);
   const [theme, setTheme] = useState(space?.theme ?? '');
+  const [colorKey, setColorKey] = useState<SpaceColorKey>(space?.colorKey ?? 'pine');
   const [classId, setClassId] = useState(classes[0]?.classId ?? '');
 
   const pulledClassIds = new Set((space?.classes ?? []).map((klass) => klass.classId));
   const availableClasses = classes.filter((klass) => !pulledClassIds.has(klass.classId));
+  const directStudentIds = new Set((space?.directStudents ?? []).map((student) => student.id));
+  const studentOptionById = new Map(studentOptions.map((student) => [student.id, student]));
+  const availableStudents = studentOptions.filter((student) => !directStudentIds.has(student.id));
 
   return (
     <div className="space-y-4 rounded-lg border border-border/65 bg-background/78 p-4">
@@ -91,90 +99,73 @@ function SpaceEditor({ space, classes }: { space?: TeacherSpace; classes: Teache
         {space ? <input type="hidden" name="space_id" value={space.id} /> : null}
         <div className="space-y-2">
           <Label htmlFor="space-name">空间名称</Label>
-          <Input
-            id="space-name"
-            name="name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="例如：王老师的文言虚词空间"
-            maxLength={40}
-          />
+          <Input id="space-name" name="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：基础巩固空间" maxLength={40} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="space-subject">空间科目</Label>
+          <Input id="space-subject" name="subject" value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="例如：语文" maxLength={40} />
+          <p className="text-xs text-muted-foreground">科目会展示给学生；留空时显示“未设置科目”。</p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="space-color">空间颜色</Label>
+          <select id="space-color" name="color_key" value={colorKey} onChange={(event) => setColorKey(event.target.value as SpaceColorKey)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+            {SPACE_COLOR_KEYS.map((key) => <option key={key} value={key}>{SPACE_COLOR_LABELS[key]}</option>)}
+          </select>
         </div>
         <div className="space-y-2">
           <Label htmlFor="space-theme">归类主题</Label>
-          <Textarea
-            id="space-theme"
-            name="theme"
-            value={theme}
-            onChange={(event) => setTheme(event.target.value)}
-            placeholder={THEME_PLACEHOLDER}
-            className="min-h-36"
-          />
-          <p className="text-xs leading-5 text-muted-foreground">
-            只写「本空间怎么归类」。两行输出协议与「无法归属」约定由系统自动拼接，不需要你重复，也改不动。
-          </p>
+          <Textarea id="space-theme" name="theme" value={theme} onChange={(event) => setTheme(event.target.value)} placeholder={THEME_PLACEHOLDER} className="min-h-36" />
+          <p className="text-xs leading-5 text-muted-foreground">只写「本空间怎么归类」。两行输出协议与「无法归属」约定由系统自动拼接，不需要你重复，也改不动。</p>
         </div>
 
         {!space ? (
           <div className="space-y-2">
             <Label htmlFor="space-class">先拉一个班进来（可留空，之后再拉）</Label>
-            <select
-              id="space-class"
-              name="class_id"
-              value={classId}
-              onChange={(event) => setClassId(event.target.value)}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
+            <select id="space-class" name="class_id" value={classId} onChange={(event) => setClassId(event.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
               <option value="">暂不拉班</option>
-              {classes.map((klass) => (
-                <option key={klass.classId} value={klass.classId}>{klass.className}（{klass.studentCount} 人）</option>
-              ))}
+              {classes.map((klass) => <option key={klass.classId} value={klass.classId}>{klass.className}（{klass.studentCount} 人）</option>)}
             </select>
           </div>
         ) : null}
 
         {state.message ? (
-          <p className={state.ok ? 'rounded-lg border border-primary/30 bg-primary/10 p-2 text-sm text-primary' : 'rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive'} role={state.ok ? 'status' : 'alert'}>
-            {state.message}
-          </p>
+          <p className={state.ok ? 'rounded-lg border border-primary/30 bg-primary/10 p-2 text-sm text-primary' : 'rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive'} role={state.ok ? 'status' : 'alert'}>{state.message}</p>
         ) : null}
 
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={pending || !name.trim()} className="cursor-pointer">
+          <Button type="submit" disabled={pending || !name.trim() || !subject.trim()} className="cursor-pointer">
             {pending ? <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" /> : <Save className="mr-2 size-4" aria-hidden="true" />}
             {space ? '保存' : '创建空间'}
           </Button>
         </div>
       </form>
 
-      {/* 归档是独立表单，必须放在上面的 </form> 之外：form 不能嵌套，
-          HTML 解析会丢弃内层 form，导致 hydration 失败并重建整棵树。 */}
       {space ? <ArchiveButton spaceId={space.id} /> : null}
 
       {space ? (
         <div className="space-y-3 border-t border-border/60 pt-3">
           <div className="space-y-2">
             <p className="text-sm font-medium">已拉入的班</p>
-            {space.classes.length === 0 ? (
-              <p className="text-xs text-muted-foreground">还没有拉班，这个空间暂时没有学生。</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {space.classes.map((klass) => (
-                  <ClassChip key={klass.classId} spaceId={space.id} classId={klass.classId} label={`${klass.className}（${klass.studentCount} 人）`} intent="remove" />
-                ))}
-              </div>
+            {space.classes.length === 0 ? <p className="text-xs text-muted-foreground">还没有拉班；也可以从下面单独加入学生。</p> : (
+              <div className="flex flex-wrap gap-2">{space.classes.map((klass) => <ClassChip key={klass.classId} spaceId={space.id} classId={klass.classId} label={`${klass.className}（${klass.studentCount} 人）`} intent="remove" />)}</div>
             )}
           </div>
           <div className="space-y-2">
             <p className="text-sm font-medium">可以拉入的班</p>
-            {availableClasses.length === 0 ? (
-              <p className="text-xs text-muted-foreground">你任教的所有班都已在空间里。</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {availableClasses.map((klass) => (
-                  <ClassChip key={klass.classId} spaceId={space.id} classId={klass.classId} label={`${klass.className}（${klass.studentCount} 人）`} intent="add" />
-                ))}
-              </div>
+            {availableClasses.length === 0 ? <p className="text-xs text-muted-foreground">你任教的所有班都已在空间里。</p> : (
+              <div className="flex flex-wrap gap-2">{availableClasses.map((klass) => <ClassChip key={klass.classId} spaceId={space.id} classId={klass.classId} label={`${klass.className}（${klass.studentCount} 人）`} intent="add" />)}</div>
+            )}
+          </div>
+          <div className="space-y-2 border-t border-border/50 pt-3">
+            <p className="text-sm font-medium">直接加入的学生</p>
+            {space.directStudents.length === 0 ? <p className="text-xs text-muted-foreground">暂无直接加入的学生。</p> : (
+              <div className="flex flex-wrap gap-2">{space.directStudents.map((student) => <StudentChip key={student.id} spaceId={space.id} studentId={student.id} label={`${student.displayName}（${studentOptionById.get(student.id)?.className ?? '学生'}）`} intent="remove" />)}</div>
+            )}
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">可以加入的学生</p>
+            {availableStudents.length === 0 ? <p className="text-xs text-muted-foreground">任教班级学生都已直接加入。</p> : (
+              <div className="flex flex-wrap gap-2">{availableStudents.map((student) => <StudentChip key={student.id} spaceId={space.id} studentId={student.id} label={`${student.displayName}（${student.className}）`} intent="add" />)}</div>
             )}
           </div>
         </div>
@@ -206,6 +197,23 @@ function ClassChip({ spaceId, classId, label, intent }: { spaceId: string; class
   );
 }
 
+/** 直接加入 / 移出学生，各是一个独立的小表单。 */
+function StudentChip({ spaceId, studentId, label, intent }: { spaceId: string; studentId: string; label: string; intent: 'add' | 'remove' }) {
+  const [state, action, pending] = useActionState(setSpaceStudentAction, idle);
+  return (
+    <form action={action}>
+      <input type="hidden" name="space_id" value={spaceId} />
+      <input type="hidden" name="student_id" value={studentId} />
+      <input type="hidden" name="intent" value={intent} />
+      <Button type="submit" size="sm" variant={intent === 'add' ? 'outline' : 'secondary'} disabled={pending} className="cursor-pointer">
+        {pending ? <Loader2 className="mr-1 size-3 animate-spin" aria-hidden="true" /> : intent === 'add' ? <Plus className="mr-1 size-3" aria-hidden="true" /> : <X className="mr-1 size-3" aria-hidden="true" />}
+        {label}
+      </Button>
+      {state.message ? <span className={state.ok ? 'block pt-1 text-xs text-primary' : 'block pt-1 text-xs text-destructive'} role={state.ok ? 'status' : 'alert'}>{state.message}</span> : null}
+    </form>
+  );
+}
+
 function ArchiveButton({ spaceId }: { spaceId: string }) {
   const [state, action, pending] = useActionState(archiveSpaceAction, idle);
   return (
@@ -215,11 +223,7 @@ function ArchiveButton({ spaceId }: { spaceId: string }) {
         {pending ? <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" /> : <Check className="mr-2 size-4" aria-hidden="true" />}
         归档
       </Button>
-      {state.message ? (
-        <span className={state.ok ? 'block pt-1 text-xs text-primary' : 'block pt-1 text-xs text-destructive'} role={state.ok ? 'status' : 'alert'}>
-          {state.message}
-        </span>
-      ) : null}
+      {state.message ? <span className={state.ok ? 'block pt-1 text-xs text-primary' : 'block pt-1 text-xs text-destructive'} role={state.ok ? 'status' : 'alert'}>{state.message}</span> : null}
     </form>
   );
 }

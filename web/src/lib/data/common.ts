@@ -164,9 +164,6 @@ export async function getModelTiers(tiers: ModelTier[]): Promise<Record<ModelTie
   return Object.fromEntries(entries) as Record<ModelTier, ModelTierStatus>;
 }
 
-export async function getCapability(capability: ProviderCapability): Promise<DataResult<CapabilityStatus>> {
-  return getProviderCapability(capability);
-}
 type ProviderCapabilityRow = {
   capability: ProviderCapability;
   model_id: string;
@@ -177,7 +174,7 @@ type ProviderCapabilityRow = {
   health_status: string;
 };
 
-async function getProviderCapability(capability: ProviderCapability): Promise<DataResult<CapabilityStatus>> {
+export async function getCapability(capability: ProviderCapability): Promise<DataResult<CapabilityStatus>> {
   try {
     const supabase = await createClient();
     const { data, error } = await supabase.rpc('get_provider_capability_provider', { p_capability: capability });

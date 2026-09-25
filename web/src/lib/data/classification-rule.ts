@@ -57,11 +57,12 @@ export async function resolveClassificationRule(
   // 且空间所有者仍任教该班）。这里不做第二套过滤。
   const { data: spaces } = await supabase
     .from('spaces')
-    .select('id,name,theme')
+    .select('id,name,theme,subject')
     .eq('status', 'active')
     .order('created_at', { ascending: true });
 
-  type SpaceRow = { id: string; name: string; theme: string };
+  type SpaceRow = { id: string; name: string; theme: string; subject: string | null };
+
   const all = (spaces ?? []) as SpaceRow[];
 
   if (explicitSpaceId) {
@@ -72,7 +73,7 @@ export async function resolveClassificationRule(
     if (selected) {
       const theme = selected.theme.trim();
       return {
-        criteria: theme ? [{ label: selected.name, instruction: theme }] : [],
+        criteria: theme ? [{ label: selected.subject ? `${selected.subject}·${selected.name}` : selected.name, instruction: theme }] : [],
         spaceId: selected.id,
         source: 'space-selected',
       };
@@ -83,7 +84,7 @@ export async function resolveClassificationRule(
   const withTheme = all.filter((space) => space.theme.trim());
   if (withTheme.length > 0) {
     return {
-      criteria: withTheme.map((space) => ({ label: space.name, instruction: space.theme.trim() })),
+      criteria: withTheme.map((space) => ({ label: space.subject ? `${space.subject}·${space.name}` : space.name, instruction: space.theme.trim() })),
       spaceId: withTheme.length === 1 ? withTheme[0].id : null,
       source: 'space',
     };
