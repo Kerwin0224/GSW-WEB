@@ -3,7 +3,8 @@ import { toInitialMessage, toSessionSummary, type ConversationMessageRow, type C
 import { createClient } from '@/lib/supabase/server';
 import { isPreReviewResultChecked, normalizePreReviewIssuesForMessage, type NormalizedPreReviewIssue } from '@/lib/teacher-pre-review';
 import { fail, getCapability, ok, requireRole, type DataResult } from './common';
-import { buildAuditQueueGroups, type AuditQueueEntry, type AuditQueueGroup, type AuditQueueSession, type PreReviewState } from '@/lib/audit-queue';
+import { buildAuditQueueGroups, hasTeacherDecision, latestTeacherDecision, type AuditQueueEntry, type AuditQueueGroup, type AuditQueueSession, type PreReviewState } from '@/lib/audit-queue';
+import { loadReviewDimensions } from '@/lib/pre-review-dimensions';
 import type { Database } from '@/lib/supabase/database.types';
 import {
   asMetadataObject,
@@ -43,11 +44,23 @@ export type TeacherAuditMessage = {
    * 不能只给正文。已由 toPersistedAssistantParts 裁剪过（不含工具返回值）。
    */
   parts: unknown[];
+  /**
+   * 教师是否显式确认过这条回答。
+   * 没有确认也没有修订的回答在「确认提交整个会话」时不进入训练数据——
+   * 界面上必须把这条差别画出来，否则「没改过」会被读成「看过且认可」。
+   */
+  confirmedByTeacher: boolean;
+  /** 教师处置时选的评价维度键与评语，供详情回显。 */
+  dimensionKey?: string;
+  teacherComment?: string;
 };
 type ReviewAuditRow = AuditRowBase & {
   source_message_id?: string | null;
   source_conversation_id?: string | null;
+  quality?: string | null;
   rationale?: string | null;
+  dimension_key?: string | null;
+  teacher_comment?: string | null;
 };
 
 /** 核实队列与详情共用的会话行：两者都要 班级/学生/项目 三处上级标签。 */
@@ -59,7 +72,9 @@ type QueueConversationRow = {
   project_id: string | null;
   updated_at: string;
   finalized_at: string | null;
-  profiles: { display_name: string | null } | Array<{ display_name: string | null }> | null;
+  locked_at?: string | null;
+  teacher_comment?: string | null;
+  profiles: { id: string; display_name: string | null } | Array<{ id: string; display_name: string | null }> | null;
   projects: { name: string | null } | Array<{ name: string | null }> | null;
   classes: { name: string | null } | Array<{ name: string | null }> | null;
 };
@@ -159,21 +174,30 @@ function parsePreReview(
   return { issues, reviewedMessageIds };
 }
 
-/** 教学作用域：任教班级 ∪ 自己拥有的空间。 */
+/**
+ * 教学作用域：任教班级 ∪ 我能进入的空间。
+ *
+ * 空间那一路走 teacher_space_ids()，它已经是「owner ∪ 协作者」：
+ * 两位老师共带一班时，两人对同一个空间都可见，学生端也只出现这一个空间。
+ * 逐处自己按 owner_id 拼条件必然漏掉协作边——那正是本条要修的。
+ *
+ * 能力位不进这里：review_team 扩的是「组内学情」那一层视角（看同组教师的核实进度），
+ * 不扩大这位教师自己能打开的会话集合。把两者混在一起，组内视角就变成了越权读取。
+ */
 type TeacherScope = { classIds: string[]; spaceIds: string[] };
 
 async function getTeacherScope(teacherId: string) {
   const supabase = await createClient();
   const [classes, spaces] = await Promise.all([
     supabase.from('class_memberships').select('class_id').eq('profile_id', teacherId).eq('role', 'teacher'),
-    supabase.from('spaces').select('id').eq('owner_id', teacherId),
+    supabase.rpc('teacher_space_ids'),
   ]);
   if (classes.error) return { ok: false as const, message: `教师任教班级加载失败：${classes.error.message}` };
   if (spaces.error) return { ok: false as const, message: `教师空间加载失败：${spaces.error.message}` };
   return {
     ok: true as const,
     classIds: (classes.data ?? []).map((row) => row.class_id),
-    spaceIds: (spaces.data ?? []).map((row) => row.id),
+    spaceIds: ((spaces.data ?? []) as string[]).filter((id) => typeof id === 'string' && id.length > 0),
   };
 }
 
@@ -290,20 +314,37 @@ export async function getTeacherConversation(conversationId: string): Promise<Da
 // 现在：列表只取导航需要的字段，详情按会话 id 单独取，选中态放进 URL。
 
 export type TeacherAuditQueueStatus = 'pending' | 'finalized';
-export type TeacherAuditQueueOptions = { page?: number; pageSize?: number; status?: TeacherAuditQueueStatus };
+/**
+ * 队列筛选。全部由 URL searchParams 承载，所以每个值都必须是可往返的标量：
+ * 带 6 个班的教师此前只能靠翻页找「某班某学生某项目」，翻到第二页就忘了自己在找什么。
+ */
+export type TeacherAuditQueueFilters = {
+  classId?: string;
+  studentId?: string;
+  projectId?: string;
+  /** 只要 AI 预审标出疑点的会话。 */
+  hasIssue?: boolean;
+  /** ISO 日期（含），按会话最近活动时间过滤。 */
+  dateFrom?: string;
+};
+
+export type TeacherAuditQueueOptions = { page?: number; pageSize?: number; status?: TeacherAuditQueueStatus } & TeacherAuditQueueFilters;
 export type { PreReviewState, AuditQueueSession, AuditQueueGroup } from '@/lib/audit-queue';
 
 export type TeacherAuditQueuePage = {
   groups: AuditQueueGroup[];
   /** 当前筛选下的会话总数（不受分页影响）。 */
   total: number;
-  /** 待核实会话总数（不受筛选/分页影响）。 */
+  /** 待核实会话总数（受当前筛选影响，不受分页影响）。 */
   pendingTotal: number;
+  /** 已核实会话总数（受当前筛选影响，不受分页影响）——与 pendingTotal 对称，好让教师看到进度。 */
   /** 已核实会话总数（不受筛选/分页影响）——与 pendingTotal 对称，好让教师看到进度。 */
   finalizedTotal: number;
   page: number;
   pageSize: number;
   status: TeacherAuditQueueStatus;
+  /** 回传当前筛选，供页面渲染筛选控件与分页链接。 */
+  filters: TeacherAuditQueueFilters;
 };
 
 /** 单会话的完整核实视图：逐条消息、预审疑点、修订对照、提交状态。 */
@@ -322,11 +363,24 @@ export type AuditSessionDetail = {
   reviewState: ReviewState;
   conversationFinalized: boolean;
   finalizedAt?: string;
+  /** 教师是否已封口。与 conversationFinalized 独立：已核实但未封口，学生仍可继续追问。 */
+  conversationLocked: boolean;
+  lockedAt?: string;
+  /** 会话级教师评语，学生端只读展示。 */
+  teacherComment?: string;
   assistantCount: number;
   preReviewCoveredMessageCount: number;
   pendingAssistantCount: number;
   revisedAssistantCount: number;
   riskAssistantCount: number;
+  /**
+   * 既没有教师确认也没有修订的 AI 回答条数。
+   * 提交整个会话时这些回答不进入训练数据——数字必须摆在教师眼前，
+   * 否则「我提交了」会被读成「全部都进了训练数据」，而事实不是。
+   */
+  unprocessedAssistantCount: number;
+  /** 本租户生效的评价维度，供教师在确认/修订时选维度键。 */
+  dimensions: Array<{ labelKey: string; displayName: string }>;
 };
 
 /**
@@ -389,34 +443,93 @@ export async function getTeacherAuditQueue(options: TeacherAuditQueueOptions = {
   const page = Math.max(1, options.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, options.pageSize ?? 20));
   const status: TeacherAuditQueueStatus = options.status ?? 'pending';
-  const emptyPage = { groups: [], total: 0, pendingTotal: 0, finalizedTotal: 0, page, pageSize, status };
+
+  // 筛选值只认「能原样往返」的形态：非法 uuid / 非法日期直接丢掉，
+  // 不然 URL 里手输的垃圾值会变成一条必然报错的查询，而不是「不过滤」。
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const classId = options.classId && uuidPattern.test(options.classId) ? options.classId : undefined;
+  const studentId = options.studentId && uuidPattern.test(options.studentId) ? options.studentId : undefined;
+  const projectId = options.projectId && uuidPattern.test(options.projectId) ? options.projectId : undefined;
+  const dateFrom = options.dateFrom && !Number.isNaN(Date.parse(options.dateFrom)) ? options.dateFrom : undefined;
+  const filters: TeacherAuditQueueFilters = { classId, studentId, projectId, dateFrom, ...(options.hasIssue ? { hasIssue: true } : {}) };
+  const emptyPage = { groups: [], total: 0, pendingTotal: 0, finalizedTotal: 0, page, pageSize, status, filters };
 
   // 两个作用域都空就是没有任何可见范围：`.in.()` 会 400，直接短路成空页。
   const scopeFilter = buildScopeFilter(scope);
   if (!scopeFilter) return ok(emptyPage);
 
   const supabase = await createClient();
+
+  // hasIssue 必须在 SQL 里落，不能取回本页再筛：筛选晚于分页就是当初那个 bug
+  // （已核实的占坑，把待核实的静默挤出去，界面还显示「暂无待审核」）。
+  // 疑点存在 audit_records.metadata 里，没法直接 join，所以先取「有疑点的会话 id 集合」
+  // 再喂给 .in()——集合本身也按同一套作用域过滤，不越界。
+  let issueConversationIds: string[] | null = null;
+  if (filters.hasIssue) {
+    const issueQuery = await supabase
+      .from('audit_records')
+      .select('source_conversation_id')
+      .eq('kind', 'metadata')
+      .eq('quality', 'pre_review')
+      .in('status', ['approved', 'exported'])
+      .not('source_conversation_id', 'is', null)
+      .or(scopeFilter);
+    if (issueQuery.error) return fail('error', `疑点会话筛选失败：${issueQuery.error.message}`);
+    issueConversationIds = Array.from(new Set(
+      ((issueQuery.data ?? []) as Array<{ source_conversation_id: string | null }>)
+        .map((row) => row.source_conversation_id)
+        .filter((id): id is string => Boolean(id)),
+    ));
+    // 一个疑点都没有时直接给空页：发一条 `.in.()` 空列表的查询不是「没有结果」，
+    // 而是 PostgREST 语法错误。
+    if (issueConversationIds.length === 0) return ok(emptyPage);
+  }
+
   // pending / 不过滤两个分支就够：已核实数 = 不过滤 - pending，两者恰好构成同一批会话的划分。
   // （再加一个 .not() 分支，这个 builder 的泛型会展开到 TS 直接报 TS2589。）
+  //
+  // 筛选条件挂在一个函数上而不是抄两遍：计数与列表必须用**同一套**条件，
+  // 否则「共 N 条」和实际列出来的条数会长期对不上，而两边都不报错。
+  type FilterableQuery = {
+    eq: (column: string, value: string) => FilterableQuery;
+    gte: (column: string, value: string) => FilterableQuery;
+    in: (column: string, values: string[]) => FilterableQuery;
+  };
+  const applyFilters = <T>(query: T, withIssueIds: string[] | null): T => {
+    let next = query as unknown as FilterableQuery;
+    if (classId) next = next.eq('class_id', classId);
+    if (studentId) next = next.eq('owner_id', studentId);
+    if (projectId) next = next.eq('project_id', projectId);
+    if (dateFrom) next = next.gte('updated_at', dateFrom);
+    if (withIssueIds) next = next.in('id', withIssueIds);
+    return next as unknown as T;
+  };
+
   const countScoped = (pendingOnly: boolean) => {
-    const query = supabase
-      .from('conversations')
-      .select('id', { count: 'exact', head: true })
-      .or(scopeFilter)
-      .eq('source', 'student_chat')
-      .is('deleted_at', null)
-      .not('project_id', 'is', null);
+    const query = applyFilters(
+      supabase
+        .from('conversations')
+        .select('id', { count: 'exact', head: true })
+        .or(scopeFilter)
+        .eq('source', 'student_chat')
+        .is('deleted_at', null)
+        .not('project_id', 'is', null),
+      issueConversationIds,
+    );
     return pendingOnly ? query.is('finalized_at', null) : query;
   };
 
-  const scopedQuery = supabase
-    .from('conversations')
-    .select('id,title,class_id,space_id,project_id,updated_at,finalized_at,profiles(display_name),projects(name),classes(name)', { count: 'exact' })
-    .or(scopeFilter)
-    .eq('source', 'student_chat')
-    .is('deleted_at', null)
-    .not('project_id', 'is', null)
-    .order('updated_at', { ascending: false });
+  const scopedQuery = applyFilters(
+    supabase
+      .from('conversations')
+      .select('id,title,class_id,space_id,project_id,updated_at,finalized_at,locked_at,owner_id,profiles(id,display_name),projects(name),classes(name)', { count: 'exact' })
+      .or(scopeFilter)
+      .eq('source', 'student_chat')
+      .is('deleted_at', null)
+      .not('project_id', 'is', null)
+      .order('updated_at', { ascending: false }),
+    issueConversationIds,
+  );
   const range = { from: (page - 1) * pageSize, to: page * pageSize - 1 };
 
   // 过滤在 SQL 里做完：JS 端再筛一次就是当初「已核实的占坑、把未核实的挤出去」那个 bug。
@@ -486,20 +599,23 @@ export async function getTeacherAuditQueue(options: TeacherAuditQueueOptions = {
     return [{
       classId: row.class_id,
       classLabel: firstJoined(row.classes)?.name?.trim() || '未分班',
+      studentId: firstJoined(row.profiles)?.id ?? null,
       studentName: firstJoined(row.profiles)?.display_name?.trim() || '未命名学生',
+      projectId: row.project_id,
       projectName: firstJoined(row.projects)?.name?.trim() || '未关联项目',
       session: {
         conversationId: row.id,
         sessionLabel: row.title?.trim() || `会话 ${row.id.slice(0, 8)}`,
         updatedAt: row.updated_at,
         finalized: row.finalized_at !== null,
+        locked: row.locked_at !== null,
         assistantCount,
         ...summary,
       } satisfies AuditQueueSession,
     }];
   });
 
-  return ok({ groups: buildAuditQueueGroups(entries), total, pendingTotal, finalizedTotal, page, pageSize, status });
+  return ok({ groups: buildAuditQueueGroups(entries), total, pendingTotal, finalizedTotal, page, pageSize, status, filters });
 }
 
 /**
@@ -519,7 +635,7 @@ export async function getTeacherAuditSession(conversationId: string): Promise<Da
   const supabase = await createClient();
   const { data: conversationRow, error: conversationError } = await supabase
     .from('conversations')
-    .select('id,title,class_id,space_id,updated_at,finalized_at,profiles(display_name),projects(name),classes(name)')
+    .select('id,title,class_id,space_id,updated_at,finalized_at,locked_at,teacher_comment,profiles(display_name),projects(name),classes(name)')
     .eq('id', conversationId)
     .eq('source', 'student_chat')
     .is('deleted_at', null)
@@ -537,7 +653,7 @@ export async function getTeacherAuditSession(conversationId: string): Promise<Da
       .order('created_at', { ascending: true }),
     supabase
       .from('audit_records')
-      .select('source_message_id,source_conversation_id,kind,status,original_answer,corrected_answer,chosen_answer,rejected_answer,metadata,created_at,updated_at')
+      .select('source_message_id,source_conversation_id,kind,status,quality,original_answer,corrected_answer,chosen_answer,rejected_answer,metadata,dimension_key,teacher_comment,created_at,updated_at')
       .eq('source_conversation_id', row.id)
       .order('created_at', { ascending: true }),
     getCapability('audit_assist'),
@@ -573,8 +689,9 @@ export async function getTeacherAuditSession(conversationId: string): Promise<Da
 
   const transcript: TeacherAuditMessage[] = rawTranscript.map((transcriptRow) => {
     const isAssistant = transcriptRow.role === 'assistant';
-    const messageAudits = isAssistant ? auditsByMessage.get(transcriptRow.id) : undefined;
+    const messageAudits = isAssistant ? auditsByMessage.get(transcriptRow.id) ?? [] : [];
     const revisionDisplay = isAssistant ? resolveRevisionDisplay(messageAudits) : null;
+    const decision = isAssistant ? latestTeacherDecision(messageAudits) : undefined;
     return {
       id: transcriptRow.id,
       role: transcriptRow.role,
@@ -587,10 +704,16 @@ export async function getTeacherAuditSession(conversationId: string): Promise<Da
       preReviewChecked: isAssistant && parsedPreReview.reviewedMessageIds.has(transcriptRow.id),
       preReviewIssues: issuesByMessage.get(transcriptRow.id) ?? [],
       parts: Array.isArray(transcriptRow.parts) ? transcriptRow.parts : [],
+      confirmedByTeacher: isAssistant && hasTeacherDecision(messageAudits),
+      dimensionKey: decision?.dimension_key ?? undefined,
+      teacherComment: decision?.teacher_comment ?? undefined,
     };
   });
 
   const revisedAssistantCount = assistantTranscript.filter((item) => resolveReviewState(auditsByMessage.get(item.id)) === 'revised').length;
+  // 与 finalizeLearningConversation 共用同一个判据（@/lib/audit-queue）：
+  // 两处各写一份必然漂移，漂移的后果是界面预告 3 条、库里进了 9 条。
+  const unprocessedAssistantCount = assistantTranscript.filter((item) => !hasTeacherDecision(auditsByMessage.get(item.id) ?? [])).length;
   const conversationFinalized = row.finalized_at !== null;
   const preReviewMetadata = asMetadataObject(preReviewRow?.metadata);
   const preReviewFailed = preReviewMetadata.review_status === 'failed' || preReviewMetadata.status === 'failed' || typeof preReviewMetadata.error === 'string';
@@ -600,6 +723,9 @@ export async function getTeacherAuditSession(conversationId: string): Promise<Da
     ? preReviewFailed ? 'failed' : preReviewCoveredMessageCount >= assistantIds.size ? 'ready' : 'partial'
     : auditBlocked ? 'blocked' : 'not_run';
   const latestAssistant = assistantTranscript[assistantTranscript.length - 1];
+  // 维度读不到时返回空数组：教师照常能确认/修订，只是没有维度可选，
+  // 比整条核实路径失败可用。
+  const dimensionLoad = await loadReviewDimensions(supabase, role.data.school_id);
 
   return ok({
     conversationId: row.id,
@@ -616,11 +742,16 @@ export async function getTeacherAuditSession(conversationId: string): Promise<Da
     reviewState: conversationFinalized ? (revisedAssistantCount > 0 ? 'revised' : 'confirmed') : 'pending',
     conversationFinalized,
     finalizedAt: row.finalized_at ?? undefined,
+    conversationLocked: row.locked_at !== null,
+    lockedAt: row.locked_at ?? undefined,
+    teacherComment: row.teacher_comment?.trim() || undefined,
     assistantCount: assistantTranscript.length,
     preReviewCoveredMessageCount,
-    pendingAssistantCount: conversationFinalized ? 0 : assistantTranscript.length,
+    pendingAssistantCount: conversationFinalized ? 0 : unprocessedAssistantCount,
     revisedAssistantCount,
     riskAssistantCount: new Set(preReviewIssues.map((issue) => issue.messageId)).size,
+    unprocessedAssistantCount: conversationFinalized ? 0 : unprocessedAssistantCount,
+    dimensions: dimensionLoad.dimensions.map((dimension) => ({ labelKey: dimension.labelKey, displayName: dimension.displayName })),
   });
 }
 

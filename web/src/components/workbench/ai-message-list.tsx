@@ -1,3 +1,11 @@
+import { classifyToolEffect, TOOL_EFFECT_LABEL, type ToolEffect } from '@/lib/tool-effect';
+
+/** 只读与写操作要一眼能分开：核实页里「查了什么」和「改了什么」不是一回事。 */
+const TOOL_EFFECT_TONE: Record<ToolEffect, string> = {
+  read: 'text-muted-foreground',
+  write: 'border-destructive/30 text-destructive',
+  unknown: '',
+};
 import { Bot, Pencil, User, X } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -46,7 +54,24 @@ export function AIMessagePart({ part, markdown = false }: { part: unknown; markd
   // 两者都由 describeToolPart 解析，认不出来时它返回 null，这里再落到下面的兜底。
   if (type === 'dynamic-tool' || type.startsWith('tool-')) {
     const toolCall = <ToolCallPart part={part} />;
-    if (toolCall) return toolCall;
+    if (toolCall) {
+      // 标出这次调用是「查了一下」还是「改了什么」：核实页与日志里，
+      // 用户分不清这两种工具，看下去就分不清 AI 做了什么。
+      const record = part && typeof part === 'object' ? part as Record<string, unknown> : null;
+      const invocation = record?.toolInvocation as { toolName?: unknown } | undefined;
+      const name = typeof record?.toolName === 'string'
+        ? record.toolName
+        : typeof invocation?.toolName === 'string'
+          ? invocation.toolName
+          : type.replace(/^tool-/, '');
+      const effect = classifyToolEffect(name);
+      return (
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          {toolCall}
+          <Badge variant="outline" className={TOOL_EFFECT_TONE[effect]}>{TOOL_EFFECT_LABEL[effect]}</Badge>
+        </span>
+      );
+    }
   }
   if (type.includes('citation') || type.includes('retrieval')) {
     return <Badge variant="outline">参考来源</Badge>;
@@ -62,7 +87,29 @@ export function AIMessagePart({ part, markdown = false }: { part: unknown; markd
   if (type.includes('classification')) {
     return <Badge variant="outline">认知层级已更新</Badge>;
   }
-  return null;
+  // 已知但画不出来的类型：给一句明说，不留空白。
+  // AI SDK 的图片也是 type=file，靠 mediaType 区分，别一律叫"附件"。
+  if (type === 'image' || type === 'file') {
+    const record = part && typeof part === 'object' ? part as Record<string, unknown> : null;
+    const mediaType = typeof record?.mediaType === 'string' ? record.mediaType : '';
+    const name = typeof record?.filename === 'string' ? record.filename : '';
+    const isImage = type === 'image' || mediaType.startsWith('image/');
+    return <Badge variant="outline">{isImage ? '图片' : '附件'}{name ? `：${name}` : ''}</Badge>;
+  }
+  // 兜底：此前这里直接 return null，模型多返回一个 step-start 或 reasoning 就让整段回答变空白，
+  // 而且界面毫无提示。折叠起来先摆着，至少还能看出这里有过内容。
+  let summary: string;
+  try {
+    summary = JSON.stringify(part)?.slice(0, 400) ?? '';
+  } catch {
+    summary = String(part).slice(0, 400);
+  }
+  return (
+    <details className="rounded-md border border-dashed px-2 py-1 text-xs text-muted-foreground">
+      <summary className="cursor-pointer">其他内容（{type}）</summary>
+      <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all">{summary}</pre>
+    </details>
+  );
 }
 
 function keyedParts(parts: unknown[]) {

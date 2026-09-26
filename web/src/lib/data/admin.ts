@@ -6,11 +6,17 @@ import { encryptSecret } from '@/lib/crypto/secret-cipher';
 import { transportForConnectionRef } from '@/lib/mcp-runtime';
 import { assertStdioMcpDisabled, requireAllowedMcpRemoteUrl } from '@/lib/mcp-runtime-policy';
 import { createDatabaseSessionSignature } from '@/lib/session';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, type SupabaseClient } from '@/lib/supabase/server';
 import { APP_ROLES, type AppRole, type Database, type Json, type ModelTier, type ProviderCapability } from '@/lib/supabase/database.types';
 import { fail, getModelTiers, ok, requireAnyRole, requireRole, scenarioModelTiers, type DataResult, type ModelTierStatus } from './common';
+import { resolveLoginIdPattern, validateSchoolLoginId } from '@/lib/school-login';
+import { provisionSchoolAccount, readSchoolLoginIdPattern, resetAccountInitialPassword } from './account-provisioning';
 import { asMetadataObject } from './audit-record';
 import { assertAllowedProviderBaseUrl } from '@/lib/provider-endpoint-policy';
+
+/** 名册能建的角色。org_admin 是公司级身份，绝不能由一份校内名册顺带产生。 */
+const ROSTER_ROLES = ['admin', 'teacher', 'student'] as const satisfies readonly AppRole[];
+type RosterRole = (typeof ROSTER_ROLES)[number];
 
 export type AdminActionState = { ok: boolean; message: string; errors?: Record<string, string> };
 export type ProviderActionResult = { ok: true; message?: string } | { ok: false; message: string };
@@ -47,19 +53,36 @@ export type AdminUserListItem = {
   memberships: AdminClassMembership[];
   assignmentSummary: string;
 };
+/**
+ * CSV 名册的一行。
+ *
+ * organization_id 与 space 两列是**可选**的：不填就回落到当前管理员所在的学校，
+ * 行为与改动前逐字一致。存量模板不追加这两列也照样能导入——
+ * 改列定义会一次性打断所有已经在用的名册模板。
+ *
+ *   organization_id 目标单位 id。公司管理员做跨单位名册时用；校管理员填了别的
+ *                   单位 id 会被拒绝（静默忽略等于把人建到了别处）。
+ *   space           空间名称。给了就把该行归到这个空间：教师行变成共同教师，
+ *                   学生行直接成为该空间的成员（等价于空间面板里的「加入」）。
+ */
 export type CsvUserPreviewRow = {
   rowNumber: number;
   displayName: string;
   loginId: string;
-  role: AppRole | null;
+  role: RosterRole | null;
   subject: string | null;
   className: string | null;
+  organizationId: string | null;
+  organizationName: string | null;
+  spaceName: string | null;
   status: 'valid' | 'invalid';
   errors: string[];
-  /** 本校已存在同 login_id 账号时的角色；null = 这次会新建。 */
+  /** 目标单位里已存在同 login_id 账号时的角色；null = 这次会新建。 */
   existingRole: AppRole | null;
-  /** 这一行是覆盖已有账号而不是新建（覆盖只动姓名，不动密码）。 */
+  /** 这一行是覆盖已有账号而不是新建（覆盖只动姓名，不动口令）。 */
   willUpdate: boolean;
+  /** 这次真的建了新账号（新账号才有一次性初始口令，旧的没有）。 */
+  willCreate: boolean;
 };
 export type CsvUserPreview = { rows: CsvUserPreviewRow[]; validCount: number; invalidCount: number };
 export type AdminModelTierStatus = Omit<ModelTierStatus, 'secretRef'>;
@@ -551,15 +574,22 @@ export async function removeClassMember(formData: FormData): Promise<AdminAction
 }
 
 /**
- * 批量把账号恢复为初始密码（初始密码 = 学号/工号本身，并重新强制首登改密）。
+ * 批量重置初始口令。
+ *
+ * 口令是**随机一次性**的，随重置一起返回给管理员，由管理员单独转交。
+ * 此前是「恢复为初始密码（学号/工号）」：账号一旦从 8 位数字放宽到邮箱、
+ * 手机号、字母工号，账号就成了名册上可枚举的公开信息，
+ * 拿它当口令等于给每个账号发了一把自己的钥匙——必须和放宽格式一起改。
  *
  * 边界校验做两层，缺一不可：
  *   · 应用层：先按 caller.school_id 把这批 id 查出来，越界的直接拒绝并点名。
  *     只靠 DB 的话，界面上选中的每一行都会各自静默失败，管理员看到的是
  *     「已重置 N 个」而 N 后面跟着一条看不懂的 RPC 报错。
- *   · DB 层：set_initial_password_by_profile 内部的 can_admin_profile（唯一闸门）。
+ *   · DB 层：set_initial_password_by_profile_v2 内部的 can_admin_profile（唯一闸门）。
  */
-export async function resetInitialPasswords(profileIds: string[]): Promise<AdminActionState> {
+export type ResetPasswordsResult = AdminActionState & { credentials?: Array<{ loginId: string | null; displayName: string; initialPassword: string }> };
+
+export async function resetInitialPasswords(profileIds: string[]): Promise<ResetPasswordsResult> {
   const role = await requireRole('admin');
   if (!role.ok) return actionResult(false, role.message);
   if (profileIds.length === 0) return actionResult(false, '请先选择要重置的账号。');
@@ -569,7 +599,7 @@ export async function resetInitialPasswords(profileIds: string[]): Promise<Admin
   }
   const { data: targets, error: lookupError } = await supabase
     .from('profiles')
-    .select('id,display_name,school_id')
+    .select('id,display_name,login_id,school_id')
     .in('id', profileIds);
   if (lookupError) return actionResult(false, `账号查询失败：${lookupError.message}`);
   const found = new Map((targets ?? []).map((row) => [row.id, row]));
@@ -578,19 +608,20 @@ export async function resetInitialPasswords(profileIds: string[]): Promise<Admin
     const names = crossTenant.map((id) => found.get(id)?.display_name ?? id);
     return actionResult(false, `已拒绝：${names.join('、')} 不属于本校，无法重置密码。`);
   }
-  let reset = 0;
+  const credentials: Array<{ loginId: string | null; displayName: string; initialPassword: string }> = [];
   for (const profileId of profileIds) {
-    const { error } = await supabase.rpc('set_initial_password_by_profile', {
-      p_profile_id: profileId,
-      p_server_signature: createDatabaseSessionSignature(`pw:${profileId}`),
-    });
-    if (error) {
-      return actionResult(false, `已重置 ${reset} 个账号，第 ${reset + 1} 个失败：${error.message}`);
+    const target = found.get(profileId);
+    const reset = await resetAccountInitialPassword(profileId);
+    if (!reset.ok) {
+      return actionResult(false, `已重置 ${credentials.length} 个账号，第 ${credentials.length + 1} 个失败：${reset.message}`);
     }
-    reset += 1;
+    credentials.push({ loginId: target?.login_id ?? null, displayName: target?.display_name ?? profileId, initialPassword: reset.initialPassword });
   }
   revalidatePath('/admin/users');
-  return actionResult(true, `已将 ${reset} 个账号恢复为初始密码（学号/工号），对方下次登录会被要求改密，旧会话已失效。`);
+  return {
+    ...actionResult(true, `已重置 ${credentials.length} 个账号的初始口令，请把下面的一次性口令分别转交给本人。对方下次登录会被要求改密，旧会话已失效。`),
+    credentials,
+  };
 }
 
 export async function createClass(formData: FormData): Promise<void>;
@@ -960,48 +991,79 @@ export async function getAdminPresets() {
 
 /**
  * CSV 名册预览。除了字段级校验，还必须回答管理员真正会问的那两个问题：
- *   · 这一行会**新建**账号还是**覆盖**已有账号？（同校同 login_id）
+ *   · 这一行会**新建**账号还是**覆盖**已有账号？（目标单位里同 login_id）
  *   · 如果角色和已有账号不一致，这是在**提权**（student → admin）还是**降权**？
  * 两者都不检查的话，一次手滑的 CSV 就能把整届学生的角色改掉，而预览页全是绿的。
  *
  * 角色不一致一律判 invalid：角色是权限边界，只能显式改，不能由一次名册导入顺带完成
- * （DB 侧 provision_school_account 同样拒绝，见 20260926102000）。
+ * （DB 侧 provision_school_account_v2 同样拒绝）。
+ *
+ * 账号格式按**目标单位**的 login_id_pattern 判定，不写死 8 位数字。
+ * 目标单位取自 organization_id 列，缺省就是调用者所在的学校——存量名册行为不变。
  */
 export async function previewUserCsv(csvText: string): Promise<CsvUserPreview> {
   const caller = await requireRole('admin');
-  const schoolId = caller.ok ? caller.data.school_id : null;
+  const defaultSchoolId = caller.ok ? caller.data.school_id : null;
   const parsed = parseCsv(csvText);
-  // 同校已有账号：一次性查回来，不逐行打数据库。
-  const loginIds = new Set(parsed.map((row) => row.login_id?.trim() ?? '').filter((loginId) => /^\d{8}$/.test(loginId)));
-  const existingByLoginId = new Map<string, AppRole>();
-  if (schoolId && loginIds.size > 0) {
-    const supabase = await createClient();
+  const supabase = await createClient();
+
+  // 目标单位集合：只可能来自 organization_id 列，缺省是调用者的学校。
+  // 一个 id 查一次学校行与它的登录标识口径，跨单位名册才不会逐行打数据库。
+  const requestedSchoolIds = Array.from(new Set(parsed.map((row) => row.organization_id?.trim() ?? '').filter((id) => id.length > 0)));
+  const schoolsById = new Map<string, { id: string; name: string; loginIdPattern: string; organizationId: string | null }>();
+  for (const schoolId of [defaultSchoolId, ...requestedSchoolIds].filter((id): id is string => Boolean(id))) {
+    if (schoolsById.has(schoolId)) continue;
+    const { data } = await supabase.from('schools').select('id,name,login_id_pattern,org_id').eq('id', schoolId).maybeSingle();
+    if (data) schoolsById.set(data.id, { id: data.id, name: data.name, loginIdPattern: resolveLoginIdPattern(data.login_id_pattern), organizationId: data.org_id });
+  }
+
+  // 各目标单位里已存在的账号：一次性查回来，不逐行打数据库。
+  const allLoginIds = Array.from(new Set(parsed.map((row) => row.login_id?.trim() ?? '').filter((loginId) => loginId.length > 0)));
+  const existingBySchoolLogin = new Map<string, AppRole>();
+  const lookupSchoolIds = Array.from(schoolsById.keys());
+  if (lookupSchoolIds.length > 0 && allLoginIds.length > 0) {
     const { data: existing } = await supabase
       .from('profiles')
-      .select('login_id,role')
-      .eq('school_id', schoolId)
-      .in('login_id', [...loginIds]);
-    for (const row of existing ?? []) if (row.login_id) existingByLoginId.set(row.login_id, row.role);
+      .select('school_id,login_id,role')
+      .in('school_id', lookupSchoolIds)
+      .in('login_id', allLoginIds);
+    for (const row of (existing ?? []) as Array<{ school_id: string | null; login_id: string | null; role: AppRole }>) {
+      if (row.school_id && row.login_id) existingBySchoolLogin.set(`${row.school_id}|${row.login_id}`, row.role);
+    }
   }
 
   const seen = new Set<string>();
   const rows = parsed.map((row, index) => {
     const displayName = row.display_name?.trim() ?? '';
     const loginId = row.login_id?.trim() ?? '';
-    const role = isAppRole(row.role?.trim() ?? '') ? row.role.trim() as AppRole : null;
+    const roleRaw = row.role?.trim() ?? '';
+    // org_admin 不在 ROSTER_ROLES 里：一份校内名册不该能顺带产生公司级身份。
+    const role = (ROSTER_ROLES as readonly string[]).includes(roleRaw) ? roleRaw as RosterRole : null;
     const subject = row.subject?.trim() || null;
     const className = row.class_name?.trim() || null;
+    const organizationId = row.organization_id?.trim() || null;
+    const spaceName = row.space?.trim() || null;
+    const target = organizationId ? schoolsById.get(organizationId) : (defaultSchoolId ? schoolsById.get(defaultSchoolId) : undefined);
     const errors: string[] = [];
     if (!displayName) errors.push('缺少姓名');
     if (!loginId) errors.push('缺少账号');
-    else if (!/^\d{8}$/.test(loginId)) errors.push('账号必须是 8 位数字');
-    if (loginId && seen.has(loginId)) errors.push('账号在文件内重复');
-    if (loginId) seen.add(loginId);
+    else if (target && !validateSchoolLoginId(loginId, target.loginIdPattern).ok) {
+      // 只说「不符合目标单位的账号格式」，不把那段正则原样甩给管理员。
+      errors.push(`账号不符合「${target.name}」的格式要求`);
+    }
+    if (loginId && seen.has(`${organizationId ?? defaultSchoolId ?? ''}|${loginId}`)) errors.push('账号在同一目标单位内重复');
+    if (loginId) seen.add(`${organizationId ?? defaultSchoolId ?? ''}|${loginId}`);
     if (!role) errors.push('角色必须是管理员 / 教师 / 学生');
     if (role === 'teacher' && !subject) errors.push('教师缺少科目');
-    const existingRole = existingByLoginId.get(loginId) ?? null;
+    // 显式填了别的单位却不属于本公司：拒绝，不静默回落。静默回落等于把人建到了别处。
+    if (organizationId && !target) errors.push('organization_id 指向的单位不存在或不在你的管理范围内');
+    if (organizationId && target && target.organizationId && caller.ok && target.organizationId !== caller.data.organization_id) {
+      errors.push('organization_id 指向的单位不属于当前公司');
+    }
+    const targetSchoolId = target?.id ?? defaultSchoolId;
+    const existingRole = targetSchoolId ? existingBySchoolLogin.get(`${targetSchoolId}|${loginId}`) ?? null : null;
     if (existingRole && role && existingRole !== role) {
-      errors.push(`该工号在本校已是 ${existingRole}，本次要改成 ${role}（权限变更），必须显式处理`);
+      errors.push(`该账号在目标单位里已是 ${existingRole}，本次要改成 ${role}（权限变更），必须显式处理`);
     }
     return {
       rowNumber: index + 2,
@@ -1010,10 +1072,14 @@ export async function previewUserCsv(csvText: string): Promise<CsvUserPreview> {
       role,
       subject,
       className,
+      organizationId: target?.id ?? null,
+      organizationName: target?.name ?? null,
+      spaceName,
       status: errors.length > 0 ? 'invalid' : 'valid',
       errors,
       existingRole,
       willUpdate: existingRole !== null,
+      willCreate: existingRole === null,
     } satisfies CsvUserPreviewRow;
   });
   return { rows, validCount: rows.filter((row) => row.status === 'valid').length, invalidCount: rows.filter((row) => row.status === 'invalid').length };
@@ -1027,48 +1093,68 @@ export type CsvImportResult = {
   /** 与 imported 同值，语义化别名：失败时它是"已成功"，不是"总共"。 */
   succeededCount: number;
   preview: CsvUserPreview;
+  /**
+   * 本次**新建**账号的一次性初始口令。覆盖已有账号的行不在这里
+   * （它们的旧口令不变，发一个没生效的口令出去比不发更糟）。
+   * 界面必须一次性展示；离开页面就再也取不到了。
+   */
+  credentials: Array<{ rowNumber: number; loginId: string; displayName: string; initialPassword: string }>;
 };
 
+/**
+ * 批量导入名册。
+ *
+ * 目标单位 = 该行的 organization_id，缺省是调用者所在的学校。
+ * 学生入班仍走**迁班**语义：名册是一份全量清单，
+ * 清单里的一行就是这名学生此刻的全部归属——沿用旧归属等于名册说了不算。
+ */
 export async function importUsersFromCsv(csvText: string): Promise<CsvImportResult> {
   const role = await requireRole('admin');
   const preview = await previewUserCsv(csvText);
-  if (!role.ok) return { ok: false, message: role.message, imported: 0, succeededCount: 0, preview };
-  // 校 admin 导入本校名册；班级与账号都挂到调用者的学校（org_admin 的学校归属后续版本放开）。
-  const schoolId = role.data.school_id;
+  const fail = (message: string, imported = 0): CsvImportResult => ({ ok: false, message, imported, succeededCount: imported, preview, credentials: [] });
+  if (!role.ok) return fail(role.message);
+  const fallbackSchoolId = role.data.school_id;
   if (preview.invalidCount > 0) {
-    return { ok: false, message: `CSV 存在 ${preview.invalidCount} 行无效数据（见预览表），未导入任何账号。`, imported: 0, succeededCount: 0, preview };
+    return fail(`CSV 存在 ${preview.invalidCount} 行无效数据（见预览表），未导入任何账号。`);
   }
-  if (!schoolId) {
-    return { ok: false, message: '当前管理员账号未归属任何学校，无法导入名册。', imported: 0, succeededCount: 0, preview };
+  if (preview.rows.length === 0) return fail('CSV 里没有数据行。');
+  if (!fallbackSchoolId && preview.rows.some((row) => !row.organizationId)) {
+    return fail('当前管理员账号未归属任何学校。请在名册里为每一行填写 organization_id，或联系公司管理员补齐归属。');
   }
+
   const supabase = await createClient();
+  const credentials: CsvImportResult['credentials'] = [];
   let imported = 0;
   for (const row of preview.rows) {
-    // provision RPC 一次完成 auth.users 镜像 + profile + 初始密码（学号）+ 强制改密；
-    // 重导入（同校同号、角色相同）仅更新姓名，不动密码——角色不同则 RPC 直接拒绝。
-    const { data: profileId, error: provisionError } = await supabase.rpc('provision_school_account', {
-      p_login_id: row.loginId,
-      p_display_name: row.displayName,
-      p_role: row.role ?? 'student',
-      p_school_id: schoolId,
-      p_server_signature: createDatabaseSessionSignature('provision_school_account'),
+    // 目标单位：显式列优先，缺省回落调用者的学校。preview 已拒绝越界的单位 id。
+    const schoolId = row.organizationId ?? fallbackSchoolId;
+    if (!schoolId) return fail(`第 ${row.rowNumber} 行没有目标单位。`, imported);
+
+    // provision RPC 一次完成 auth.users 镜像 + profile + 随机初始口令 + 强制改密；
+    // 重导入（同单位同号、角色相同）仅更新姓名，不动口令——角色不同则 RPC 直接拒绝。
+    const provisioned = await provisionSchoolAccount({
+      schoolId,
+      loginId: row.loginId,
+      displayName: row.displayName,
+      role: row.role ?? 'student',
     });
     // 逐行推进，所以任何一步失败都必须报「已经成功了多少」：批量导入半途停下时，
     // 只说"失败"的管理员会以为整份名册都没进去，然后重跑一遍。
-    if (provisionError || !profileId) {
-      return { ok: false, message: `第 ${row.rowNumber} 行账号导入失败：${provisionError?.message ?? 'unknown'}（已成功 ${imported} 行）`, imported, succeededCount: imported, preview };
+    if (!provisioned.ok) return fail(`第 ${row.rowNumber} 行账号导入失败：${provisioned.message}（已成功 ${imported} 行）`, imported);
+    const profileIdText = provisioned.data.profileId;
+    if (provisioned.data.created) {
+      credentials.push({ rowNumber: row.rowNumber, loginId: provisioned.data.loginId, displayName: row.displayName, initialPassword: provisioned.data.initialPassword });
     }
-    const profileIdText = String(profileId);
     if (row.role === 'teacher') {
       const { data: synced, error: subjectError } = await supabase.from('profiles').update({ subject: row.subject }).eq('id', profileIdText).select('id');
       if (subjectError || !synced || synced.length === 0) {
-        return { ok: false, message: `第 ${row.rowNumber} 行教师科目未能保存：${subjectError?.message ?? '账号不属于本校或已被停用'}（已成功 ${imported} 行）`, imported, succeededCount: imported, preview };
+        return fail(`第 ${row.rowNumber} 行教师科目未能保存：${subjectError?.message ?? '账号不属于该单位或已被停用'}（已成功 ${imported} 行）`, imported);
       }
     }
     if (row.className && row.role !== 'admin') {
       const { data: classRow, error: classError } = await supabase.from('classes').upsert({ name: row.className, school_id: schoolId, created_by: role.data.id }, { onConflict: 'school_id,name' }).select('id').single();
       if (classError || !classRow) {
-        return { ok: false, message: `第 ${row.rowNumber} 行班级导入失败：${classError?.message ?? '未返回班级记录'}（已成功 ${imported} 行）`, imported, succeededCount: imported, preview };
+        return fail(`第 ${row.rowNumber} 行班级导入失败：${classError?.message ?? '未返回班级记录'}（已成功 ${imported} 行）`, imported);
       }
       if (row.role === 'student') {
         // 迁班走 RPC：删旧关系 + 插新关系 + 同步历史项目/会话，一个事务，失败不留半迁移态。
@@ -1077,7 +1163,7 @@ export async function importUsersFromCsv(csvText: string): Promise<CsvImportResu
           p_class_id: classRow.id,
         });
         if (transferError) {
-          return { ok: false, message: `第 ${row.rowNumber} 行自动迁班失败：${transferError.message}（已成功 ${imported} 行）`, imported, succeededCount: imported, preview };
+          return fail(`第 ${row.rowNumber} 行自动迁班失败：${transferError.message}（已成功 ${imported} 行）`, imported);
         }
       } else {
         // 教师可以带多个班，重复加入同一班是幂等的，不是错误。
@@ -1090,7 +1176,7 @@ export async function importUsersFromCsv(csvText: string): Promise<CsvImportResu
           .limit(1)
           .maybeSingle();
         if (existingTeacherError) {
-          return { ok: false, message: `第 ${row.rowNumber} 行教师关系检查失败：${existingTeacherError.message}（已成功 ${imported} 行）`, imported, succeededCount: imported, preview };
+          return fail(`第 ${row.rowNumber} 行教师关系检查失败：${existingTeacherError.message}（已成功 ${imported} 行）`, imported);
         }
         if (!existingTeacher) {
           const { data: linked, error: membershipError } = await supabase
@@ -1098,17 +1184,55 @@ export async function importUsersFromCsv(csvText: string): Promise<CsvImportResu
             .insert({ class_id: classRow.id, profile_id: profileIdText, role: 'teacher' })
             .select('id');
           if (membershipError || !linked || linked.length === 0) {
-            return { ok: false, message: `第 ${row.rowNumber} 行班级关系导入失败：${membershipError?.message ?? '当前账号无权管理该班级'}（已成功 ${imported} 行）`, imported, succeededCount: imported, preview };
+            return fail(`第 ${row.rowNumber} 行班级关系导入失败：${membershipError?.message ?? '当前账号无权管理该班级'}（已成功 ${imported} 行）`, imported);
           }
         }
       }
+    }
+    // space 列：教师行变共同教师，学生行直接进空间。与面板里的「加入」是同一条边，
+    // 不走班级派生——CSV 说的是"这个人在这个空间里"，不是"这个人在这个班里"。
+    // admin 行不归空间：admin 管的是账号与班级，不是教学内容。给了也当没给。
+    if (row.spaceName && row.role && row.role !== 'admin') {
+      const space = await resolveCsvSpace(supabase, row.spaceName, schoolId);
+      if (!space.ok) return fail(`第 ${row.rowNumber} 行空间归属失败：${space.message}（已成功 ${imported} 行）`, imported);
+      const membershipError = await attachRowToSpace(supabase, space.data, profileIdText, row.role);
+      if (membershipError) return fail(`第 ${row.rowNumber} 行空间归属失败：${membershipError}（已成功 ${imported} 行）`, imported);
     }
     imported += 1;
   }
   revalidatePath('/admin');
   revalidatePath('/admin/users');
   revalidatePath('/admin/classes');
-  return { ok: true, message: `已导入 ${imported} 个账号。`, imported, succeededCount: imported, preview };
+  return {
+    ok: true,
+    message: credentials.length > 0
+      ? `已导入 ${imported} 个账号，其中 ${credentials.length} 个是新账号。请把下面的一次性初始口令分别转交给本人，首次登录会强制改密。`
+      : `已导入 ${imported} 个账号（全部是已有账号的姓名更新，初始口令未改动）。`,
+    imported,
+    succeededCount: imported,
+    preview,
+    credentials,
+  };
+}
+
+/** 名册里的 space 列按名称找空间；找不到就报错，不静默跳过。 */
+type CsvSpaceLookup = { ok: true; data: { id: string; name: string } } | { ok: false; message: string };
+
+async function resolveCsvSpace(supabase: SupabaseClient, spaceName: string, schoolId: string): Promise<CsvSpaceLookup> {
+  const { data, error } = await supabase.from('spaces').select('id,name').eq('name', spaceName).eq('status', 'active').eq('school_id', schoolId).limit(1);
+  if (error) return { ok: false, message: `查询空间「${spaceName}」失败：${error.message}` };
+  if (!data || data.length === 0) return { ok: false, message: `空间「${spaceName}」在该单位下不存在或已归档` };
+  return { ok: true, data: data[0] };
+}
+
+/** 教师 → 共同教师；学生 → 空间直接成员。两张表，语义不同，不能混。 */
+async function attachRowToSpace(supabase: SupabaseClient, space: { id: string; name: string }, profileId: string, role: RosterRole): Promise<string | null> {
+  if (role === 'teacher') {
+    const { error } = await supabase.from('space_collaborators').upsert({ space_id: space.id, profile_id: profileId, role: 'co_teacher' }, { onConflict: 'space_id,profile_id', ignoreDuplicates: true });
+    return error ? `加入空间「${space.name}」的共同教师失败：${error.message}` : null;
+  }
+  const { error } = await supabase.from('space_members').upsert({ space_id: space.id, student_id: profileId, member_role: 'student' }, { onConflict: 'space_id,student_id', ignoreDuplicates: true });
+  return error ? `加入空间「${space.name}」失败：${error.message}` : null;
 }
 
 export async function getAdminExports() {

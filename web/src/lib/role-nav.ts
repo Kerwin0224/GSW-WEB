@@ -61,6 +61,7 @@ const teacherNavGroups: RoleNavGroup[] = [
       { icon: BarChart3, label: '教学总览', href: '/teacher', description: '班级学情与待办', primary: true },
       { icon: MessageSquare, label: '备课问答', href: '/teacher/chat', description: '讨论讲解思路与课堂练习', primary: true },
       { icon: FileSearch, label: '学习记录核实', href: '/teacher/audit', description: '检查学生会话中的 AI 回答与疑点', primary: true },
+      { icon: Users, label: '组内学情', href: '/teacher/team', description: '查看被授权教学单元的核实完成情况' },
     ],
   },
 ];

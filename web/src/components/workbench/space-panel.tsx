@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/workbench/state-surfaces';
 import { SpaceDirectory } from '@/components/workbench/space-directory';
 import { archiveSpaceAction, saveSpaceAction, setSpaceClassAction, setSpaceStudentAction, type SpaceStudentOption, type TeacherSpace } from '@/lib/data/spaces';
 import type { TeacherClass } from '@/lib/data/teacher';
+import { saveSpaceSubjectAction, saveStarterPromptsAction, STARTER_PROMPT_SLOTS, type SpaceSettingsMap, type SubjectOption } from '@/lib/data/space-settings';
 import type { ActionState } from '@/lib/data/common';
 import { SPACE_COLOR_KEYS, SPACE_COLOR_LABELS, SPACE_COLOR_VALUES } from '@/lib/space-colors';
 import type { SpaceColorKey, SpaceKind } from '@/lib/supabase/database.types';
@@ -32,7 +33,7 @@ const THEME_PLACEHOLDER = `只写「这个空间按什么分类」，不用管�
  * 班级成员自动派生，直接成员单独记录；归类主题与结构化返回协议分开，主题只写语义部分。
  * 两行输出协议由系统在提示词末尾强制拼接，见 lib/classification-prompts.ts。
  */
-export function SpacePanel({ spaces, classes, studentOptions, defaultSubject }: { spaces: TeacherSpace[]; classes: TeacherClass[]; studentOptions: SpaceStudentOption[]; defaultSubject: string }) {
+export function SpacePanel({ spaces, classes, studentOptions, defaultSubject, subjectOptions = [], spaceSettings = {} }: { spaces: TeacherSpace[]; classes: TeacherClass[]; studentOptions: SpaceStudentOption[]; defaultSubject: string; subjectOptions?: SubjectOption[]; spaceSettings?: SpaceSettingsMap }) {
   const [selectedId, setSelectedId] = useState(spaces[0]?.id ?? '');
   const [creating, setCreating] = useState(spaces.length === 0);
   // 新建成功后服务端不回传新空间 id（saveSpaceAction 只返回 ActionState），
@@ -86,9 +87,9 @@ export function SpacePanel({ spaces, classes, studentOptions, defaultSubject }: 
         />
 
         {creating ? (
-          <SpaceEditor key="new" classes={classes} studentOptions={studentOptions} defaultSubject={defaultSubject} onCreated={handleCreated} />
+          <SpaceEditor key="new" classes={classes} studentOptions={studentOptions} defaultSubject={defaultSubject} subjectOptions={subjectOptions} spaceSettings={spaceSettings} onCreated={handleCreated} />
         ) : current ? (
-          <SpaceEditor key={current.id} space={current} classes={classes} studentOptions={studentOptions} defaultSubject={defaultSubject} onArchived={handleArchived} />
+          <SpaceEditor key={current.id} space={current} classes={classes} studentOptions={studentOptions} defaultSubject={defaultSubject} subjectOptions={subjectOptions} spaceSettings={spaceSettings} onArchived={handleArchived} />
         ) : (
           <EmptyState
             title={spaces.length === 0 ? '还没有学习空间' : '当前没有选中的空间'}
@@ -105,7 +106,7 @@ export function SpacePanel({ spaces, classes, studentOptions, defaultSubject }: 
   );
 }
 
-function SpaceEditor({ space, classes, studentOptions, defaultSubject, onCreated, onArchived }: { space?: TeacherSpace; classes: TeacherClass[]; studentOptions: SpaceStudentOption[]; defaultSubject: string; onCreated?: (name: string) => void; onArchived?: () => void }) {
+function SpaceEditor({ space, classes, studentOptions, defaultSubject, subjectOptions, spaceSettings, onCreated, onArchived }: { space?: TeacherSpace; classes: TeacherClass[]; studentOptions: SpaceStudentOption[]; defaultSubject: string; subjectOptions: SubjectOption[]; spaceSettings: SpaceSettingsMap; onCreated?: (name: string) => void; onArchived?: () => void }) {
   const [state, action, pending] = useActionState(saveSpaceAction, idle);
   const [name, setName] = useState(space?.name ?? '');
   const [subject, setSubject] = useState(space?.subject ?? defaultSubject);
@@ -115,6 +116,7 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject, onCreated
   // 默认「暂不拉班」：新建时替教师先拉一个班是不可逆的成员扩张，
   // 得由他自己明确选，而不是被默认值顺手带出去。
   const [classId, setClassId] = useState('');
+  const setting = space ? spaceSettings[space.id] : undefined;
 
   const pulledClassIds = new Set((space?.classes ?? []).map((klass) => klass.classId));
   const availableClasses = classes.filter((klass) => !pulledClassIds.has(klass.classId));
@@ -136,8 +138,9 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject, onCreated
   const removableDirectStudents = (space?.directStudents ?? []).filter((student) => !derivedDirectStudents.some((derived) => derived.id === student.id));
   const derivedStudentCount = space?.classes.reduce((sum, klass) => sum + klass.studentCount, 0) ?? 0;
   const nameError = state.errors?.name;
+  // 科目提交是独立小表单（见 SubjectField）：它同时写兼容文本列与词表 id，
+  // 主表单因此只带一个隐藏字段把当前科目名交给 saveSpaceAction。
   const subjectError = state.errors?.subject;
-
   // 新建成功后把控制权交回父级去认领新空间（服务端不回传 id，见 SpacePanel 注释）。
   // 只认 state 的变化：依赖里刻意不放 name，否则教师接着改名就会重复认领。
   useEffect(() => {
@@ -147,6 +150,14 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject, onCreated
   return (
     <div className="grid gap-6 border-y border-border/65 bg-background/45 p-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
       <div className="space-y-4 p-5 sm:p-6 lg:border-r lg:border-border/60">
+        <SubjectField
+          space={space}
+          subject={subject}
+          subjectOptions={subjectOptions}
+          boundSubjectId={setting?.subjectId ?? null}
+          onSubjectChange={setSubject}
+          subjectError={subjectError}
+        />
       <form action={action} className="space-y-3">
         {space ? <input type="hidden" name="space_id" value={space.id} /> : null}
         <fieldset className="space-y-2">
@@ -167,18 +178,23 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject, onCreated
             ))}
           </div>
           <input type="hidden" name="space_kind" value={spaceKind} />
+          {/* 空间类型目前只作标记：它不参与权限、不参与统计、也不影响归类规则。
+              暑期营、考级班、1v1 长期项目这类没有学期边界的形态，今天只能记在「专题空间」里——
+              这条限制必须写在教师眼前，否则他会以为选错了类型会导致看不到数据。 */}
+          <p className="rounded-lg border border-border/60 bg-muted/35 p-2 text-xs leading-5 text-muted-foreground">
+            空间类型只是标记，不改变任何行为：权限、统计和归类规则都不看它。暑期营、考级班、一对一长期项目这类没有学期边界的形态，目前只能记在「专题空间」里。
+          </p>
         </fieldset>
         <div className="space-y-2">
           <Label htmlFor="space-name">空间名称</Label>
           <Input id="space-name" name="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：基础巩固空间" maxLength={40} aria-invalid={Boolean(nameError)} aria-describedby={nameError ? 'space-name-error' : undefined} />
           {nameError ? <p id="space-name-error" className="text-xs text-destructive">{nameError}</p> : null}
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="space-subject">空间科目</Label>
-          <Input id="space-subject" name="subject" value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="例如：语文" maxLength={40} aria-invalid={Boolean(subjectError)} aria-describedby={subjectError ? 'space-subject-error' : 'space-subject-help'} />
-          <p id="space-subject-help" className="text-xs text-muted-foreground">科目用于空间目录分组，必须填写。</p>
-          {subjectError ? <p id="space-subject-error" className="text-xs text-destructive">{subjectError}</p> : null}
-        </div>
+        {/* 科目交给独立小表单（SubjectField），它要同时写兼容文本列与词表 id。
+            主表单因此只带一个隐藏字段把当前科目名交给 saveSpaceAction；
+            SubjectField 本身必须放在本 form 之外——HTML 不允许表单嵌套，
+            浏览器解析 SSR 出的 HTML 时会把内层 form 丢掉，提交时打到外层 action 上。 */}
+        <input type="hidden" name="subject" value={subject} />
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">空间标识色</legend>
           <div role="radiogroup" aria-label="空间标识色" className="grid grid-cols-3 gap-2">
@@ -238,6 +254,7 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject, onCreated
         </div>
       ) : null}
       {space ? <ArchiveButton space={space} onArchived={onArchived} /> : null}
+      {space ? <StarterPromptsField space={space} starterPrompts={setting?.starterPrompts ?? []} /> : null}
 
       {space ? (
         <div className="space-y-3 border-t border-border/60 pt-3">
@@ -281,6 +298,135 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject, onCreated
         </div>
       ) : null}
       </div>
+    </div>
+  );
+}
+
+/**
+ * 空间科目：下拉 + 可新建。
+ *
+ * 自由文本的代价是同一个科目会长出多个空间（「物理」和「Physics」在目录里就是两组），
+ * 所以改成从科目词表里选；词表里没有的可以现场新建一个词（先以文本形式落库，
+ * 等学校管理员把词补进词表后再绑定 id）。两个字段一起写：文本列给老逻辑读，id 列才归一化。
+ */
+function SubjectField({ space, subject, subjectOptions, boundSubjectId, onSubjectChange, subjectError }: {
+  space?: TeacherSpace;
+  subject: string;
+  subjectOptions: SubjectOption[];
+  boundSubjectId: string | null;
+  onSubjectChange: (value: string) => void;
+  subjectError?: string;
+}) {
+  const [state, action, pending] = useActionState(saveSpaceSubjectAction, idle);
+  const [creating, setCreating] = useState(false);
+  const [selected, setSelected] = useState<string>(() => {
+    if (boundSubjectId) return `catalog:${boundSubjectId}`;
+    return subject ? `text:${subject}` : '';
+  });
+
+  // 当前科目若不在候选里（例如历史空间写了个词表外的词），补进下拉，
+  // 否则 select 会静默回落到第一项，教师看到的就不是这个空间真正的科目。
+  const options = subjectOptions.some((option) => `text:${option.name}` === selected || `catalog:${option.id ?? ''}` === selected)
+    ? subjectOptions
+    : [...subjectOptions, { id: null, name: subject, source: 'existing' as const }].filter((option) => option.name.length > 0);
+  const currentSubjectId = selected.startsWith('catalog:') ? selected.slice('catalog:'.length) : '';
+
+  return (
+    <div className="space-y-2 pb-3">
+      <Label htmlFor="space-subject">空间科目</Label>
+      {creating ? (
+        <div className="flex gap-2">
+          <Input
+            id="space-subject"
+            value={subject}
+            onChange={(event) => onSubjectChange(event.target.value)}
+            placeholder="输入新科目名"
+            maxLength={40}
+            aria-invalid={Boolean(subjectError)}
+          />
+          <Button type="button" variant="outline" onClick={() => { setCreating(false); setSelected(subject ? `text:${subject}` : ''); }} className="shrink-0 cursor-pointer">改选已有</Button>
+        </div>
+      ) : (
+        <select
+          id="space-subject"
+          value={selected}
+          onChange={(event) => {
+            const next = event.target.value;
+            setSelected(next);
+            setCreating(next === '__new__');
+            const option = options.find((item) => `catalog:${item.id ?? ''}` === next || `text:${item.name}` === next);
+            if (option) onSubjectChange(option.name);
+          }}
+          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+          aria-invalid={Boolean(subjectError)}
+        >
+          <option value="">请选择科目</option>
+          {options.map((option) => (
+            <option key={`${option.id ?? 'text'}:${option.name}`} value={option.id ? `catalog:${option.id}` : `text:${option.name}`}>
+              {option.name}{option.source === 'catalog' ? '' : '（仅本空间在用）'}
+            </option>
+          ))}
+          <option value="__new__">＋ 新建科目…</option>
+        </select>
+      )}
+      <p className="text-xs leading-5 text-muted-foreground">
+        科目用于空间目录分组。选词表里的科目，多个空间会归到同一组；选「仅本空间在用」或新建的词暂时只以文本保存。
+      </p>
+      {subjectError ? <p className="text-xs text-destructive">{subjectError}</p> : null}
+      {space ? (
+        <form action={action} className="flex flex-wrap items-center gap-2">
+          <input type="hidden" name="space_id" value={space.id} />
+          <input type="hidden" name="subject" value={subject} />
+          <input type="hidden" name="subject_id" value={currentSubjectId} />
+          <Button type="submit" size="sm" variant="outline" disabled={pending || !subject.trim() || creating} className="cursor-pointer">
+            {pending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" /> : null}
+            保存科目
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {boundSubjectId ? '当前已归并到词表。' : '当前未归并到词表，同学科的空间不会自动合并。'}
+          </span>
+        </form>
+      ) : (
+        <p className="text-xs text-muted-foreground">空间创建后，回到这里点「保存科目」即可把它归并到词表。</p>
+      )}
+      {state.message ? (
+        <p className={state.ok ? 'text-xs text-primary' : 'text-xs text-destructive'} role={state.ok ? 'status' : 'alert'}>{state.message}</p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * 学生首屏的追问示例。留空即回落内置默认四句——教师不写也能用，
+ * 写了就按他写的来（同一个空间里，学生看到的第一屏就该是这位老师想让他问的）。
+ */
+function StarterPromptsField({ space, starterPrompts }: { space: TeacherSpace; starterPrompts: string[] }) {
+  const [state, action, pending] = useActionState(saveStarterPromptsAction, idle);
+  const [values, setValues] = useState<string[]>(() => Array.from({ length: STARTER_PROMPT_SLOTS }, (_, index) => starterPrompts[index] ?? ''));
+
+  return (
+    <div className="space-y-2 border-t border-border/55 pt-3">
+      <p className="text-sm font-medium">学生首屏追问示例</p>
+      <form action={action} className="space-y-2">
+        <input type="hidden" name="space_id" value={space.id} />
+        {values.map((value, index) => (
+          <Input
+            key={index}
+            name={`starter_prompt_${index}`}
+            value={value}
+            onChange={(event) => setValues((current) => current.map((item, itemIndex) => (itemIndex === index ? event.target.value : item)))}
+            placeholder={`示例 ${index + 1}（留空则用默认示例）`}
+            maxLength={60}
+          />
+        ))}
+        <Button type="submit" size="sm" variant="outline" disabled={pending} className="cursor-pointer">
+          {pending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" /> : null}
+          保存追问示例
+        </Button>
+      </form>
+      {state.message ? (
+        <p className={state.ok ? 'text-xs text-primary' : 'text-xs text-destructive'} role={state.ok ? 'status' : 'alert'}>{state.message}</p>
+      ) : null}
     </div>
   );
 }

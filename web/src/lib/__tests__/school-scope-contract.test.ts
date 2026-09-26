@@ -23,10 +23,14 @@ function teacherFunction(name: string) {
   return teacherSource.slice(start, end < 0 ? teacherSource.length : end);
 }
 
-test('教师教学作用域是「任教班级 ∪ 自己拥有的空间」', () => {
+test('教师教学作用域是「任教班级 ∪ 我能进入的空间（含协作空间）」', () => {
   const scope = teacherFunction('getTeacherScope');
   assert.match(scope, /from\('class_memberships'\)[\s\S]*?eq\('role', 'teacher'\)/, '任教班级那一路必须还在');
-  assert.match(scope, /from\('spaces'\)[\s\S]*?eq\('owner_id', teacherId\)/, '空间那一路按 owner_id 取');
+  // 空间那一路走 teacher_space_ids()（owner ∪ 协作者）。写回 eq('owner_id', teacherId)
+  // 会让共同教师在核实队列里看不到自己参与的空间——列表与详情会各说各话。
+  assert.match(scope, /rpc\('teacher_space_ids'\)/, '空间那一路必须走 teacher_space_ids()，它已含协作者');
+  assert.doesNotMatch(scope, /eq\('owner_id', teacherId\)/, '不能再只按 owner_id 取空间');
+
 
   // 三处判定必须共用同一份并集语义，漏改一处就是「列表看得到、点进去打不开」或统计少算。
   for (const name of ['getTeacherAuditQueue', 'getTeacherAuditSession', 'getTeacherAnalytics']) {

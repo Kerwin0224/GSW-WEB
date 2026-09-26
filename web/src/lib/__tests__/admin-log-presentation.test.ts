@@ -252,6 +252,7 @@ test('reads every filter from the URL and falls back on unknown values', () => {
     search: 'teacher_chat',
     traceId: 'req-9',
     userId: 'user-1',
+    schoolId: '',
   });
   assert.deepEqual(parseAdminLogQuery({ range: 'yesterday', level: 'loud', function: 'nope', result: 'nope' }), {
     range: '24h',
@@ -261,7 +262,15 @@ test('reads every filter from the URL and falls back on unknown values', () => {
     search: '',
     traceId: '',
     userId: '',
+    schoolId: '',
   });
+});
+
+test('accepts a tenant filter only when it looks like a uuid', () => {
+  // school_id 是 uuid 列：URL 里塞任意字符串会让 eq() 直接 400，整页日志读不出来。
+  const schoolId = '3f1a2b4c-5d6e-4f70-8192-a3b4c5d6e7f8';
+  assert.equal(parseAdminLogQuery({ school: schoolId.toUpperCase() }).schoolId, schoolId);
+  assert.equal(parseAdminLogQuery({ school: 'all' }).schoolId, '');
 });
 
 test('turns the time range into a server side lower bound', () => {

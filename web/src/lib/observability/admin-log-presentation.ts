@@ -64,6 +64,8 @@ export type AdminLogQuery = {
   readonly search: string;
   readonly traceId: string;
   readonly userId: string;
+  /** 租户（学校）id。多租户下所有学校的日志混在同一张表，不给筛选就看不到边界。 */
+  readonly schoolId: string;
 };
 
 export const DEFAULT_LOG_QUERY: AdminLogQuery = {
@@ -74,6 +76,7 @@ export const DEFAULT_LOG_QUERY: AdminLogQuery = {
   search: '',
   traceId: '',
   userId: '',
+  schoolId: '',
 };
 
 const LOG_QUERY_PARAM_NAMES: Readonly<Record<keyof AdminLogQuery, string>> = {
@@ -84,6 +87,7 @@ const LOG_QUERY_PARAM_NAMES: Readonly<Record<keyof AdminLogQuery, string>> = {
   search: 'q',
   traceId: 'trace_id',
   userId: 'user_id',
+  schoolId: 'school',
 };
 
 const LOG_QUERY_ALLOWED_VALUES: Readonly<Record<'range' | 'level' | 'functionKey' | 'result', readonly string[]>> = {
@@ -92,6 +96,9 @@ const LOG_QUERY_ALLOWED_VALUES: Readonly<Record<'range' | 'level' | 'functionKey
   functionKey: LOG_FUNCTION_OPTIONS.map((option) => option.value),
   result: LOG_RESULT_OPTIONS.map((option) => option.value),
 };
+
+// school_id 是 uuid 列：URL 里塞任意字符串会让 eq() 直接 400，整页日志读不出来。
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** 数组取首个、空白归零：URL 里的重复参数不该让筛选行为取决于谁先到。 */
 function firstParamValue(value: string | string[] | undefined): string {
@@ -108,6 +115,8 @@ function pickAllowedParam<T extends string>(value: string, allowed: readonly str
  * 刷新、前进后退、把链接发给同事，看到的都是同一个口径。
  */
 export function parseAdminLogQuery(params: Record<string, string | string[] | undefined>): AdminLogQuery {
+  const school = firstParamValue(params.school).toLowerCase();
+
   return {
     range: pickAllowedParam(
       firstParamValue(params.range),
@@ -131,6 +140,7 @@ export function parseAdminLogQuery(params: Record<string, string | string[] | un
     ),
     search: firstParamValue(params.q),
     traceId: firstParamValue(params.trace_id),
+    schoolId: UUID_PATTERN.test(school) ? school : '',
     userId: firstParamValue(params.user_id),
   };
 }

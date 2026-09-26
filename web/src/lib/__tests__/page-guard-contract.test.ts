@@ -110,7 +110,10 @@ const PAGE_GUARD = /await (?:requireProfile|requireProfileForPasswordChange|getP
 const pageFiles = sourceFilesUnder(appDir).filter((file) => basename(file) === 'page.tsx');
 
 /** 公开页白名单，只放行这两棵子树；/auth 下目前只有 callback 这个 route handler。 */
-const PUBLIC_TOP_SEGMENTS = new Set(['login', 'auth']);
+// signup 与 login 同层：都是未认证入口，真正的准入在 redeem_tenant_invite 事务里
+//（令牌一次性、过期失效）。列为公开段而不是给页面硬塞 requireProfile——塞了的话
+// 未登录用户连表单都看不到，开通功能形同虚设。
+const PUBLIC_TOP_SEGMENTS = new Set(['login', 'auth', 'signup']);
 
 /** 该目录向上最近的 layout.tsx 绝对路径；一路走到 src/app 仍没有则返回 null。 */
 function nearestLayout(dir: string): string | null {

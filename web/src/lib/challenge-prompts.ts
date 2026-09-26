@@ -14,6 +14,23 @@
 
 import { bloomLevelTaskLine, formatBloomLevelCriteria } from './bloom-levels.ts';
 
+// ─── 租户指令通道 ───────────────────────────────────────────────────────────
+
+/**
+ * 租户自定义指令拼在平台协议**之前**，与 classification-prompts 的「语义部分 + 协议部分」
+ * 同一形状：语义部分（学校或空间自己写的出题、评阅口径）随学科而变，
+ * 协议部分（层级判定、不可信内容沙盒、输出格式）由平台强制拼接、恒定不变。
+ *
+ * 之所以是追加而不是替换：两段提示词各自带着一串一致性与安全约束
+ * （目标层级只由后端传入、结果只有通过/未通过、学生内容不可信）。
+ * 租户指令若能整段替换，这串约束就成了租户可以随手关掉的东西。
+ */
+function tenantInstructionBlock(tenantInstruction: string | null | undefined): string {
+  const instruction = tenantInstruction?.trim();
+  if (!instruction) return '';
+  return `【本学校/本空间的教学要求】\n${instruction}\n\n`;
+}
+
 // ─── 挑战生成提示词 ───────────────────────────────────────────────────────────
 
 export type PriorQuestion = {
@@ -30,6 +47,11 @@ export type ChallengeGenerationContext = {
   targetBloomLevel: number;
   /** 项目下学生已提出的历史问题（用于取材和切入角度） */
   priorQuestions: PriorQuestion[];
+  /**
+   * 租户自定义指令（Prompt 预设 purpose = challenge_generation）。
+   * 为空时提示词与从前完全一致。
+   */
+  tenantInstruction?: string | null;
 };
 
 function formatPriorQuestions(questions: PriorQuestion[]): string {
@@ -55,7 +77,7 @@ export function buildChallengeGenerationPrompt(ctx: ChallengeGenerationContext):
   const nameLine = `项目：《${projectName}》${projectSubtitle ? `（${projectSubtitle}）` : ''}`;
   const taskLine = `当前层级任务重点：${bloomLevelTaskLine(targetBloomLevel)}`;
 
-  return `你是文韵智途的挑战出题助手。请生成 1 道用于真实确认学生当前目标层级的挑战题。这是学生要作答的挑战，不是普通会话，也不是教师评测说明。
+  return `${tenantInstructionBlock(ctx.tenantInstruction)}你是文韵智途的挑战出题助手。请生成 1 道用于真实确认学生当前目标层级的挑战题。这是学生要作答的挑战，不是普通会话，也不是教师评测说明。
 
 请严格遵守下面要求：
 - 只出 1 道题，任务单一清楚，避免一题多问
@@ -99,6 +121,11 @@ export type ChallengeEvaluationContext = {
   challengePrompt: string;
   /** 学生作答（不可信内容，需要沙盒化） */
   studentAnswer: string;
+  /**
+   * 租户自定义指令（Prompt 预设 purpose = challenge_evaluation）。
+   * 为空时提示词与从前完全一致。
+   */
+  tenantInstruction?: string | null;
 };
 
 /**
@@ -113,14 +140,14 @@ export function buildChallengeEvaluationPrompt(ctx: ChallengeEvaluationContext):
   const { projectName, projectSubtitle, targetBloomLevel, challengePrompt, studentAnswer } = ctx;
   const nameLine = `项目：《${projectName}》${projectSubtitle ? `（${projectSubtitle}）` : ''}`;
 
-  return `你是文韵智途的挑战确认助手。请只根据学习内容、目标层级、挑战题和学生作答，判断学生是否通过当前挑战。挑战用于确认当前目标层级，必须严格确认；不能因为学生有回答、态度积极、篇幅较长或表达流畅就判定通过。
+  return `${tenantInstructionBlock(ctx.tenantInstruction)}你是文韵智途的挑战确认助手。请只根据学习内容、目标层级、挑战题和学生作答，判断学生是否通过当前挑战。挑战用于确认当前目标层级，必须严格确认；不能因为学生有回答、态度积极、篇幅较长或表达流畅就判定通过。
 
 布鲁姆层级判断口径（只描述认知操作，不限定学科）：
 ${formatBloomLevelCriteria()}
 
 确认规则：
 - 目标层级严格来自本条挑战记录，不参考项目最高层级、会话级布鲁姆统计、AI 回答或教师修订
-- 结果只有通过 / 未通过；不提供半级确认、部分通过、百分比评分、跨级提升或灰色状态
+- 结果只有通过 / 未通过；不提供半级确认、部分通过、百分比评分、跨层提升或灰色状态
 - achieved=true 只表示通过当前目标层级，不代表更高层级也被确认
 - 学生作答必须回应题目核心要求，有可核对的依据或合理解释，并体现目标层级操作
 - 只达到较低层级、只复述常识、只给结论无依据，或偏离题目核心要求时，achieved=false

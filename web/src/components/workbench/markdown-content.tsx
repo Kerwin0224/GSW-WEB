@@ -7,6 +7,7 @@ type MarkdownHighlight = { quote?: string; label?: string };
 type InlineToken =
   | { kind: 'text'; value: string }
   | { kind: 'code'; value: string }
+  | { kind: 'math'; value: string; display: boolean }
   | { kind: 'strong'; value: InlineToken[] }
   | { kind: 'em'; value: InlineToken[] }
   | { kind: 'link'; label: InlineToken[]; href: string };
@@ -18,6 +19,8 @@ type Block =
   | { kind: 'unordered'; items: string[] }
   | { kind: 'ordered'; items: string[] }
   | { kind: 'code'; text: string; language?: string }
+  | { kind: 'math'; text: string }
+  | { kind: 'image'; src: string; alt: string }
   | { kind: 'rule' }
   | { kind: 'table'; headers: string[]; rows: string[][] };
 
@@ -87,6 +90,26 @@ function safeHref(href: string) {
   return '';
 }
 
+/**
+ * 图片地址校验。模型输出里的地址是不可信输入：
+ * 只放行 https 与本站相对路径（本站 storage 的签名链接走的就是这条路）。
+ * javascript: 会执行脚本，任意 data: 能塞进任意内容，两者一律不放行。
+ */
+function safeImageSrc(src: string) {
+  const trimmed = src.trim();
+  if (/^https:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return trimmed;
+  return '';
+}
+
+/** 独占一行的 `![alt](url)` 才升级成图片块；夹在句中的保持原样，避免打断行文。 */
+function parseImageBlock(line: string): { src: string; alt: string } | null {
+  const match = line.trim().match(/^!\[([^\]]*)\]\(([^)\s]+)\)$/);
+  if (!match) return null;
+  const src = safeImageSrc(match[2]);
+  return src ? { src, alt: match[1] } : null;
+}
+
 function findClosing(text: string, marker: string, start: number) {
   const index = text.indexOf(marker, start);
   return index > start ? index : -1;
@@ -124,6 +147,20 @@ function tokenizeInline(text: string): InlineToken[] {
       }
     }
 
+    // 行内公式。`$` 后紧跟空白、`$` 前是空白的一律当货币符号处理，
+    // 否则「这本书 30$ 很贵」会被啃掉半句。
+    if (text[index] === '$') {
+      const display = text.startsWith('$$', index);
+      const marker = display ? '$$' : '$';
+      const bodyStart = index + marker.length;
+      const end = findClosing(text, marker, bodyStart);
+      if (end !== -1 && end > bodyStart && !/\s/.test(text[bodyStart]) && !/\s/.test(text[end - 1])) {
+        tokens.push({ kind: 'math', value: text.slice(bodyStart, end), display });
+        index = end + marker.length;
+        continue;
+      }
+    }
+
     if (text[index] === '[') {
       const labelEnd = text.indexOf('](', index + 1);
       if (labelEnd !== -1) {
@@ -139,7 +176,7 @@ function tokenizeInline(text: string): InlineToken[] {
       }
     }
 
-    const nextSpecial = ['`', '*', '[']
+    const nextSpecial = ['`', '*', '[', '$']
       .map((marker) => text.indexOf(marker, index + 1))
       .filter((next) => next !== -1)
       .sort((a, b) => a - b)[0] ?? text.length;
@@ -180,6 +217,12 @@ function renderInline(tokens: InlineToken[], keyPrefix: string, highlights: Retu
     if (token.kind === 'text') return <span key={key}>{renderTextWithHighlights(token.value, key, highlights)}</span>;
     if (token.kind === 'code') return <code key={key} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.92em] text-foreground">{token.value}</code>;
     if (token.kind === 'strong') return <strong key={key} className="font-semibold text-foreground">{renderInline(token.value, key, highlights)}</strong>;
+    if (token.kind === 'math') {
+      // 公式保持源码形态：可读、可复制，也不需要为它塞一个排版引擎进包。
+      return token.display
+        ? <span key={key} className="mx-1 inline-block rounded bg-muted/60 px-2 py-0.5 text-center font-serif text-[0.95em] text-foreground">{token.value}</span>
+        : <span key={key} className="rounded bg-muted/60 px-1 font-serif text-[0.95em] text-foreground">{token.value}</span>;
+    }
     if (token.kind === 'em') return <em key={key}>{renderInline(token.value, key, highlights)}</em>;
     return <a key={key} href={token.href} target={token.href.startsWith('http') ? '_blank' : undefined} rel={token.href.startsWith('http') ? 'noreferrer' : undefined} className="font-medium text-primary underline underline-offset-4">{renderInline(token.label, key, highlights)}</a>;
   });
@@ -215,6 +258,25 @@ function parseMarkdown(text: string): Block[] {
       }
       blocks.push({ kind: 'code', text: codeLines.join('\n'), language: fence[1] });
       index += index < lines.length ? 1 : 0;
+      continue;
+    }
+
+    if (/^\s*\$\$\s*$/.test(line)) {
+      const mathLines: string[] = [];
+      index += 1;
+      while (index < lines.length && !/^\s*\$\$\s*$/.test(lines[index])) {
+        mathLines.push(lines[index]);
+        index += 1;
+      }
+      blocks.push({ kind: 'math', text: mathLines.join('\n').trim() });
+      index += index < lines.length ? 1 : 0;
+      continue;
+    }
+
+    const image = parseImageBlock(line);
+    if (image) {
+      blocks.push({ kind: 'image', ...image });
+      index += 1;
       continue;
     }
 
@@ -313,6 +375,16 @@ export function MarkdownContent({ content, className, highlights = [], ...props 
         if (block.kind === 'ordered') return <ol key={index} className="ml-5 list-decimal space-y-1">{block.items.map((item, itemIndex) => <li key={itemIndex}>{renderInline(tokenizeInline(item), `ol-${index}-${itemIndex}`, normalizedHighlights)}</li>)}</ol>;
         if (block.kind === 'code') return <pre key={index} className="overflow-x-auto rounded-lg border bg-muted/70 p-3 text-xs leading-6"><code>{block.text}</code></pre>;
         if (block.kind === 'rule') return <hr key={index} className="border-border/70" />;
+        if (block.kind === 'math') return <div key={index} className="overflow-x-auto rounded-lg border bg-muted/40 px-3 py-2 text-center font-serif text-[0.95em] text-foreground">{block.text}</div>;
+        if (block.kind === 'image') return (
+          // 地址已经过 safeImageSrc：只可能是 https 或本站相对路径。
+          // 不用 next/image 是因为签名链接带 token 且随时过期，走优化管线反而会缓存过期图。
+          <figure key={index}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={block.src} alt={block.alt} loading="lazy" className="max-h-96 w-auto rounded-lg border" />
+            {block.alt ? <figcaption className="mt-1 text-xs text-muted-foreground">{block.alt}</figcaption> : null}
+          </figure>
+        );
         return (
           <div key={index} className="overflow-x-auto rounded-lg border">
             <table className="w-full min-w-96 text-left text-xs">

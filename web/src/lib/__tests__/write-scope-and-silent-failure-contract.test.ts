@@ -49,14 +49,21 @@ test('conversations 的空间归属判定只在归属列真的变化时执行', 
 });
 
 test('finalizeLearningConversation 用条件更新并检查命中行数', () => {
-  const body = functionBody(teacherActions, 'finalizeLearningConversation', 'saveTeacherPromptPreset');
+  const body = functionBody(teacherActions, 'finalizeLearningConversation', 'setConversationLock');
 
   // 两个条件缺一不可：is(finalized_at, null) 让并发提交只有一个能成，
   // select('id') 让「RLS 静默过滤 = 0 行」与「已更新」可区分。
-  assert.match(body, /update\(\{ finalized_at: now \}\)[\s\S]*?\.is\('finalized_at', null\)/, '必须是条件更新，否则并发提交会互相覆盖');
+  // 断言只钉「这次更新写了 finalized_at」这个不变量，不钉 payload 的完整字面量——
+  // 核实完成 / 评语 / 封口三件事各自成列，字面量一变断言就误报，而并发保护其实没坏。
+  assert.match(body, /update\(\{[\s\S]*?finalized_at: now[\s\S]*?\}\)[\s\S]*?\.is\('finalized_at', null\)/, '必须是条件更新，否则并发提交会互相覆盖');
   assert.match(body, /\.is\('deleted_at', null\)/, '学生已删除的会话不能被标记为已核实');
-  assert.match(body, /update\(\{ finalized_at: now \}\)[\s\S]*?\.select\('id'\)/, '必须取回命中行，0 行要能看见');
+  assert.match(body, /update\(\{[\s\S]*?finalized_at: now[\s\S]*?\}\)[\s\S]*?\.select\('id'\)/, '必须取回命中行，0 行要能看见');
   assert.match(body, /if \(!finalizedRows \|\| finalizedRows\.length === 0\)/, '0 行必须变成一条可展示的失败');
+  // 封口是可选的：只有勾选时才写 locked_at，默认不封口。
+  assert.match(body, /\(shouldLock \? \{ locked_at: now \} : \{\}\)/, '封口必须是可选动作，默认不写 locked_at');
+  // 未处置的回答不进训练数据：判据来自共享的 hasTeacherDecision，不是就地另写一份。
+  assert.match(body, /if \(!hasTeacherDecision\(messageAudits\)\) \{[\s\S]*?skippedMessageIds\.push/, '没有教师处置记录的回答必须跳过物化');
+  assert.match(body, /未处理的 \$\{skippedMessageIds\.length\} 条回答不会进入训练数据/, '必须把跳过的条数说给教师听');
 });
 
 test('重置初始密码会作废旧会话，且应用层按本校过滤', () => {

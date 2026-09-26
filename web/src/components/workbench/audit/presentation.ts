@@ -10,6 +10,7 @@
 
 import type { PreReviewState } from '@/lib/audit-queue';
 import type { ReviewState } from '@/lib/data/audit-record';
+import type { TeacherAuditQueueFilters } from '@/lib/data/teacher';
 
 /** 会话级核实状态。 */
 export function reviewStateLabel(state: ReviewState): string {
@@ -52,7 +53,7 @@ export function preReviewSummaryLabel(input: {
   }
 }
 
-export type AuditHrefParams = { page?: number; status?: string; session?: string };
+export type AuditHrefParams = { page?: number; status?: string; session?: string } & TeacherAuditQueueFilters;
 
 /**
  * 核实队列的两个真实视图。
@@ -77,14 +78,26 @@ export function auditQueueViewLabel(view: AuditQueueView): string {
 }
 
 /**
- * 核实页的链接构造。选中态与分页共用同一套 searchParams——
+ * 核实页的链接构造。选中态、分页与筛选共用同一套 searchParams——
  * 页面因此可以直接深链到某条会话，后退键也正常工作。
+ *
+ * 筛选值原样带回去：切换视图或翻页时丢掉筛选，等于告诉教师「你刚才筛的那个班不在这里」。
  */
-export function buildAuditHref({ page, status, session }: AuditHrefParams): string {
+export function buildAuditHref({ page, status, session, classId, studentId, projectId, hasIssue, dateFrom }: AuditHrefParams): string {
   const params = new URLSearchParams();
   if (status && status !== 'pending') params.set('status', status);
   if (page && page > 1) params.set('page', String(page));
   if (session) params.set('session', session);
+  if (classId) params.set('classId', classId);
+  if (studentId) params.set('studentId', studentId);
+  if (projectId) params.set('projectId', projectId);
+  if (hasIssue) params.set('hasIssue', '1');
+  if (dateFrom) params.set('dateFrom', dateFrom);
   const query = params.toString();
   return query ? `/teacher/audit?${query}` : '/teacher/audit';
+}
+
+/** 当前筛选是否为空。空筛选不写进 URL，免得把默认值显示成显式设置。 */
+export function hasActiveAuditFilters(filters: TeacherAuditQueueFilters) {
+  return Boolean(filters.classId || filters.studentId || filters.projectId || filters.hasIssue || filters.dateFrom);
 }

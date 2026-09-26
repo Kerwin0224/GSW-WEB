@@ -9,6 +9,10 @@ export type NormalizedPreReviewIssue = {
   messageId: string;
   quote: string;
   label: string;
+  /** 稳定维度键。label 是模型给的自由文本，同一个错误在不同会话能被叫成
+   * 「依据不足」「推理牵强」「与问题不匹配」；维度键才能让它们聚成一条统计。
+   * 认不出来时为 null，宁可留空也不猜。 */
+  dimensionKey?: string | null;
   severity: PreReviewSeverity;
 };
 

@@ -10,6 +10,14 @@ import {
   toPreReviewMetadataResult,
   type NormalizedPreReviewResult,
 } from '@/lib/teacher-pre-review';
+import { hasTeacherDecision, latestTeacherDecision } from '@/lib/audit-queue';
+import {
+  buildIssueLabelSchema,
+  loadReviewDimensions,
+  matchDimensionKey,
+  renderDimensionsPromptFragment,
+  type PreReviewDimension,
+} from '@/lib/pre-review-dimensions';
 import { getCapability, jsonForDatabase, requireRole, resolveLanguageModel } from './common';
 import { broadcastStudentConversationUpdate } from './student-conversation-broadcast';
 import {
@@ -57,6 +65,8 @@ type AuditRow = AuditRowBase & {
   chosen_answer: string | null;
   rejected_answer: string | null;
   rationale: string | null;
+  dimension_key: string | null;
+  teacher_comment: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -68,11 +78,16 @@ type SourceContext = {
   originalAnswer: string;
   currentAnswer: string;
   reviewState: ReviewState;
-  conversationFinalized: boolean;
+  /**
+   * 会话是否已核实提交。核实完成不等于封口：学生仍可继续追问，
+   * 但已物化的 SFT/DPO 样本不能再改——训练数据与学生看到的回答必须一致，
+   * 改了就得同步改已批准的样本，那是另一件事（申诉结论），不是修订。
+   */
+  materialized: boolean;
 };
 
 type ConversationContext = {
-  conversation: { id: string; class_id: string | null; project_id: string | null; source: string; title: string | null; finalized_at: string | null };
+  conversation: { id: string; class_id: string | null; project_id: string | null; source: string; title: string | null; finalized_at: string | null; locked_at: string | null };
   classId: string;
   transcript: Array<{ id: string; role: 'user' | 'assistant' | 'system' | 'tool'; content: string; created_at: string }>;
   auditRows: AuditRow[];
@@ -101,6 +116,17 @@ async function checkTeacherClassMembership(
 
   if (error) return { ok: false, message: `${failureMessage}：${error.message}` };
   return { ok: true, isMember: Boolean(membership) };
+}
+
+/**
+ * 教师对单条 AI 回答的「确认无误」记录。
+ *
+ * 它是**物化训练样本的前置凭据**，不是终态：整条会话仍需会话级最终提交。
+ * 此前没有这个动作，于是会话级提交只能靠「有没有修订」反推教师看过哪条——
+ * 10 轮对话里改过第 3 轮，其余 9 条从未被读过的回答就全被写成 accurate。
+ */
+function isMessageConfirmed(row: AuditRow) {
+  return row.kind === 'metadata' && isApprovedAudit(row) && metadataText(row, 'teacher_action') === 'message_confirmed';
 }
 
 
@@ -155,10 +181,6 @@ function resolveOriginalAnswer(sourceContent: string, sourceAudits: AuditRow[]) 
   return materializedOriginal ?? sourceContent.trim();
 }
 
-/** 会话是否已核实：读 conversations.finalized_at 列，不再扫 audit_records 的 JSON。 */
-function isConversationFinalized(finalizedAt: string | null | undefined) {
-  return Boolean(finalizedAt);
-}
 
 function nearestPrompt(transcript: ConversationContext['transcript'], sourceMessageId: string) {
   const sourceIndex = transcript.findIndex((row) => row.id === sourceMessageId);
@@ -170,7 +192,7 @@ async function getConversationContext(conversationId: string, teacherId: string)
   const supabase = await createClient();
   const { data: conversation, error: conversationError } = await supabase
     .from('conversations')
-    .select('id,class_id,project_id,source,title,finalized_at')
+    .select('id,class_id,project_id,source,title,finalized_at,locked_at')
     .eq('id', conversationId)
     .eq('source', 'student_chat')
     .is('deleted_at', null)
@@ -198,7 +220,7 @@ async function getConversationContext(conversationId: string, teacherId: string)
       .order('created_at', { ascending: true }),
     supabase
       .from('audit_records')
-      .select('id,source_message_id,source_conversation_id,kind,status,original_answer,corrected_answer,chosen_answer,rejected_answer,rationale,metadata,created_at,updated_at')
+      .select('id,source_message_id,source_conversation_id,kind,status,original_answer,corrected_answer,chosen_answer,rejected_answer,rationale,metadata,dimension_key,teacher_comment,created_at,updated_at')
       .eq('source_conversation_id', conversation.id)
       .order('created_at', { ascending: true }),
   ]);
@@ -268,7 +290,7 @@ async function getSourceContext(sourceMessageId: string, teacherId: string): Pro
       originalAnswer: resolveOriginalAnswer(source.content, sourceAudits),
       currentAnswer: source.content.trim(),
       reviewState: resolveReviewState(sourceAudits.filter(isApprovedAudit)),
-      conversationFinalized: isConversationFinalized(conversationRow.finalized_at),
+      materialized: Boolean(conversationRow.finalized_at),
     },
   };
 }
@@ -288,9 +310,9 @@ export async function reviseLearningRecord(sourceMessageId: string, _previousSta
   const contextResult = await getSourceContext(sourceMessageId, role.data.id);
   if (!contextResult.ok) return { ok: false, message: contextResult.message };
 
-  const { source, classId, prompt, originalAnswer, currentAnswer, conversationFinalized } = contextResult.data;
-  if (conversationFinalized) {
-    return { ok: false, message: '这个会话已经完成最终核实提交，不能继续修订回答。' };
+  const { source, classId, prompt, originalAnswer, currentAnswer, materialized } = contextResult.data;
+  if (materialized) {
+    return { ok: false, message: '这个会话已完成核实提交，训练样本已固定，不能再修订回答。' };
   }
 
   if (correctedAnswer === currentAnswer) {
@@ -298,12 +320,18 @@ export async function reviseLearningRecord(sourceMessageId: string, _previousSta
   }
 
   const now = new Date().toISOString();
+  // 维度与评语是教师「为什么这么判」的显式表达。此前核实结论的唯一产物就是改写答案，
+  // 教师想说「你这题推理跳步了」只能把答案重写一遍，学生看不到任何评语。
+  const dimensionKey = String(formData.get('dimension_key') ?? '').trim() || null;
+  const teacherComment = String(formData.get('teacher_comment') ?? '').trim() || null;
   const metadata = {
     teacher_action: 'revision_draft',
     reviewed_at: now,
     original_answer: originalAnswer,
     corrected_answer: correctedAnswer,
     rationale,
+    ...(dimensionKey ? { dimension_key: dimensionKey } : {}),
+    ...(teacherComment ? { teacher_comment: teacherComment } : {}),
   };
   const supabase = await createClient();
   const originalParts = source.parts === null || source.parts === undefined
@@ -341,6 +369,8 @@ export async function reviseLearningRecord(sourceMessageId: string, _previousSta
     chosen_answer: null,
     rejected_answer: null,
     rationale,
+    dimension_key: dimensionKey,
+    teacher_comment: teacherComment,
     metadata,
   });
 
@@ -363,28 +393,111 @@ export async function reviseLearningRecord(sourceMessageId: string, _previousSta
   return { ok: true, message: '修订已保存并同步学生侧；确认提交整个会话后才会进入教学数据导出。' };
 }
 
-const preReviewIssueSchema = z.object({
-  quote: z.string(),
-  label: z.string(),
-  severity: z.enum(['low', 'medium', 'high']),
-});
+/**
+ * 单条「确认无误」。
+ *
+ * 这是「训练数据只收教师显式处置过的回答」的那一半凭据：没有它，
+ * 会话级提交就只能靠「有没有修订」反推教师看过哪条，于是没读过的回答
+ * 被写成 accurate 训练样本且不可挽回。
+ *
+ * 确认本身不改答案、也不物化样本——它只是把「教师读过并认可这条」记下来，
+ * 真正的训练数据仍由会话级最终提交一次性物化（CONTEXT：最终提交是会话级动作）。
+ */
+export async function confirmLearningMessage(sourceMessageId: string, _previousState: AuditSubmissionState, formData: FormData): Promise<AuditSubmissionState> {
+  void _previousState;
+  const role = await requireRole('teacher');
+  if (!role.ok) return { ok: false, message: role.message };
 
-const conversationPreReviewSchema = z.object({
-  results: z.array(z.object({
-    messageId: z.string(),
-    issues: z.array(preReviewIssueSchema.extend({ messageId: z.string().optional() })),
-  })),
-});
+  const contextResult = await getSourceContext(sourceMessageId, role.data.id);
+  if (!contextResult.ok) return { ok: false, message: contextResult.message };
+  const { source, classId, prompt, currentAnswer, materialized } = contextResult.data;
+  if (materialized) {
+    return { ok: false, message: '这个会话已完成核实提交，训练样本已固定，不能再改变核实结论。' };
+  }
 
-const singleMessagePreReviewSchema = z.object({
-  issues: z.array(z.object({
+  const now = new Date().toISOString();
+  const dimensionKey = String(formData.get('dimension_key') ?? '').trim() || null;
+  const teacherComment = String(formData.get('teacher_comment') ?? '').trim() || null;
+  const supabase = await createClient();
+  const { data: written, error } = await supabase
+    .from('audit_records')
+    .insert({
+      source_message_id: source.id,
+      source_conversation_id: source.conversation_id,
+      auditor_id: role.data.id,
+      class_id: classId,
+      kind: 'metadata',
+      status: 'approved',
+      quality: 'confirmed',
+      prompt,
+      original_answer: currentAnswer,
+      corrected_answer: null,
+      chosen_answer: null,
+      rejected_answer: null,
+      rationale: teacherComment ?? '教师确认这条 AI 回答无误。',
+      dimension_key: dimensionKey,
+      teacher_comment: teacherComment,
+      metadata: {
+        teacher_action: 'message_confirmed',
+        reviewed_at: now,
+        ...(dimensionKey ? { dimension_key: dimensionKey } : {}),
+        ...(teacherComment ? { teacher_comment: teacherComment } : {}),
+      },
+    })
+    .select('id');
+
+  // 0 行 = RLS 静默过滤掉的写入，error 分支看不出来。不检查就会报「已确认」而库里没有。
+  if (error) return { ok: false, message: `确认记录保存失败：${error.message}` };
+  if (!written || written.length === 0) {
+    return { ok: false, message: '确认没有保存，本次操作未生效。请刷新后重试；若持续失败请联系管理员。' };
+  }
+
+  revalidatePath('/teacher');
+  revalidatePath('/teacher/audit');
+  return { ok: true, message: '已记录教师确认；确认提交整个会话后，这条回答才会进入教学数据。' };
+}
+
+// 疑点标签不再由模型自由发挥：有租户维度时用 label_key 的枚举钉死，
+// 让同一个错误跨会话、跨学期能聚合；查不到维度时退回 z.string()，
+// 读表失败绝不能连带让整次预审失败。
+const buildPreReviewSchemas = (dimensions: readonly PreReviewDimension[]) => {
+  const issueSchema = z.object({
     quote: z.string(),
-    label: z.string(),
+    label: buildIssueLabelSchema(dimensions),
     severity: z.enum(['low', 'medium', 'high']),
-  })),
-});
+  });
+  return {
+    conversation: z.object({
+      results: z.array(z.object({
+        messageId: z.string(),
+        issues: z.array(issueSchema.extend({ messageId: z.string().optional() })),
+      })),
+    }),
+    single: z.object({ issues: z.array(issueSchema) }),
+  };
+};
 
-async function runPreReview(model: LanguageModel, transcript: ConversationContext['transcript']) {
+/** 无维度时的兜底口径：租户没配、读表失败、或平台默认也读不到时用这一句。 */
+const FALLBACK_DIMENSION_PROMPT = `- 优先关注讲错概念或术语、误引材料或依据、事实性错误、解释牵强、把无依据推测说成定论、与学生问题明显不匹配的教学引导。`;
+
+const renderDimensionPromptLine = (dimensions: readonly PreReviewDimension[]) =>
+  renderDimensionsPromptFragment(dimensions) || FALLBACK_DIMENSION_PROMPT;
+
+async function runPreReview(
+  model: LanguageModel,
+  transcript: ConversationContext['transcript'],
+  dimensions: readonly PreReviewDimension[],
+) {
+  const schemas = buildPreReviewSchemas(dimensions);
+  /** 模型给的 label 是自由文本，按维度表归一到稳定键；认不出来就留 null。 */
+  const withDimensionKeys = (results: NormalizedPreReviewResult[]) =>
+    results.map((result) => ({
+      ...result,
+      issues: result.issues.map((issue) => ({
+        ...issue,
+        dimensionKey: matchDimensionKey(issue.label, dimensions),
+      })),
+    }));
   const assistantMessages = transcript.filter((row) => row.role === 'assistant');
   const transcriptText = transcript
     .map((row, index) => {
@@ -401,7 +514,7 @@ async function runPreReview(model: LanguageModel, transcript: ConversationContex
   // 结构化输出与流式与否正交，Output.object 仍给出校验过的对象。
   const result = streamText({
     model,
-    output: Output.object({ schema: conversationPreReviewSchema }),
+    output: Output.object({ schema: schemas.conversation }),
     prompt: `你是文韵智途的 AI 预审助手。请在教师进行学习记录核实前，预审完整学生会话中的所有 AI 回答。
 
 要求：
@@ -410,7 +523,7 @@ async function runPreReview(model: LanguageModel, transcript: ConversationContex
 - results.messageId 必须逐字使用下面清单中的 messageId；没有明显教学正确性疑点的回答也要返回 issues: []。
 - 只定位可能误导学生学习的教学正确性风险，供教师核实；不要替教师做最终判错、评分、批改或数据打标。
 - quote 必须逐字复制对应 AI 回答中的连续原文片段，不得改写、概括、翻译或拼接不连续文本；如果无法在该回答原文中找到连续片段，就不要返回该 issue。
-- 优先关注讲错概念或术语、误引材料或依据、事实性错误、解释牵强、把无依据推测说成定论、与学生问题明显不匹配的教学引导。
+${renderDimensionPromptLine(dimensions)}
 - 不要因为回答简短、风格普通、没有扩展讲解、没有使用固定教学步骤或没有给出标准答案就标红。
 - severity 使用要克制：high 只给会直接误导学生理解学习内容或事实的风险；medium 给需要教师重点核实的可疑解释；low 给轻微但值得定位的表述。
 - 每条 AI 回答最多返回 4 个最需要教师定位的 issue；不要再做会话级全局截断。
@@ -433,14 +546,14 @@ ${transcriptText}`,
       try {
         const fallbackResult = streamText({
           model,
-          output: Output.object({ schema: singleMessagePreReviewSchema }),
+          output: Output.object({ schema: schemas.single }),
           prompt: `你是文韵智途的 AI 预审助手。全会话预审中，这条 AI 回答的结果缺失或 quote 无法匹配原文。请只重审这一条 AI 回答。
 
 要求：
 - 只检查 messageId=${message.id} 这条 AI 回答，其他内容只作为上下文。
 - quote 必须逐字复制这条 AI 回答中的连续原文片段，不得改写、概括、翻译或拼接不连续文本；如果无法在该回答原文中找到连续片段，就不要返回该 issue。
 - 只关注可能误导学生学习的教学正确性风险，供教师核实；不要替教师做最终判错、评分、批改或数据打标。
-- 优先关注讲错概念或术语、误引材料或依据、事实性错误、解释牵强、把无依据推测说成定论、与学生问题明显不匹配的教学引导。
+${renderDimensionPromptLine(dimensions)}
 - 不要因为回答简短、风格普通、没有扩展讲解、没有使用固定教学步骤或没有给出标准答案就标红。
 - 没有明显教学正确性疑点时返回空 issues。
 - 最多返回 4 个最需要教师定位的 issue。
@@ -465,12 +578,14 @@ ${transcriptText}`,
     reviews = reviews.map((review) => fallbackByMessage.get(review.messageId) ?? review);
   }
 
-  const checkedReviews = reviews.filter((review) => review.status === 'checked');
+  // 归一维度键后再做统计与落库：issue 的 label 仍是可读文本，dimensionKey 才是聚合键。
+  const dimensioned = withDimensionKeys(reviews);
+  const checkedReviews = dimensioned.filter((review) => review.status === 'checked');
 
   return {
     reviewedMessageIds: checkedReviews.map((review) => review.messageId),
-    missingMessageIds: reviews.filter((review) => review.status !== 'checked').map((review) => review.messageId),
-    messageResults: reviews.map(toPreReviewMetadataResult),
+    missingMessageIds: dimensioned.filter((review) => review.status !== 'checked').map((review) => review.messageId),
+    messageResults: dimensioned.map(toPreReviewMetadataResult),
     issues: checkedReviews.flatMap((review) => review.issues),
   };
 }
@@ -483,8 +598,10 @@ export async function runConversationPreReview(conversationId: string, _previous
 
   const contextResult = await getConversationContext(conversationId, role.data.id);
   if (!contextResult.ok) return { ok: false, message: contextResult.message };
-  if (isConversationFinalized(contextResult.data.conversation.finalized_at)) {
-    return { ok: true, message: '这个会话已经完成最终核实提交，无需重复发起 AI 预审。' };
+  // 已封口的会话不再接受新的核实动作：教师明确收口，学生也问不下去了，
+  // 此时写入预审记录只会产生永远不会被核实的孤立数据。
+  if (contextResult.data.conversation.locked_at) {
+    return { ok: true, message: '这个会话已被封口，无需重复发起 AI 预审。' };
   }
 
   const assistantMessages = contextResult.data.transcript.filter((row) => row.role === 'assistant');
@@ -496,9 +613,19 @@ export async function runConversationPreReview(conversationId: string, _previous
   const model = resolveLanguageModel(capability.data);
   if (!model) return { ok: false, message: 'AI 预审暂时无法发起，请稍后重试；若持续失败请联系管理员。' };
 
+  // 评价维度来自租户配置。读不到就整体降级为「无维度 + 自由 label」，
+  // 而不是让预审失败——审查口径配错不该阻断教师核实。
+  const supabaseForDimensions = await createClient();
+  const { data: profileForDimensions } = await supabaseForDimensions
+    .from('profiles')
+    .select('school_id')
+    .eq('id', role.data.id)
+    .maybeSingle();
+  const { dimensions } = await loadReviewDimensions(supabaseForDimensions, profileForDimensions?.school_id ?? null);
+
   let preReview: Awaited<ReturnType<typeof runPreReview>>;
   try {
-    preReview = await runPreReview(model, contextResult.data.transcript);
+    preReview = await runPreReview(model, contextResult.data.transcript, dimensions);
   } catch (error) {
     return { ok: false, message: error instanceof Error ? `AI 预审失败：${error.message}` : 'AI 预审失败：Provider 返回未知错误。' };
   }
@@ -540,18 +667,28 @@ export async function runConversationPreReview(conversationId: string, _previous
   return { ok: true, message: preReview.issues.length ? `AI 预审完成，已覆盖 ${preReview.reviewedMessageIds.length} 条 AI 回答，发现 ${preReview.issues.length} 处需教师定位核实的疑点。` : `AI 预审完成，已覆盖 ${preReview.reviewedMessageIds.length} 条 AI 回答，未发现明显教学正确性疑点。` };
 }
 
-export async function finalizeLearningConversation(conversationId: string, _previousState: AuditSubmissionState, _formData: FormData): Promise<AuditSubmissionState> {
+/**
+ * 会话级「确认提交整个会话」。
+ *
+ * 两件事在这一步分开落地，此前它们被焊在一起：
+ *   · 训练数据物化 —— 只物化**教师显式处置过**的回答（有确认或修订记录）。
+ *     此前是「有修订走 needs_correction，无修订一律 accurate」，
+ *     于是 10 轮长对话里改过第 3 轮，其余 9 条从未被读过的回答全被写成
+ *     accurate 训练样本，并在提交后不可修订——错误被永久固化。
+ *   · 封口 —— 教师**可选**写 conversations.locked_at。默认不锁：
+ *     已核实但未锁的会话学生可以继续追问（异步答疑、复核后追问、错题再讨论）。
+ */
+export async function finalizeLearningConversation(conversationId: string, _previousState: AuditSubmissionState, formData: FormData): Promise<AuditSubmissionState> {
   void _previousState;
-  void _formData;
   const role = await requireRole('teacher');
   if (!role.ok) return { ok: false, message: role.message };
 
   const contextResult = await getConversationContext(conversationId, role.data.id);
   if (!contextResult.ok) return { ok: false, message: contextResult.message };
   const { conversation, classId, transcript, auditRows } = contextResult.data;
-  // 已核实判定读列（状态真源），不再扫 audit_records 的 JSON。
-  if (isConversationFinalized(conversation.finalized_at)) {
-    return { ok: true, message: '这个会话已经完成最终核实提交，学生侧不能继续追问。' };
+  // 已提交判定读列（状态真源），不再扫 audit_records 的 JSON。
+  if (conversation.finalized_at) {
+    return { ok: true, message: '这个会话已经完成核实提交，无需重复提交。' };
   }
 
   const assistantMessages = transcript.filter((row) => row.role === 'assistant');
@@ -568,15 +705,27 @@ export async function finalizeLearningConversation(conversationId: string, _prev
   const now = new Date().toISOString();
   const materializedRows = [];
   const studentRevisionUpdates: Array<{ messageId: string; correctedAnswer: string }> = [];
+  const skippedMessageIds: string[] = [];
   let revisedCount = 0;
   let confirmedCount = 0;
 
   for (const message of assistantMessages) {
     const messageAudits = auditsByMessage.get(message.id) ?? [];
+    // 没有教师显式处置记录的回答一律跳过物化。这是本次改动的全部要点：
+    // 「没改过」不等于「看过且认可」，把它写成 accurate 训练样本是在替教师下结论。
+    if (!hasTeacherDecision(messageAudits)) {
+      skippedMessageIds.push(message.id);
+      continue;
+    }
     const prompt = nearestPrompt(transcript, message.id) || '源问题未返回；教师在完整会话中完成会话级核实。';
     const existingFinalizedKinds = new Set(messageAudits.filter(isFinalizedMaterializedReview).map((row) => row.kind));
     const revision = revisionFromDraft(latestRevisionDraft(messageAudits)) ?? revisionFromMaterialized(latestMaterializedReview(messageAudits));
     const isMeaningfulRevision = Boolean(revision && revision.correctedAnswer.trim() !== revision.originalAnswer.trim());
+    // 维度与评语取教师处置时写下的那一版（确认记录或修订草稿，取较新的），
+    // 让「按哪个维度判的、为什么」跟着训练样本一起走。
+    const decision = latestTeacherDecision(messageAudits);
+    const dimensionKey = decision?.dimension_key ?? null;
+    const teacherComment = decision?.teacher_comment ?? null;
 
     if (isMeaningfulRevision && revision) {
       revisedCount += 1;
@@ -585,6 +734,8 @@ export async function finalizeLearningConversation(conversationId: string, _prev
         teacher_action: 'revised',
         reviewed_at: now,
         conversation_action: 'conversation_finalized',
+        ...(dimensionKey ? { dimension_key: dimensionKey } : {}),
+        ...(teacherComment ? { teacher_comment: teacherComment } : {}),
       };
       if (!existingFinalizedKinds.has('sft')) {
         materializedRows.push({
@@ -601,6 +752,8 @@ export async function finalizeLearningConversation(conversationId: string, _prev
           chosen_answer: null,
           rejected_answer: null,
           rationale: revision.rationale,
+          dimension_key: dimensionKey,
+          teacher_comment: teacherComment,
           metadata: commonMetadata,
         });
       }
@@ -619,6 +772,8 @@ export async function finalizeLearningConversation(conversationId: string, _prev
           chosen_answer: revision.correctedAnswer,
           rejected_answer: revision.originalAnswer,
           rationale: revision.rationale,
+          dimension_key: dimensionKey,
+          teacher_comment: teacherComment,
           metadata: commonMetadata,
         });
       }
@@ -640,17 +795,39 @@ export async function finalizeLearningConversation(conversationId: string, _prev
         corrected_answer: null,
         chosen_answer: null,
         rejected_answer: null,
-        rationale: '教师提交会话级最终核实，未修订的 AI 回答确认无误。',
-        metadata: { teacher_action: 'confirmed', reviewed_at: now, conversation_action: 'conversation_finalized' },
+        rationale: teacherComment ?? '教师确认这条 AI 回答无误。',
+        dimension_key: dimensionKey,
+        teacher_comment: teacherComment,
+        metadata: { teacher_action: 'confirmed', reviewed_at: now, conversation_action: 'conversation_finalized', ...(dimensionKey ? { dimension_key: dimensionKey } : {}), ...(teacherComment ? { teacher_comment: teacherComment } : {}) },
       });
     }
+  }
+
+  // 一条都没处置过就提交，等于把「我不打算让这些进训练数据」和「我全看过了」混成一次点击。
+  // 直接拒绝并说清差多少，教师要么去处理，要么就别提交。
+  if (materializedRows.length === 0) {
+    return {
+      ok: false,
+      message: `本次会话的 ${assistantMessages.length} 条 AI 回答都还没有你的确认或修订，不会进入训练数据。请先逐条确认无误或修订回答，再提交整个会话。`,
+    };
   }
 
   const latestAssistant = assistantMessages[assistantMessages.length - 1];
   const supabase = await createClient();
   if (materializedRows.length > 0) {
-    const { error: materializeError } = await supabase.from('audit_records').insert(materializedRows);
+    // 必须取回命中行数：RLS 静默过滤掉的 INSERT 既不报 error 也不返回行，
+    // 只看 error 分支的话「一条样本都没进去」和「保存成功」长得一模一样。
+    const { data: inserted, error: materializeError } = await supabase
+      .from('audit_records')
+      .insert(materializedRows)
+      .select('id');
     if (materializeError) return { ok: false, message: `会话级核实样本保存失败：${materializeError.message}` };
+    if (!inserted || inserted.length !== materializedRows.length) {
+      return {
+        ok: false,
+        message: `核实样本只写入了 ${inserted?.length ?? 0}/${materializedRows.length} 条，本次提交未生效。请刷新后重试；若持续失败请联系管理员。`,
+      };
+    }
   }
 
   for (const update of studentRevisionUpdates) {
@@ -673,8 +850,13 @@ export async function finalizeLearningConversation(conversationId: string, _prev
     }
   }
 
-  // 状态真源：写会话列。此后所有读者（学生继续追问、教师队列、导出）都读这一列，
+  // 状态真源：写会话列。此后所有读者（教师队列、导出、封口判定）都读这些列，
   // 不再扫 audit_records 的 JSON 推导「是否已核实」。
+  //
+  // 三个终态字段各管一件事，此前它们是一个字段：
+  //   finalized_at / finalized_by / review_state —— 核实完成（教学状态）
+  //   teacher_comment                            —— 教师给学生的会话级评语
+  //   locked_at                                  —— 封口（交互开关，默认不写）
   //
   // 条件更新 + 查行数，两个原因，缺一不可：
   //   · `.is('finalized_at', null)` 让"提交核实"成为一次条件写。两个教师同时点提交时，
@@ -682,9 +864,16 @@ export async function finalizeLearningConversation(conversationId: string, _prev
   //   · `.select('id')` 让 0 行可辨。RLS 静默过滤掉的 UPDATE 既不报 error 也不返回行，
   //     而"返回 0 行"和"已更新"在只看 error 分支的代码里长得一模一样。
   // deleted_at 过滤是产品硬约束：学生已删除的会话不进入核实，也不能被标记为已核实。
+  const shouldLock = String(formData.get('lock_conversation') ?? '') === 'on';
   const { data: finalizedRows, error: finalizeError } = await supabase
     .from('conversations')
-    .update({ finalized_at: now })
+    .update({
+      finalized_at: now,
+      finalized_by: role.data.id,
+      review_state: 'finalized',
+      teacher_comment: String(formData.get('teacher_comment') ?? '').trim() || null,
+      ...(shouldLock ? { locked_at: now } : {}),
+    })
     .eq('id', conversation.id)
     .is('finalized_at', null)
     .is('deleted_at', null)
@@ -706,7 +895,8 @@ export async function finalizeLearningConversation(conversationId: string, _prev
     prompt: '教师会话级最终核实提交',
     original_answer: null,
     corrected_answer: null,
-    rationale: '教师已完成整个会话的学习记录核实；学生侧停止在该会话继续追问。',
+    rationale: '教师已完成整个会话的学习记录核实。',
+    teacher_comment: String(formData.get('teacher_comment') ?? '').trim() || null,
     metadata: {
       teacher_action: 'conversation_finalized',
       finalized_at: now,
@@ -714,6 +904,10 @@ export async function finalizeLearningConversation(conversationId: string, _prev
       confirmed_count: confirmedCount,
       revised_count: revisedCount,
       materialized_record_count: materializedRows.length,
+      // 跳过的条数进事件：教师日后回看时能知道当时漏了哪几条、为什么没进训练数据。
+      skipped_count: skippedMessageIds.length,
+      skipped_message_ids: skippedMessageIds,
+      locked: shouldLock,
     },
   });
 
@@ -728,7 +922,54 @@ export async function finalizeLearningConversation(conversationId: string, _prev
   revalidatePath('/teacher/audit');
   revalidatePath('/student');
   revalidatePath('/admin/exports');
-  return { ok: true, message: `会话级核实已提交；${confirmedCount} 条确认无误，${revisedCount} 条使用教师修订版，学生侧不能再继续追问这个会话。` };
+  // 成功文案必须说清跳过了多少条。不说的话，教师会以为整个会话都进了训练数据，
+  // 而没处理过的那几条永远不会有第二次机会——那正是本次要消除的静默。
+  const skippedNote = skippedMessageIds.length > 0
+    ? `本次未处理的 ${skippedMessageIds.length} 条回答不会进入训练数据。`
+    : '全部 AI 回答都已处理。';
+  const lockNote = shouldLock ? '已封口，学生不能在该会话继续追问。' : '未封口，学生仍可在该会话继续追问。';
+  return { ok: true, message: `会话级核实已提交；${confirmedCount} 条确认无误，${revisedCount} 条使用教师修订版。${skippedNote}${lockNote}` };
+}
+
+/**
+ * 封口 / 解封。
+ *
+ * 封口是教师的可选动作，且与核实完成解耦：已核实但未封口的会话学生可以继续追问，
+ * 而教师随时可以补封口或解封（此前只有提交核实这一个不可逆的封口入口）。
+ */
+export async function setConversationLock(conversationId: string, _previousState: AuditSubmissionState, formData: FormData): Promise<AuditSubmissionState> {
+  void _previousState;
+  const role = await requireRole('teacher');
+  if (!role.ok) return { ok: false, message: role.message };
+
+  const lock = String(formData.get('lock') ?? '') === 'on';
+  const contextResult = await getConversationContext(conversationId, role.data.id);
+  if (!contextResult.ok) return { ok: false, message: contextResult.message };
+  const { conversation } = contextResult.data;
+  if (Boolean(conversation.locked_at) === lock) {
+    return { ok: true, message: lock ? '这个会话已经是封口状态。' : '这个会话当前未封口。' };
+  }
+
+  const supabase = await createClient();
+  const { data: updatedRows, error } = await supabase
+    .from('conversations')
+    .update({ locked_at: lock ? new Date().toISOString() : null })
+    .eq('id', conversation.id)
+    .is('deleted_at', null)
+    .select('id');
+  if (error) return { ok: false, message: `${lock ? '封口' : '解封'}失败：${error.message}` };
+  if (!updatedRows || updatedRows.length === 0) {
+    return { ok: false, message: `${lock ? '封口' : '解封'}没有生效，本次操作未保存。请刷新后重试。` };
+  }
+
+  await broadcastStudentConversationUpdate(supabase, conversation.id, {
+    kind: 'conversation_finalized',
+    revisedAt: new Date().toISOString(),
+  });
+  revalidatePath('/teacher');
+  revalidatePath('/teacher/audit');
+  revalidatePath('/student');
+  return { ok: true, message: lock ? '已封口：学生不能在该会话继续追问。' : '已解封：学生可以继续在该会话追问。' };
 }
 
 export async function saveTeacherPromptPreset(_previousState: AuditSubmissionState, formData: FormData): Promise<AuditSubmissionState> {

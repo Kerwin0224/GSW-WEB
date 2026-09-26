@@ -147,7 +147,7 @@ export default function LoginPage() {
             <div className="border-b border-border/70 p-6 sm:p-8">
               <h2 id="login-heading" className="text-2xl font-semibold">账号登录</h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                使用学校发放的学号或工号。
+                使用所在单位发放的账号。各单位可以使用学号、工号、邮箱或手机号。
               </p>
             </div>
 
@@ -160,8 +160,8 @@ export default function LoginPage() {
                 ) : null}
 
                 {candidates ? (
-                  <div className="space-y-2 rounded-lg border border-primary/25 bg-primary/5 p-3" role="radiogroup" aria-label="选择你所在的学校">
-                    <p className="text-sm font-medium text-foreground">该学号在多个学校存在，请选择你所在的学校：</p>
+                  <div className="space-y-2 rounded-lg border border-primary/25 bg-primary/5 p-3" role="radiogroup" aria-label="选择你所在的单位">
+                    <p className="text-sm font-medium text-foreground">该账号在多个单位存在，请选择你所在的单位：</p>
                     {candidates.map((candidate) => (
                       <button
                         key={candidate.schoolId ?? 'none'}
@@ -181,12 +181,12 @@ export default function LoginPage() {
                 ) : null}
 
                 <div className="space-y-2.5">
-                  <Label htmlFor="loginId" className="text-sm font-medium">学号 / 工号</Label>
+                  <Label htmlFor="loginId" className="text-sm font-medium">账号</Label>
                   <Input
                     id="loginId"
                     value={loginId}
                     onChange={(event) => setLoginId(event.target.value)}
-                    placeholder="输入学号或工号"
+                    placeholder="学号、工号、邮箱或手机号"
                     className="h-12 rounded-lg border-border/80 bg-background/75 px-4 text-base shadow-inner"
                     required
                     autoComplete="username"
@@ -222,7 +222,7 @@ export default function LoginPage() {
               </form>
 
               <p className="text-center text-xs leading-5 text-muted-foreground">
-                账号或密码有问题？请联系学校管理员。
+                账号或密码有问题？请联系所在单位的管理员。
               </p>
             </CardContent>
           </Card>

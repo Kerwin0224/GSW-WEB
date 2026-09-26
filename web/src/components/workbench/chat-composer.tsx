@@ -88,7 +88,7 @@ export function ChatComposer({
             <label className="cursor-pointer" aria-label="上传会话附件">
               <Paperclip className="size-4" aria-hidden="true" />
               <span className="sr-only">上传会话附件</span>
-              <input type="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" className="sr-only" onChange={fileChange} disabled={uploadDisabled} />
+              <input type="file" accept=".txt,.md,.csv,.json,.pdf,text/*,application/pdf,image/*" className="sr-only" onChange={fileChange} disabled={uploadDisabled} />
             </label>
           )} />
         ) : null}
@@ -97,7 +97,7 @@ export function ChatComposer({
           <span className="sr-only">发送</span>
         </Button>
       </form>
-      {onFileUpload ? <p className="px-2 text-xs text-muted-foreground">支持 TXT、MD、JSON，最大 512 KB。</p> : null}
+      {onFileUpload ? <p className="px-2 text-xs text-muted-foreground">支持文本、PDF 与图片；文本最大 512KB，图片 5MB，PDF 8MB。</p> : null}
     </div>
   );
 }

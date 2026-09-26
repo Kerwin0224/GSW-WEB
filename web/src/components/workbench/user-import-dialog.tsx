@@ -1,8 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { AlertTriangle, KeyRound, Loader2, Upload, XCircle } from 'lucide-react';
 import { useMemo, useState, useTransition } from 'react';
-import { AlertTriangle, Loader2, Upload, XCircle } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -13,9 +13,17 @@ import { AdminDialogShell } from '@/components/workbench/admin-dialog-shell';
 import { KIND_LABEL, planRows, succeededRowCount, type ExistingImportUser } from '@/app/admin/users/csv-import-plan';
 import type { CsvUserPreview } from '@/lib/data/admin';
 
-const SAMPLE = `display_name,login_id,role,subject,class_name
-陈砚秋,20260101,student,,高一(1)班
-沈立行,20180001,teacher,数学,高一(1)班`;
+/**
+ * 一个表头，七列。后两列（organization_id / space）可留空——
+ * 留空即回落到当前管理员所在的学校，也就是改动前的行为。
+ * 账号除了 8 位学号，也可以写邮箱、手机号或字母工号：
+ * 格式由各单位的登录标识口径决定，不在代码里写死。
+ */
+const SAMPLE = `display_name,login_id,role,subject,class_name,organization_id,space
+陈砚秋,20260101,student,,高一(1)班,,
+沈立行,20180001,teacher,数学,高一(1)班,,
+周砚,lingxue.zhou@example.com,teacher,物理,高二(2)班,,
+许知微,13900001234,student,,高一(1)班,,必修一`;
 
 /**
  * 服务端返回形状随数据层演进（统一结构化 ActionState 后会带上 imported / succeededCount），
@@ -27,6 +35,8 @@ type ImportResponse = (CsvUserPreview & {
   failedRow?: number;
   message?: string;
   resolution?: string;
+  /** 本次**新建**账号的一次性初始口令。只在这一刻可读，离开页面就再也取不到了。 */
+  credentials?: Array<{ rowNumber: number; loginId: string; displayName: string; initialPassword: string }>;
 }) | ({ error: string; message?: string; resolution?: string; preview?: CsvUserPreview } & { imported?: number; succeededCount?: number; failedRow?: number });
 
 
@@ -38,6 +48,8 @@ export function UserImportDialog({ existingUsers = [], existingUsersPartial = fa
   const [preview, setPreview] = useState<CsvUserPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  /** 新账号的一次性初始口令。关掉弹窗即丢弃——库里不留明文，也没有第二次取回的机会。 */
+  const [credentials, setCredentials] = useState<Array<{ rowNumber: number; loginId: string; displayName: string; initialPassword: string }>>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
@@ -95,7 +107,12 @@ export function UserImportDialog({ existingUsers = [], existingUsersPartial = fa
         return;
       }
       const imported = 'imported' in data && typeof data.imported === 'number' ? data.imported : preview.validCount;
-      setSuccess(`导入完成：共处理 ${imported} 个账号（新建 ${counts.create}、更新 ${counts.update + counts.roleChange + counts.duplicate}）。`);
+      setSuccess('message' in data && data.message
+        ? data.message
+        : `导入完成：共处理 ${imported} 个账号（新建 ${counts.create}、更新 ${counts.update + counts.roleChange + counts.duplicate}）。`);
+      // 覆盖已有账号的行不产生口令：它们的旧口令原样有效，
+      // 发一个没生效的「初始口令」出去比不发更糟——管理员会以为该口令可用。
+      setCredentials('credentials' in data && Array.isArray(data.credentials) ? data.credentials : []);
       setPreview(null);
       setCsvText(SAMPLE);
       // 弹窗留在原地显示结果，同时让背后的账号列表刷新到最新状态。
@@ -150,7 +167,12 @@ export function UserImportDialog({ existingUsers = [], existingUsersPartial = fa
             }}
             className="min-h-40 font-mono text-xs"
           />
-          <p className="text-xs leading-5 text-muted-foreground">同一 login_id 会更新现有账号（姓名、角色、科目、班级）；导入账号统一设为启用。学生填写班级后会迁入该班级，教师可加入多个班级。</p>
+          <div className="space-y-1 rounded-lg border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
+            <p>必填四列：<span className="font-mono">display_name / login_id / role / class_name</span>；教师另需 <span className="font-mono">subject</span>。账号格式由所在单位的登录标识口径决定，可以是学号、工号、邮箱或手机号。</p>
+            <p>可选两列：<span className="font-mono">organization_id</span> 指定这一行归到哪个下级单位，<span className="font-mono">space</span> 指定归到哪个空间（教师变共同教师，学生直接进空间）。两列都留空时回落到当前管理员所在的单位，与改动前一致。</p>
+            <p>同一 login_id 在同一单位里会更新现有账号（姓名、角色、科目、班级），不重置口令；新账号会生成一次性初始口令，导入完成后显示一次。</p>
+            <p>学生填写班级后按「迁入」处理：移除其原有的全部班级关系，并把历史项目与会话一并归到新班。名册是一份全量清单，清单里的一行就是这名学生此刻的全部归属。</p>
+          </div>
           {existingUsersPartial ? (
             <Alert>
               <AlertTriangle className="size-4" />
@@ -163,6 +185,23 @@ export function UserImportDialog({ existingUsers = [], existingUsersPartial = fa
               <XCircle className="size-4" />
               <AlertTitle>导入失败</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+          {credentials.length > 0 ? (
+            <Alert>
+              <KeyRound className="size-4" />
+              <AlertTitle>一次性初始口令（只显示这一次）</AlertTitle>
+              <AlertDescription>
+                <p>请逐条单独转交给本人，不要群发、不要贴到公告里。首次登录会强制改密，之后这条口令立刻作废；离开本页就再也取不到了。</p>
+                <ul className="mt-2 max-h-56 space-y-1 overflow-auto rounded-md border bg-background/70 p-2 font-mono text-xs">
+                  {credentials.map((credential) => (
+                    <li key={credential.rowNumber} className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span>{credential.displayName} · {credential.loginId}</span>
+                      <span className="font-semibold tracking-wider">{credential.initialPassword}</span>
+                    </li>
+                  ))}
+                </ul>
+              </AlertDescription>
             </Alert>
           ) : null}
           {preview ? (

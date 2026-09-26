@@ -2,12 +2,12 @@
 
 import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useState } from 'react';
-import { Loader2, Pencil, Save, X } from 'lucide-react';
+import { CheckCircle2, Loader2, Pencil, Save, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { reviseLearningRecord, type AuditSubmissionState } from '@/lib/data/teacher-actions';
+import { confirmLearningMessage, reviseLearningRecord, type AuditSubmissionState } from '@/lib/data/teacher-actions';
 
 const initialState: AuditSubmissionState = { ok: false, message: '' };
 
@@ -27,18 +27,101 @@ function FieldError({ message }: { message?: string }) {
   return message ? <p className="text-xs text-destructive">{message}</p> : null;
 }
 
+/** 评价维度选择。读不到维度时整块不渲染——教师照常能确认/修订，只是没有维度可选。 */
+function DimensionSelect({ messageId, dimensions, defaultValue }: {
+  messageId: string;
+  dimensions: Array<{ labelKey: string; displayName: string }>;
+  defaultValue?: string;
+}) {
+  if (dimensions.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={`dimension_key_${messageId}`}>评价维度（可选）</Label>
+      <select
+        id={`dimension_key_${messageId}`}
+        name="dimension_key"
+        defaultValue={defaultValue ?? ''}
+        className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+      >
+        <option value="">不指定维度</option>
+        {dimensions.map((dimension) => <option key={dimension.labelKey} value={dimension.labelKey}>{dimension.displayName}</option>)}
+      </select>
+    </div>
+  );
+}
+
 /**
- * 修订回答。修订在最终提交前是草稿：学生侧立刻可见，但不会马上生成 SFT/DPO 样本
- * （样本由会话级最终提交物化，见 CONTEXT.md）。
+ * 单条「确认无误」。
+ *
+ * 它是「哪些回答进入训练数据」的唯一凭据：既没确认也没修订的回答，
+ * 在「确认提交整个会话」时会被跳过。不把这个动作摆出来，教师就无从知道
+ * 哪几条会被跳过——而提交后不能反悔。
  */
-export function AuditAnswerEditor({ messageId, currentAnswer, locked }: {
+function ConfirmMessageForm({ messageId, dimensions, defaultComment }: {
+  messageId: string;
+  dimensions: Array<{ labelKey: string; displayName: string }>;
+  defaultComment?: string;
+}) {
+  const router = useRouter();
+  const [state, action, pending] = useActionState(confirmLearningMessage.bind(null, messageId), initialState);
+  const [comment, setComment] = useState(defaultComment ?? '');
+
+  // React 19 不允许在 effect 里 setState：用「存住上一次 state + render 阶段比较」判定成功。
+  const [handledState, setHandledState] = useState(state);
+  if (state !== handledState) {
+    setHandledState(state);
+    if (state.ok && state.message) setComment('');
+  }
+
+  useEffect(() => {
+    if (state.ok && state.message) router.refresh();
+  }, [router, state]);
+
+  return (
+    <form action={action} className="mt-3 space-y-3 border-t border-border/55 pt-3">
+      <DimensionSelect messageId={messageId} dimensions={dimensions} />
+      <div className="space-y-2">
+        <Label htmlFor={`confirm_comment_${messageId}`}>评语（可选）</Label>
+        <Textarea
+          id={`confirm_comment_${messageId}`}
+          name="teacher_comment"
+          value={comment}
+          onChange={(event) => setComment(event.target.value)}
+          placeholder="写一句为什么认可这条回答；学生能看到。"
+          className="min-h-16 bg-background/88 text-sm"
+        />
+      </div>
+      <FormStatus state={state} />
+      <div className="flex justify-end">
+        <Button type="submit" disabled={pending} variant="outline" size="sm" className="cursor-pointer rounded-lg">
+          {pending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 size-3.5" />}
+          {pending ? '保存中...' : '确认无误'}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * 单条 AI 回答的处置：确认无误 或 修订回答。
+ *
+ * 两种处置都是「确认提交整个会话」时才物化训练样本的前置凭据，
+ * 本身都不改会话终态。修订在最终提交前是草稿：学生侧立刻可见。
+ */
+export function AuditAnswerEditor({ messageId, currentAnswer, locked, confirmed, dimensions, dimensionKey, teacherComment }: {
   messageId: string;
   currentAnswer: string;
-  /** 会话已最终提交：只读，不再允许修订。 */
+  /** 会话已核实提交：只读，训练样本已固定。 */
   locked: boolean;
+  /** 教师是否已确认过这条——已确认时不再重复显示确认入口。 */
+  confirmed: boolean;
+  dimensions: Array<{ labelKey: string; displayName: string }>;
+  dimensionKey?: string;
+  teacherComment?: string;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [corrected, setCorrected] = useState(currentAnswer);
   const [rationale, setRationale] = useState('');
   const [state, action, pending] = useActionState(reviseLearningRecord.bind(null, messageId), initialState);
@@ -66,19 +149,43 @@ export function AuditAnswerEditor({ messageId, currentAnswer, locked }: {
   if (locked) {
     return (
       <div className="mt-3 rounded-lg border border-border/60 bg-muted/45 px-3 py-2 text-xs text-muted-foreground">
-        该会话已完成最终核实提交，学生不能继续追问。
+        这个会话已完成核实提交，训练样本已固定。
       </div>
     );
   }
 
-  if (!editing) {
+  if (!editing && !confirming) {
     return (
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/55 pt-3">
-        <span className="text-xs text-muted-foreground">修订会立即同步给学生；整条会话仍需在底部最终提交。</span>
-        <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)} className="cursor-pointer rounded-lg">
-          <Pencil className="mr-1.5 size-3.5" />
-          修订回答
-        </Button>
+        <span className="text-xs text-muted-foreground">
+          {confirmed ? '已确认，提交整个会话时进入教学数据。' : '确认无误或修订后，这条回答才会进入教学数据。'}
+        </span>
+        <span className="flex gap-2">
+          {confirmed ? null : (
+            <Button type="button" variant="outline" size="sm" onClick={() => setConfirming(true)} className="cursor-pointer rounded-lg">
+              <CheckCircle2 className="mr-1.5 size-3.5" />
+              确认无误
+            </Button>
+          )}
+          <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)} className="cursor-pointer rounded-lg">
+            <Pencil className="mr-1.5 size-3.5" />
+            修订回答
+          </Button>
+        </span>
+      </div>
+    );
+  }
+
+  if (confirming) {
+    return (
+      <div className="mt-3">
+        <div className="mb-2 flex justify-end">
+          <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(false)} className="cursor-pointer rounded-lg">
+            <X className="mr-1.5 size-4" />
+            取消
+          </Button>
+        </div>
+        <ConfirmMessageForm messageId={messageId} dimensions={dimensions} defaultComment={teacherComment} />
       </div>
     );
   }
@@ -96,6 +203,7 @@ export function AuditAnswerEditor({ messageId, currentAnswer, locked }: {
         />
         <FieldError message={state.errors?.corrected_answer} />
       </div>
+      <DimensionSelect messageId={messageId} dimensions={dimensions} defaultValue={dimensionKey} />
       <div className="space-y-2">
         <Label htmlFor={`rationale_${messageId}`}>修订说明（可选）</Label>
         <Textarea
@@ -107,6 +215,16 @@ export function AuditAnswerEditor({ messageId, currentAnswer, locked }: {
           className="min-h-20 bg-background/88 text-sm"
         />
         <FieldError message={state.errors?.rationale} />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`revise_comment_${messageId}`}>给学生的评语（可选）</Label>
+        <Textarea
+          id={`revise_comment_${messageId}`}
+          name="teacher_comment"
+          defaultValue={teacherComment}
+          placeholder="写一句你希望学生注意的地方；学生能看到。"
+          className="min-h-16 bg-background/88 text-sm"
+        />
       </div>
       <FormStatus state={state} />
       <div className="flex flex-wrap justify-end gap-2">

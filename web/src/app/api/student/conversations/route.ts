@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { requireRole } from '@/lib/data/common';
 import { createClient } from '@/lib/supabase/server';
-import { isStudentConversationFinalized } from '@/lib/data/conversation-finalization';
+import { isStudentConversationLocked } from '@/lib/data/conversation-finalization';
 import { conversationIdSchema } from '@/lib/request-schemas';
 
 const bodySchema = z.object({
@@ -52,7 +52,7 @@ export async function DELETE(req: Request) {
 
 // 会话中间节点编辑/回滚：删除某个用户消息节点及其后的全部消息，
 // 客户端随后以编辑后的文本重发首问/追问，实现"回到某节点改写上下文"。
-// 只允许以用户消息为节点；教师已核实的会话不可回滚。
+// 只允许以用户消息为节点；教师已封口的会话不可回滚。
 const truncateSchema = z.object({
   conversationId: conversationIdSchema,
   messageId: conversationIdSchema,
@@ -84,8 +84,10 @@ export async function PATCH(req: Request) {
     if (loadError) return Response.json({ error: `会话加载失败：${loadError.message}` }, { status: 500 });
     if (!conversation || conversation.deleted_at) return Response.json({ error: '会话不存在或已删除。' }, { status: 404 });
 
-    if (await isStudentConversationFinalized(supabase, conversation.id)) {
-      return Response.json({ error: '该会话已完成教师核实，不能回滚。', blockedReason: 'teacher_conversation_finalized' }, { status: 409 });
+    // 与 chat 路由同一个判据：读 locked_at，不读「是否已核实」。
+    // 已核实但未封口的会话可以继续追问，也可以回滚改写自己的提问。
+    if (await isStudentConversationLocked(supabase, conversation.id)) {
+      return Response.json({ error: '该会话已被教师封口，不能回滚。', blockedReason: 'teacher_conversation_finalized' }, { status: 409 });
     }
 
     const { data: rows, error: messagesError } = await supabase

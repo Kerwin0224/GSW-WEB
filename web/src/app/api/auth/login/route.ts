@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { loginRpcProfilesSchema } from '@/lib/account-settings';
 import { ROLE_HOME } from '@/lib/role-home';
-import { validateSchoolLoginId } from '@/lib/school-login';
+import { validateLoginAttemptId } from '@/lib/school-login';
 import { attachSessionCookie, createDatabaseSessionSignature } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
@@ -56,7 +56,10 @@ export async function POST(req: Request) {
     if (!parsedBody.success) return NextResponse.json({ error: '请求格式无效', requestId }, { status: 400 });
 
     const { loginId: rawLoginId, password } = parsedBody.data;
-    const loginIdResult = validateSchoolLoginId(rawLoginId ?? '');
+    // 登录时还不知道这个账号属于哪所学校（同一账号可能跨校存在），
+    // 所以这里只做通用硬约束，归属判定交给 authenticate_school_account_v4 按 login_id 查库。
+    // 早先在这里套 `^\d{8}$` 会把邮箱、手机号、字母工号账号全部挡在门外。
+    const loginIdResult = validateLoginAttemptId(rawLoginId ?? '');
     if (!loginIdResult.ok) return NextResponse.json({ error: loginIdResult.message, requestId }, { status: 400 });
     if (!password) return NextResponse.json({ error: '请输入密码。', requestId }, { status: 400 });
 

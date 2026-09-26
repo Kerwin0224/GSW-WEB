@@ -58,9 +58,11 @@ test('核实队列是真实的两态视图，当前态高亮且链接带上该�
   assert.doesNotMatch(nav, /查看已提交的记录|只看待核实/, '不应再有底部文字链接式的伪切换');
   assert.match(nav, /aria-current=\{active \? 'page' : undefined\}/, '当前视图必须可读地高亮');
   assert.match(nav, /buildAuditHref\(\{ status: item\.value \}\)/, '切换链接必须带目标视图');
-  assert.match(nav, /buildAuditHref\(\{ status: view, page: target \}\)/, '分页必须保持当前视图');
+  // 只钉「链接必须带上当前视图」，不钉参数字面量：筛选参数现在也一起透传，
+  // 把视图和字面量绑一起会在加筛选时误报，而视图透传这个不变量并没坏。
+  assert.match(nav, /buildAuditHref\(\{[^}]*status: view, page: target[^}]*\}\)/, '分页必须保持当前视图与筛选');
   // 会话深链同理，否则从已提交视图点开会话再翻页会跳回待核实。
-  assert.match(nav, /buildAuditHref\(\{ status: view, page: queue\.page, session: session\.conversationId \}\)/);
+  assert.match(nav, /buildAuditHref\(\{[^}]*status: view, page: queue\.page, session: session\.conversationId[^}]*\}\)/, '会话深链必须带上当前视图与筛选');
   assert.doesNotMatch(nav, /queue\.status ===/, '视图一律取自 URL 解析值，不再直接用服务端 status');
 });
 

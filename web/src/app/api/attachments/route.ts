@@ -5,18 +5,23 @@ import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { embedText } from '@/lib/data/retrieval';
 import { jsonForDatabase, requireRole } from '@/lib/data/common';
 import { normalizeConcreteProjectTitle } from '@/lib/project-title';
+import {
+  ARTIFACT_MAX_BYTES,
+  artifactKindOf,
+  countArtifacts,
+  signArtifactUrl,
+  uploadArtifact,
+  type ArtifactKind,
+} from '@/lib/artifacts';
 import type { AppRole, Database, Json } from '@/lib/supabase/database.types';
 
 export const maxDuration = 60;
 
 const MAX_FILES_PER_CONVERSATION = 3;
-const MAX_FILE_BYTES = 512 * 1024;
 const MAX_TEXT_CHARS = 24_000;
 const MAX_CHUNKS_PER_FILE = 24;
 const CHUNK_SIZE = 900;
 const CHUNK_OVERLAP = 120;
-const ALLOWED_TYPES = new Set(['text/plain', 'text/markdown', 'application/json']);
-const ALLOWED_EXTENSIONS = ['.txt', '.md', '.json'];
 const metadataSchema = z.object({
   conversationId: z.string().uuid().optional(),
   workspace: z.enum(['student', 'teacher']),
@@ -34,11 +39,6 @@ function jsonError(message: string, status = 400) {
 
 function canUseWorkspace(role: AppRole, workspace: 'student' | 'teacher') {
   return (workspace === 'student' && role === 'student') || (workspace === 'teacher' && role === 'teacher');
-}
-
-function fileExtensionAllowed(name: string) {
-  const lower = name.toLowerCase();
-  return ALLOWED_EXTENSIONS.some((extension) => lower.endsWith(extension));
 }
 
 function chunkText(text: string) {
@@ -145,8 +145,14 @@ export async function POST(req: Request) {
     const file = form.get('file');
     if (!(file instanceof File)) return jsonError('请选择一个附件文件。');
     if (file.size <= 0) return jsonError('附件为空。');
-    if (file.size > MAX_FILE_BYTES) return jsonError('附件超过 512KB；为避免 Supabase 免费层超额，请拆分后上传。');
-    if (!ALLOWED_TYPES.has(file.type || 'text/plain') || !fileExtensionAllowed(file.name)) return jsonError('当前仅支持 txt、md、json 文本附件。');
+
+    const mime = file.type || 'text/plain';
+    const kind: ArtifactKind | null = artifactKindOf(mime);
+    if (!kind) return jsonError('当前支持文本、PDF 与图片附件；其他格式请先转成这三种之一。');
+    if (file.size > ARTIFACT_MAX_BYTES[kind]) {
+      const limit = kind === 'text' ? '512KB' : `${Math.round(ARTIFACT_MAX_BYTES[kind] / 1024 / 1024)}MB`;
+      return jsonError(`附件超过 ${limit}；请压缩或拆分后再上传。`);
+    }
 
     const conversation = await ensureConversation({
       conversationId: metadata.data.conversationId,
@@ -161,65 +167,94 @@ export async function POST(req: Request) {
     if (!conversation.ok) return jsonError(conversation.message, 409);
 
     const supabase = await createClient();
-    const { count, error: countError } = await supabase
-      .from('documents')
-      .select('id', { count: 'exact', head: true })
-      .eq('conversation_id', conversation.conversation.id)
-      .eq('owner_id', role.data.id);
-    if (countError) return jsonError(`附件数量检查失败：${countError.message}`, 500);
-    if ((count ?? 0) >= MAX_FILES_PER_CONVERSATION) return jsonError(`单个会话最多上传 ${MAX_FILES_PER_CONVERSATION} 个附件。`);
+    // 二进制不走 documents，所以数量要数存储目录而不是文档表，
+    // 否则同一会话先传三张图、再传文本时图片根本不会被计入上限。
+    const stored = await countArtifacts(supabase, role.data.id, conversation.conversation.id, MAX_FILES_PER_CONVERSATION + 1);
+    if (!stored.ok) return jsonError(stored.message, 500);
+    if (stored.data >= MAX_FILES_PER_CONVERSATION) return jsonError(`单个会话最多上传 ${MAX_FILES_PER_CONVERSATION} 个附件。`);
 
-    const text = (await file.text()).trim();
-    if (!text) return jsonError('附件没有可检索文本。');
-    if (text.length > MAX_TEXT_CHARS) return jsonError('附件文本超过 24000 字符；为避免 Supabase 免费层超额，请拆分后上传。');
-    const chunks = chunkText(text);
-    if (!chunks) return jsonError(`附件分块超过 ${MAX_CHUNKS_PER_FILE} 段；请缩短附件后再上传。`);
+    const uploaded = await uploadArtifact({
+      supabase,
+      profileId: role.data.id,
+      scopeId: conversation.conversation.id,
+      file,
+      mime,
+      kind,
+      indexed: kind === 'text',
+    });
+    if (!uploaded.ok) return jsonError(uploaded.message, 500);
 
-    const embeddings: Array<{ content: string; embedding: number[] }> = [];
-    for (const chunk of chunks) {
-      const embedding = await embedText(chunk, 768);
-      if (!embedding.ok) return jsonError(embedding.message, embedding.reason === 'blocked' ? 503 : 500);
-      embeddings.push({ content: chunk, embedding: embedding.data });
+    const signed = await signArtifactUrl(supabase, uploaded.data.path);
+    if (!signed.ok) return jsonError(signed.message, 500);
+
+    // 只有纯文本进 RAG：图片与 PDF 由模型多模态通道直接读，
+    // 把它们解码成文本只会得到一堆乱码，还白烧 embedding 额度。
+    let chunkCount = 0;
+    let textChars = 0;
+    if (kind === 'text') {
+      const text = (await file.text()).trim();
+      if (!text) return jsonError('附件没有可检索文本。');
+      if (text.length > MAX_TEXT_CHARS) return jsonError('附件文本超过 24000 字符；为避免 Supabase 免费层超额，请拆分后上传。');
+      const chunks = chunkText(text);
+      if (!chunks) return jsonError(`附件分块超过 ${MAX_CHUNKS_PER_FILE} 段；请缩短附件后再上传。`);
+
+      const embeddings: Array<{ content: string; embedding: number[] }> = [];
+      for (const chunk of chunks) {
+        const embedding = await embedText(chunk, 768);
+        if (!embedding.ok) return jsonError(embedding.message, embedding.reason === 'blocked' ? 503 : 500);
+        embeddings.push({ content: chunk, embedding: embedding.data });
+      }
+
+      const { data: document, error: documentError } = await supabase.from('documents').insert({
+        owner_id: role.data.id,
+        project_id: conversation.conversation.project_id,
+        class_id: conversation.conversation.class_id,
+        conversation_id: conversation.conversation.id,
+        title: file.name,
+        source_uri: `artifact:${uploaded.data.path}`,
+        metadata: jsonForDatabase({
+          type: 'conversation_attachment',
+          fileName: file.name,
+          fileType: mime,
+          fileSize: file.size,
+          textChars: text.length,
+          chunkCount: chunks.length,
+          scope: 'conversation',
+        }) as Json,
+      }).select('id').single();
+      if (documentError) return jsonError(`附件记录保存失败：${documentError.message}`, 500);
+
+      const { error: chunksError } = await supabase.from('document_chunks').insert(embeddings.map((item, index) => ({
+        document_id: document.id,
+        owner_id: role.data.id,
+        project_id: conversation.conversation.project_id,
+        class_id: conversation.conversation.class_id,
+        conversation_id: conversation.conversation.id,
+        chunk_index: index,
+        content: item.content,
+        embedding: item.embedding,
+        metadata: jsonForDatabase({ fileName: file.name, scope: 'conversation' }) as Json,
+      })));
+      if (chunksError) return jsonError(`附件分块保存失败：${chunksError.message}`, 500);
+
+      chunkCount = chunks.length;
+      textChars = text.length;
     }
-
-    const { data: document, error: documentError } = await supabase.from('documents').insert({
-      owner_id: role.data.id,
-      project_id: conversation.conversation.project_id,
-      class_id: conversation.conversation.class_id,
-      conversation_id: conversation.conversation.id,
-      title: file.name,
-      source_uri: `attachment:${file.name}`,
-      metadata: jsonForDatabase({
-        type: 'conversation_attachment',
-        fileName: file.name,
-        fileType: file.type,
-        fileSize: file.size,
-        textChars: text.length,
-        chunkCount: chunks.length,
-        scope: 'conversation',
-      }) as Json,
-    }).select('id').single();
-    if (documentError) return jsonError(`附件记录保存失败：${documentError.message}`, 500);
-
-    const { error: chunksError } = await supabase.from('document_chunks').insert(embeddings.map((item, index) => ({
-      document_id: document.id,
-      owner_id: role.data.id,
-      project_id: conversation.conversation.project_id,
-      class_id: conversation.conversation.class_id,
-      conversation_id: conversation.conversation.id,
-      chunk_index: index,
-      content: item.content,
-      embedding: item.embedding,
-      metadata: jsonForDatabase({ fileName: file.name, scope: 'conversation' }) as Json,
-    })));
-    if (chunksError) return jsonError(`附件分块保存失败：${chunksError.message}`, 500);
 
     return Response.json({
       ok: true,
       conversationId: conversation.conversation.id,
       projectId: conversation.conversation.project_id,
       fileName: file.name,
-      chunkCount: chunks.length,
+      mime,
+      kind,
+      size: file.size,
+      textChars,
+      chunkCount,
+      // 前端拿这个 part 直接进消息，模型侧读到的是重签后的同一路径。
+      path: uploaded.data.path,
+      signedUrl: signed.data,
+      part: { type: 'file' as const, mediaType: mime, filename: file.name, url: signed.data },
     });
   });
 }

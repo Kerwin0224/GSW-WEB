@@ -1,13 +1,14 @@
-import { convertToModelMessages, createUIMessageStream, createUIMessageStreamResponse, safeValidateUIMessages, streamText, stepCountIs, type LanguageModel, type UIMessage } from 'ai';
+import { convertToModelMessages, createUIMessageStream, createUIMessageStreamResponse, safeValidateUIMessages, streamText, stepCountIs, type LanguageModel, type TextUIPart, type UIMessage } from 'ai';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { withApiLogging } from '@/lib/observability/with-api-logging';
 import { writeLogEvent } from '@/lib/observability/server-log-store';
 import { extractTextFromParts, getCapabilities, jsonForDatabase, requireRole, resolveLanguageModel } from '@/lib/data/common';
 import { toPersistedAssistantParts } from '@/lib/chat-message-parts';
-import { isStudentConversationFinalized } from '@/lib/data/conversation-finalization';
+import { isStudentConversationLocked } from '@/lib/data/conversation-finalization';
 import { resolveClassificationRule } from '@/lib/data/classification-rule';
 import { buildAttachmentPrompt } from '@/lib/chat-attachments';
+import { refreshArtifactPart, type ArtifactFilePart } from '@/lib/artifacts';
 import { getRoleMcpTools } from '@/lib/mcp-runtime';
 import { shouldClassifyProjectForStudentTurn } from '@/lib/student-chat-contract';
 import { buildStudentSystemPrompt } from '@/lib/student-chat-prompts';
@@ -115,19 +116,46 @@ function getConversationProjectTitle(conversation: ConversationContext | null) {
   return normalizeConcreteProjectTitle(project?.name);
 }
 
+/**
+ * 落库的 parts → 送模型的 UI 消息。
+ * 附件轮次在这里必须保住 file part：学生交的是一张证明照片，
+ * 只留 text 会让模型看到"一句提问、零张图"，比不给附件更糟。
+ */
 function toStudentChatMessage(row: StoredConversationMessage): StudentChatMessage {
-  const textParts = Array.isArray(row.parts)
-    ? row.parts.filter((part): part is { type: 'text'; text: string } => {
-      if (!part || typeof part !== 'object') return false;
+  const kept = (Array.isArray(row.parts) ? row.parts : [])
+    .map((part) => {
+      if (!part || typeof part !== 'object') return null;
       const value = part as Record<string, unknown>;
-      return value.type === 'text' && typeof value.text === 'string';
+      if (value.type === 'text' && typeof value.text === 'string') return { type: 'text' as const, text: value.text };
+      if (value.type === 'file' && typeof value.mediaType === 'string' && typeof value.url === 'string') {
+        return { type: 'file' as const, mediaType: value.mediaType, url: value.url, ...(typeof value.filename === 'string' ? { filename: value.filename } : {}) };
+      }
+      return null;
     })
-    : [];
+    .filter((part): part is TextUIPart | ArtifactFilePart => part !== null);
   return {
     id: row.id,
     role: row.role === 'assistant' ? 'assistant' : row.role === 'system' ? 'system' : 'user',
-    parts: textParts.length ? textParts : [{ type: 'text', text: row.content }],
+    parts: kept.length ? kept : [{ type: 'text', text: row.content }],
   };
+}
+
+/**
+ * part 来自浏览器：只认自家存储的签名 URL，且归属必须是本人，否则整条丢掉。
+ * 丢完只剩空 parts 时给一句占位文字——空 content 的 user 消息会被部分网关拒收，
+ * 学生看到的是"回答失败"，比提示附件失效更难排查。
+ */
+async function refreshArtifactParts(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  messages: StudentChatMessage[],
+  profileId: string,
+) {
+  return Promise.all(messages.map(async (message) => {
+    if (!message.parts.some((part) => part.type === 'file')) return message;
+    const parts = await Promise.all(message.parts.map((part) => (part.type === 'file' ? refreshArtifactPart(supabase, part, profileId) : part)));
+    const usable = parts.filter((part): part is TextUIPart | ArtifactFilePart => part !== null);
+    return { ...message, parts: usable.length ? usable : [{ type: 'text' as const, text: '（附件已失效）' }] };
+  }));
 }
 
 function trimTranscriptAtUserMessage(messages: StudentChatMessage[], userMessageId: string) {
@@ -230,8 +258,14 @@ export async function POST(req: Request) {
     if (!languageModel) return Response.json({ error: 'Server model secret missing', resolution: `${caps.student_chat.providerName ?? 'Provider'} 的 secret_ref 未在服务端环境中解析成功；不能从浏览器读取 Provider 密钥。` }, { status: 503 });
 
     const supabase = await createClient();
+    // 有效消息 = 有文字**或**有附件。学生拍一张证明照片问"这步对吗"是完整的一轮，
+    // 此前只认 text part，这一轮会被判成"消息不能为空"。
+    const lastParts = messages.at(-1)?.parts ?? [];
+    const lastFilePart = lastParts.find((part) => Boolean(part) && typeof part === 'object' && 'type' in part && part.type === 'file');
+    const lastFileName = lastFilePart && 'filename' in lastFilePart && typeof lastFilePart.filename === 'string' ? lastFilePart.filename : '';
     const userText = extractTextFromParts(messages);
-    if (!userText) return Response.json({ error: '消息不能为空' }, { status: 400 });
+    if (!userText && !lastFilePart) return Response.json({ error: '消息不能为空' }, { status: 400 });
+    const turnLabel = (userText || lastFileName || '学习记录').slice(0, 80);
 
     const requestedProjectId = parsed.data.projectId;
     let projectId = normalizeUuid(requestedProjectId);
@@ -254,23 +288,28 @@ export async function POST(req: Request) {
       if (existingConversationError) return Response.json({ error: `会话加载失败：${existingConversationError.message}` }, { status: 500 });
       if (!existingConversation) return Response.json({ error: '会话不存在或已删除' }, { status: 404 });
       conversation = existingConversation as ConversationContext;
+      // 封口判定读 conversations.locked_at，而不是「教师是否已核实」。
+      // 已核实但未封口的会话必须能继续追问——异步答疑、复核后追问、错题再讨论都走这条路。
+      // blockedReason 的 wire 值保持不变：客户端按它显示拦截态，改值要连带改客户端判断。
       try {
-        if (await isStudentConversationFinalized(supabase, conversation.id)) {
+        if (await isStudentConversationLocked(supabase, conversation.id)) {
           return Response.json({
-            error: '该会话已完成教师核实，不能继续追问。',
+            error: '该会话已被教师封口，不能继续追问。',
             resolution: '请从项目或空白入口新开一个会话继续学习。',
             blockedReason: 'teacher_conversation_finalized',
           }, { status: 409 });
         }
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : '教师核实状态检查失败' }, { status: 500 });
+        return Response.json({ error: error instanceof Error ? error.message : '会话状态检查失败' }, { status: 500 });
       }
       projectId = conversation.project_id ?? undefined;
       effectiveSpaceId = conversation.space_id ?? null;
       classifiedProjectName = getConversationProjectTitle(conversation) ?? null;
     }
 
-    const shouldClassifyProject = shouldClassifyProjectForStudentTurn({
+    // 归类与提问类型判断都读文字。一轮只有一张照片时没有可归类的语句，
+    // 硬让模型对着空串归类只会得到一个编出来的项目名。
+    const shouldClassifyProject = Boolean(userText) && shouldClassifyProjectForStudentTurn({
       hasConversation: Boolean(conversation),
       hasProject: Boolean(projectId),
       isRegeneration,
@@ -302,7 +341,7 @@ export async function POST(req: Request) {
     if (!conversation) {
       const { data: newConversation, error: conversationError } = await supabase
         .from('conversations')
-        .insert({ owner_id: role.data.id, project_id: projectId ?? null, space_id: effectiveSpaceId, source: 'student_chat', title: userText.slice(0, 80) })
+        .insert({ owner_id: role.data.id, project_id: projectId ?? null, space_id: effectiveSpaceId, source: 'student_chat', title: turnLabel })
         // 见 attachments route：与 deleted-at 守护测试形式一致，不影响 insert 本身。
         .is('deleted_at', null)
         .select('id,project_id,space_id,projects(name)')
@@ -351,7 +390,7 @@ export async function POST(req: Request) {
     if (!userMessage) {
       const { data: insertedUserMessage, error: insertedUserMessageError } = await supabase
         .from('conversation_messages')
-        .insert({ conversation_id: conversation.id, role: 'user', content: userText, parts: jsonForDatabase(messages.at(-1)?.parts ?? null), bloom_state: projectId && bloomModel ? 'pending' : 'unclassified' })
+        .insert({ conversation_id: conversation.id, role: 'user', content: userText || turnLabel, parts: jsonForDatabase(lastParts), bloom_state: projectId && bloomModel && userText ? 'pending' : 'unclassified' })
         .select('id,content')
         .single();
       if (insertedUserMessageError) return Response.json({ error: `学生问题保存失败：${insertedUserMessageError.message}` }, { status: 500 });
@@ -365,18 +404,23 @@ export async function POST(req: Request) {
       .order('created_at', { ascending: true });
     if (persistedMessagesError) return Response.json({ error: `会话上下文加载失败：${persistedMessagesError.message}` }, { status: 500 });
     const modelInputMessages = trimTranscriptAtUserMessage(
-      ((persistedMessageRows ?? []) as StoredConversationMessage[]).map(toStudentChatMessage),
+      await refreshArtifactParts(supabase, ((persistedMessageRows ?? []) as StoredConversationMessage[]).map(toStudentChatMessage), role.data.id),
       userMessage.id,
     );
-    const attachment = await buildAttachmentPrompt({
-      supabase,
-      conversationId: conversation.id,
-      ownerId: role.data.id,
-      query: userText,
-      projectAttachments: true,
-    });
-    if (!attachment.ok) return Response.json({ error: attachment.message }, { status: attachment.status });
-    const attachmentPrompt = attachment.prompt;
+    // 检索 query 必须是真文字：只有照片的一轮没有可比对的文本，
+    // 而非文本附件本来就不进 documents/RAG，没有可检索的东西。
+    let attachmentPrompt = '';
+    if (userText) {
+      const attachment = await buildAttachmentPrompt({
+        supabase,
+        conversationId: conversation.id,
+        ownerId: role.data.id,
+        query: userText,
+        projectAttachments: true,
+      });
+      if (!attachment.ok) return Response.json({ error: attachment.message }, { status: attachment.status });
+      attachmentPrompt = attachment.prompt;
+    }
     const modelId = caps.student_chat.modelId;
     if (!modelId) return Response.json({ error: 'Model id missing', resolution: 'Provider capability 缺少 model_id；不能选择默认模型。' }, { status: 503 });
     let mcp: Awaited<ReturnType<typeof getRoleMcpTools>>;
@@ -478,7 +522,7 @@ export async function POST(req: Request) {
           // 落库不在这里：组装好的 UI 消息（含工具调用 part）只在 toUIMessageStream.onFinish 拿得到。
           onFinish: async () => {
             await assignmentTask;
-            if (assignedProjectId && userMessage && bloomModel) {
+            if (assignedProjectId && userMessage && bloomModel && userText) {
               try {
                 const bloom = await classifyBloomLevel(bloomModel, userText);
                 await setBloomState('classified', { bloom_level: bloom.level });

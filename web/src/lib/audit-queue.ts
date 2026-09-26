@@ -9,6 +9,60 @@
  * 现在分组在服务端一次算好，列表行只带导航需要的字段；纯函数，可直接单测。
  */
 
+/** 判定一条 AI 回答的教师处置记录所需的最小字段。 */
+export type TeacherDecisionRow = {
+  kind?: string | null;
+  status?: string | null;
+  quality?: string | null;
+  metadata?: unknown;
+  dimension_key?: string | null;
+  teacher_comment?: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
+};
+
+function approved(row: TeacherDecisionRow) {
+  return row.status === 'approved' || row.status === 'exported';
+}
+
+function actionOf(row: TeacherDecisionRow) {
+  const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata as Record<string, unknown> : {};
+  return typeof metadata.teacher_action === 'string' ? metadata.teacher_action : '';
+}
+
+/**
+ * 这条 AI 回答有没有教师的**显式处置**（逐条确认或修订）。
+ *
+ * 这是「训练数据只收教师处置过的回答」的唯一判据，列表预告与最终物化共用它：
+ * 两处各写一份必然漂移，漂移的后果是界面说 3 条、库里进了 9 条。
+ *
+ * 此前没有这个判据——会话级提交只能靠「有没有修订」反推教师看过哪条，
+ * 于是 10 轮长对话里改过第 3 轮，其余 9 条从未被读过的回答全被写成 accurate。
+ * 「没改过」不等于「看过且认可」。
+ */
+export function hasTeacherDecision(rows: readonly TeacherDecisionRow[]) {
+  return rows.some((row) => {
+    if (!approved(row)) return false;
+    if (row.kind !== 'metadata') return false;
+    const action = actionOf(row);
+    if (action === 'message_confirmed' || action === 'revision_draft') return true;
+    // 历史数据：早期把确认结论只落在 quality 上，没有 teacher_action。
+    return row.quality === 'confirmed' || row.quality === 'revision_draft';
+  });
+}
+
+/** 教师处置时写下的维度键与评语（取较新的一条），供详情回显。 */
+export function latestTeacherDecision(rows: readonly TeacherDecisionRow[]) {
+  return [...rows]
+    .filter((row) => row.kind === 'metadata' && approved(row) && (actionOf(row) === 'message_confirmed' || actionOf(row) === 'revision_draft'))
+    .sort((left, right) => reviewTimestampOf(right).localeCompare(reviewTimestampOf(left)))
+    .find((row) => row.dimension_key || row.teacher_comment);
+}
+
+function reviewTimestampOf(row: TeacherDecisionRow) {
+  return row.updated_at ?? row.created_at ?? '';
+}
+
 /** AI 预审的进行状态。 */
 export type PreReviewState = 'not_run' | 'ready' | 'partial' | 'blocked' | 'failed';
 
@@ -23,6 +77,8 @@ export type AuditQueueSession = {
   updatedAt: string;
   finalized: boolean;
   assistantCount: number;
+  /** 教师显式封口。与 finalized 独立：已核实但未封口的会话学生仍可继续追问。 */
+  locked: boolean;
   /** 有疑点的 AI 回答条数（同一条回答多处疑点只算一条）。 */
   riskAssistantCount: number;
   issueCount: number;
@@ -32,11 +88,18 @@ export type AuditQueueSession = {
   preReviewCoveredMessageCount: number;
 };
 
-/** 一条待渲染的会话行：会话本身 + 它挂在哪条 班级/学生/项目 路径下。 */
+/**
+ * 一条待渲染的会话行：会话本身 + 它挂在哪条 班级/学生/项目 路径下。
+ *
+ * 三层都带 id：教师点某一层要能把它变成队列筛选（?classId= / ?studentId= / ?projectId=），
+ * 只有名字的话点下去只能回到未筛选的队列，等于没筛。
+ */
 export type AuditQueueEntry = {
   classId: string | null;
   classLabel: string;
+  studentId?: string | null;
   studentName: string;
+  projectId?: string | null;
   projectName: string;
   session: AuditQueueSession;
 };
@@ -46,8 +109,9 @@ export type AuditQueueGroup = {
   classId: string | null;
   classLabel: string;
   students: Array<{
+    studentId?: string | null;
     studentName: string;
-    projects: Array<{ projectName: string; sessions: AuditQueueSession[] }>;
+    projects: Array<{ projectId?: string | null; projectName: string; sessions: AuditQueueSession[] }>;
   }>;
 };
 
@@ -61,7 +125,7 @@ export function buildAuditQueueGroups(entries: readonly AuditQueueEntry[]): Audi
   const byClass = new Map<string, AuditQueueGroup>();
   // 同一层级用「路径 → 节点」索引复用节点，避免嵌套 Map 的类型体操。
   const studentIndex = new Map<string, AuditQueueGroup['students'][number]>();
-  const projectIndex = new Map<string, { projectName: string; sessions: AuditQueueSession[] }>();
+  const projectIndex = new Map<string, { projectId?: string | null; projectName: string; sessions: AuditQueueSession[] }>();
 
   for (const entry of entries) {
     const classKey = entry.classId ?? entry.classLabel;
@@ -74,7 +138,7 @@ export function buildAuditQueueGroups(entries: readonly AuditQueueEntry[]): Audi
     const studentKey = `${classKey}\u0000${entry.studentName}`;
     let student = studentIndex.get(studentKey);
     if (!student) {
-      student = { studentName: entry.studentName, projects: [] };
+      student = { studentId: entry.studentId, studentName: entry.studentName, projects: [] };
       studentIndex.set(studentKey, student);
       group.students.push(student);
     }
@@ -82,7 +146,7 @@ export function buildAuditQueueGroups(entries: readonly AuditQueueEntry[]): Audi
     const projectKey = `${studentKey}\u0000${entry.projectName}`;
     let project = projectIndex.get(projectKey);
     if (!project) {
-      project = { projectName: entry.projectName, sessions: [] };
+      project = { projectId: entry.projectId, projectName: entry.projectName, sessions: [] };
       projectIndex.set(projectKey, project);
       student.projects.push(project);
     }

@@ -48,3 +48,11 @@ export async function createClient() {
     },
   );
 }
+
+/**
+ * 本模块产出的 Supabase 客户端类型。
+ *
+ * 调用方不该写 `Awaited<ReturnType<typeof createClient>>`：那把类型契约焊在了
+ * 实现函数名上，改一次实现签名，全仓库消费者的类型跟着一起变。
+ */
+export type SupabaseClient = Awaited<ReturnType<typeof createClient>>;

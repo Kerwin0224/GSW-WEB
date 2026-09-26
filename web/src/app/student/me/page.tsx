@@ -29,6 +29,7 @@ export default async function StudentProfilePage({ searchParams }: { searchParam
     questionCount,
     challengeCount,
     awaitingChallengeCount,
+    activity,
   } = result.data;
   const hasRecords = projectBloomMatrix.length > 0;
 
@@ -43,7 +44,8 @@ export default async function StudentProfilePage({ searchParams }: { searchParam
           { label: '项目', value: totalProjects, hint: '有学习记录的项目' },
           { label: '提问记录', value: questionCount, hint: '累计提问次数' },
           { label: '挑战记录', value: challengeCount, hint: '累计生成的挑战题' },
-          { label: '尚未通过', value: awaitingChallengeCount, hint: '还没有通过挑战的项目' },
+          { label: '尚未通过', value: awaitingChallengeCount, hint: '挑战过、但还没有通过的项目' },
+          { label: '附件与作业', value: activity.attachment + activity.submission, hint: `上传附件 ${activity.attachment} 份 · 提交作业 ${activity.submission} 次` },
         ]}
       />
 
@@ -82,6 +84,32 @@ export default async function StudentProfilePage({ searchParams }: { searchParam
           </>
         )}
       </section>
+
+      <Card>
+        <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle>学习活动</CardTitle>
+            <CardDescription>提问之外的活动也在册：挑战、附件与作业都会计进来。</CardDescription>
+          </div>
+          <Button nativeButton={false} variant="outline" size="sm" render={<Link href="/student/export">导出我的数据</Link>} />
+        </CardHeader>
+        <CardContent>
+          <dl className="grid grid-cols-2 divide-x divide-border/60 rounded-lg border border-border/55 bg-background/70 sm:grid-cols-4">
+            {([
+              ['提问', activity.question, '在学习提问里提出的问题条数'],
+              ['挑战', activity.challenge, '生成过的挑战记录条数'],
+              ['附件', activity.attachment, '上传到项目的材料份数'],
+              ['作业', activity.submission, '提交的作业次数'],
+            ] as const).map(([label, value, hint]) => (
+              <div key={label} className="px-3 py-4 text-center">
+                <dt className="text-xs text-muted-foreground">{label}</dt>
+                <dd className="mt-1 font-heading text-2xl tabular-nums">{value}</dd>
+                <p className="mt-1 text-[0.68rem] leading-4 text-muted-foreground">{hint}</p>
+              </div>
+            ))}
+          </dl>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

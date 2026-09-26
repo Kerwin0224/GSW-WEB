@@ -7,6 +7,7 @@ import { toProviderProtocol, normalizeAnthropicBaseURL } from '@/lib/provider-pr
 import { createClient } from '@/lib/supabase/server';
 import type { AppRole, Database, ModelTier, ProviderCapability } from '@/lib/supabase/database.types';
 import { getProfile, type Profile } from '@/lib/auth';
+import { instrumentLanguageModel } from '@/lib/ai-usage';
 import { decryptSecret } from '@/lib/crypto/secret-cipher';
 
 export type DataResult<T> = { ok: true; data: T } | { ok: false; reason: 'unauthenticated' | 'forbidden' | 'missing_profile' | 'blocked' | 'password_change_required' | 'error'; message: string };
@@ -23,25 +24,40 @@ export type ModelTierStatus = { tier: ModelTier; ready: boolean; modelId?: strin
 
 export type { ModelTier } from '@/lib/supabase/database.types';
 
-export const scenarioModelTiers = {
-  student_chat: 'flash',
-  bloom_classification: 'flash',
-  project_classification: 'flash',
-  practice_generation: 'flash',
-  teacher_chat: 'advanced',
-  practice_evaluation: 'advanced',
-  audit_assist: 'advanced',
-} as const satisfies Partial<Record<ProviderCapability, ModelTier>>;
-
-export function ok<T>(data: T): DataResult<T> { return { ok: true, data }; }
-export function fail<T = never>(reason: DataResult<T> extends infer R ? R extends { ok: false; reason: infer S } ? S : never : never, message: string): DataResult<T> { return { ok: false, reason, message } as DataResult<T>; }
+/**
+ * 代码侧不再保存「场景 → 路由层」的默认映射。
+ *
+ * 真源是 teaching_scenarios + scenario_tier_bindings（见 lib/teaching-scenarios.ts）：
+ * 加一种教学形态只需要往 teaching_scenarios 插一行，不必改四处代码。
+ * 这个常量保留为空对象只为不打断 admin.ts 的两处同步兜底 import；
+ * 未命中时那里自己的 `?? 'flash'` 就是租户默认档位。
+ * 接线清单：admin.ts 的 getScenarioTierBindingsFromDb / saveScenarioTierBindings
+ * 换成 await resolveScenarioTier(scenario) 之后，本常量可删。
+ */
+export const scenarioModelTiers: Partial<Record<ProviderCapability, ModelTier>> = {};
 
 /**
  * 根据 CapabilityStatus 解析出可用的 LanguageModel 实例。
  * 所有 AI 功能的 Provider 路由逻辑集中在此处；新增协议只需修改这一处（ADR-0001）。
  * 返回 null 表示 secret 未就绪，调用方应向客户端返回 503。
+ *
+ * 计量也包在这一层：全部 AI 路径都从这里拿模型，这是唯一能保证「不漏计」的出口。
+ * 计量失败不会影响这里返回的模型（见 lib/ai-usage.ts）。
  */
 export function resolveLanguageModel(capability: CapabilityStatus): LanguageModel | null {
+  const model = createProviderModel(capability);
+  if (!model) return null;
+  return instrumentLanguageModel(model, { scenario: capability.capability, modelId: capability.modelId ?? null });
+}
+
+export function ok<T>(data: T): DataResult<T> { return { ok: true, data }; }
+export function fail<T = never>(reason: DataResult<T> extends infer R ? R extends { ok: false; reason: infer S } ? S : never : never, message: string): DataResult<T> { return { ok: false, reason, message } as DataResult<T>; }
+
+/**
+ * 真正的协议分派：同一份 CapabilityStatus 按 providerType 落到 Anthropic
+ * Messages / OpenAI Responses / OpenAI 兼容三种报文之一。
+ */
+function createProviderModel(capability: CapabilityStatus): LanguageModel | null {
   if (!capability.modelId) return null;
   const apiKey = resolveEnvSecret(capability.secretRef);
   if (!apiKey) return null;

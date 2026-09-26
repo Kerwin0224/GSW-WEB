@@ -24,6 +24,24 @@ export type SpaceClassSummary = { classId: string; className: string; studentCou
 export type SpaceStudentSummary = { id: string; displayName: string; loginId: string | null; className?: string | null };
 export type SpaceStudentOption = { id: string; displayName: string; loginId: string | null; className: string };
 
+/**
+ * 空间里的另一位教师。
+ *
+ * 与「带的学生」分开建模：协作权和带学生是两件事。
+ * 一位同事可能只帮着看学情、不带任何学生；也可能带自己的班但只对这个空间
+ * 有查看权。把两者塞进同一张成员表，界面上就会出现「这个空间有 0 名学生、
+ * 3 位教师」这种读不懂的列表。
+ */
+export type SpaceCollaboratorSummary = {
+  profileId: string;
+  displayName: string;
+  loginId: string | null;
+  /** owner = 空间所有者（可增删协作者）；co_teacher = 共同教师。 */
+  role: 'owner' | 'co_teacher';
+  /** 该协作者自己的学校名。跨校空间下这一列才看得出「谁是外校的」。 */
+  schoolName: string | null;
+};
+
 export type TeacherSpace = {
   id: string;
   name: string;
@@ -34,6 +52,12 @@ export type TeacherSpace = {
   classes: SpaceClassSummary[];
   directStudents: SpaceStudentSummary[];
   studentCount: number;
+  collaborators: SpaceCollaboratorSummary[];
+  /** 我是 owner（可管理协作者）还是共同教师（只读协作）。 */
+  myRole: 'owner' | 'co_teacher';
+  /** 公司级 / 跨校空间没有单一学校归属，界面上要标出来，否则教师会以为配错了。 */
+  schoolId: string | null;
+  schoolName: string | null;
 };
 
 /** 学生视角：空间名称、科目和颜色都足够渲染切换器。 */
@@ -44,20 +68,34 @@ function revalidateSpaceSurfaces() {
   revalidatePath('/student');
 }
 
-/** 我建的活跃空间，含班级派生成员和直接加入的学生。 */
+/**
+ * 我能进入的活跃空间：**我建的 ∪ 我被加进去的**。
+ *
+ * 此前只按 owner_id 取，两位老师共带一班时各建各的空间，
+ * 学生端就会并排出现两个同名空间，谁也不知道哪个才是正在用的那个。
+ * 作用域统一走 teacher_space_ids()（owner ∪ 协作者），教师端不再逐处自己拼条件。
+ */
 export async function listTeacherSpaces(): Promise<DataResult<TeacherSpace[]>> {
   const role = await requireRole('teacher');
   if (!role.ok) return role;
   const supabase = await createClient();
 
+  // 先问作用域再取行：「哪些空间是我的」一次 RPC 就够（owner ∪ 协作者），
+  // 不必把 owner 与协作者两套条件在应用层拼一遍。
+  const { data: scopeIds, error: scopeError } = await supabase.rpc('teacher_space_ids');
+  if (scopeError) return fail('error', `空间作用域加载失败：${scopeError.message}`);
+  const accessibleIds = ((scopeIds ?? []) as string[]).filter((id) => typeof id === 'string' && id.length > 0);
+  if (accessibleIds.length === 0) return ok([]);
+
   const { data: spaces, error } = await supabase
     .from('spaces')
-    .select('id,name,theme,subject,color_key,space_kind,space_classes(class_id,classes(name)),space_members(student_id)')
-    .eq('owner_id', role.data.id)
+    .select('id,name,theme,subject,color_key,space_kind,owner_id,school_id,schools(name),space_classes(class_id,classes(name)),space_members(student_id),space_collaborators(profile_id,role,profiles(id,display_name,login_id,school_id,schools(name)))')
+    .in('id', accessibleIds)
     .eq('status', 'active')
     .order('created_at', { ascending: true });
   if (error) return fail('error', `空间加载失败：${error.message}`);
 
+  type CollabProfile = { id: string; display_name: string; login_id: string | null; school_id: string | null; schools: { name: string | null } | Array<{ name: string | null }> | null };
   type Row = {
     id: string;
     name: string;
@@ -65,8 +103,12 @@ export async function listTeacherSpaces(): Promise<DataResult<TeacherSpace[]>> {
     subject: string | null;
     color_key: SpaceColorKey;
     space_kind: SpaceKind;
+    owner_id: string;
+    school_id: string | null;
+    schools: { name: string | null } | Array<{ name: string | null }> | null;
     space_classes: Array<{ class_id: string; classes: { name: string | null } | Array<{ name: string | null }> | null }> | null;
     space_members: Array<{ student_id: string }> | null;
+    space_collaborators: Array<{ profile_id: string; role: 'owner' | 'co_teacher'; profiles: CollabProfile | Array<CollabProfile> | null }> | null;
   };
   const rows = (spaces ?? []) as unknown as Row[];
   const classIds = Array.from(new Set(rows.flatMap((row) => (row.space_classes ?? []).map((edge) => edge.class_id))));
@@ -116,6 +158,22 @@ export async function listTeacherSpaces(): Promise<DataResult<TeacherSpace[]>> {
       return profile ? [{ id: member.student_id, displayName: profile.display_name, loginId: profile.login_id }] : [];
     });
     const extraDirectStudents = directStudents.filter((student) => !derivedStudentIds.has(student.id));
+    // 协作边读不到时不能把空间整个判为不可用：RLS 没放行协作者档案
+    // 只意味着「看不到他的姓名」，不意味着这个空间出了故障。
+    // 退化后仍按 owner_id 判定角色，owner 一定看得到自己。
+    const collaborators: SpaceCollaboratorSummary[] = (row.space_collaborators ?? []).flatMap((edge) => {
+      const profile = Array.isArray(edge.profiles) ? edge.profiles[0] : edge.profiles;
+      const school = profile ? (Array.isArray(profile.schools) ? profile.schools[0] : profile.schools) : null;
+      if (!profile) return [];
+      return [{
+        profileId: edge.profile_id,
+        displayName: profile.display_name,
+        loginId: profile.login_id,
+        role: edge.role,
+        schoolName: school?.name?.trim() || null,
+      }];
+    });
+    const school = Array.isArray(row.schools) ? row.schools[0] : row.schools;
     return {
       id: row.id,
       name: row.name,
@@ -126,6 +184,10 @@ export async function listTeacherSpaces(): Promise<DataResult<TeacherSpace[]>> {
       classes,
       directStudents,
       studentCount: classes.reduce((sum, klass) => sum + klass.studentCount, 0) + extraDirectStudents.length,
+      collaborators,
+      myRole: row.owner_id === role.data.id ? 'owner' : 'co_teacher',
+      schoolId: row.school_id,
+      schoolName: school?.name?.trim() || null,
     };
   }));
 }
@@ -171,7 +233,15 @@ export async function listTeacherStudentOptions(): Promise<DataResult<SpaceStude
   return ok(Array.from(options.values()));
 }
 
-/** 学生视角：我被拉进去的空间。 */
+/**
+ * 学生视角：我被拉进去的空间。
+ *
+ * 按 space_id 去重。学生可能同时是某个空间的直接成员和某个班的派生成员，
+ * 两位老师共带一班时这两条边会同时命中同一个空间；不去重的话
+ * 切换器里会出现两个一模一样的条目，学生点哪个都像点错了。
+ * 去重键是 id 而不是名称：两个不同空间可以合法地重名（不同科目、不同老师各建一个），
+ * 按名称去重会把它们真的合成一个，那才是数据丢失。
+ */
 export async function listStudentSpaces(): Promise<DataResult<StudentSpace[]>> {
   const role = await requireRole('student');
   if (!role.ok) return role;
@@ -183,7 +253,13 @@ export async function listStudentSpaces(): Promise<DataResult<StudentSpace[]>> {
     .eq('status', 'active')
     .order('created_at', { ascending: true });
   if (error) return fail('error', `空间加载失败：${error.message}`);
-  return ok((data ?? []).map((space) => ({ id: space.id, name: space.name, subject: space.subject, colorKey: space.color_key, kind: space.space_kind })));
+
+  const byId = new Map<string, StudentSpace>();
+  for (const space of (data ?? []) as Array<{ id: string; name: string; subject: string | null; color_key: SpaceColorKey; space_kind: SpaceKind }>) {
+    if (byId.has(space.id)) continue;
+    byId.set(space.id, { id: space.id, name: space.name, subject: space.subject, colorKey: space.color_key, kind: space.space_kind });
+  }
+  return ok([...byId.values()]);
 }
 
 /**
@@ -205,8 +281,18 @@ export async function saveSpaceAction(_previous: ActionState, formData: FormData
   if (subject.length > 40) return { ok: false, message: '科目名称不能超过 40 个字符。', errors: { subject: '科目名称过长。' } };
   if (!SPACE_COLOR_KEYS.includes(colorKey as SpaceColorKey)) return { ok: false, message: '请选择有效的空间颜色。' };
   if (spaceKind !== 'term' && spaceKind !== 'topic') return { ok: false, message: '请选择有效的空间类型。' };
-
   const supabase = await createClient();
+  if (spaceId) {
+    // 共同教师只读协作，不改空间的名称、归类规则与成员。
+    // 此前这里只靠 RLS：协作者能不能 update 一条 spaces 行，取决于
+    // can_manage_space(owner_id, school_id)，而那一条恰好只认 owner。
+    // 依赖 RLS 隐式兜住是可以的，但报出来的是一句难懂的 row-level security，
+    // 所以应用层先把话说清楚。
+    const { data: owned } = await supabase.from('spaces').select('owner_id').eq('id', spaceId).maybeSingle();
+    if (owned && owned.owner_id !== role.data.id) {
+      return { ok: false, message: '你是这个空间的共同教师，可以查看但不能修改。需要改动请联系空间所有者。' };
+    }
+  }
   if (spaceId) {
     // select 之后 0 行 = RLS 没放行（或已被归档他人删除），不是"已保存"。
     const { data: updated, error } = await supabase.from('spaces').update({ name, theme, subject: subject || null, color_key: colorKey as SpaceColorKey, space_kind: spaceKind }).eq('id', spaceId).select('id');
@@ -325,4 +411,105 @@ export async function archiveSpaceAction(_previous: ActionState, formData: FormD
 
   revalidateSpaceSurfaces();
   return { ok: true, message: '空间已归档，学生侧不再显示。' };
+}
+
+/* ── 协作者 ────────────────────────────────────────────────────────────
+ *
+ * 「带的学生」与「共同教师」是两条独立的边：协作者不自动获得这个空间的学生名单，
+ * 学生也不因为多了位老师就多出一份成员关系。两者在界面上分开呈现，
+ * 在数据上也分开存——混在一张表里就会出现「这个空间 0 名学生、3 位教师」的列表。
+ */
+
+/** 只有空间 owner 能改协作名单。共同教师看得到，但不动手。 */
+async function requireSpaceOwner(spaceId: string) {
+  const role = await requireRole('teacher');
+  if (!role.ok) return role;
+  const supabase = await createClient();
+  const { data: space, error } = await supabase.from('spaces').select('owner_id,name').eq('id', spaceId).maybeSingle();
+  if (error) return fail('error', `空间读取失败：${error.message}`);
+  if (!space) return fail('forbidden', '空间不存在，或已被归档。');
+  if (space.owner_id !== role.data.id) {
+    return fail('forbidden', `只有「${space.name}」的所有者能调整共同教师。`);
+  }
+  return ok({ profileId: role.data.id, supabase });
+}
+
+/** 可加为共同教师的同事：同公司的教师与校管理员，不含学生与本公司之外的人。 */
+export async function listCollaboratorCandidates(spaceId: string): Promise<DataResult<Array<{ id: string; displayName: string; loginId: string | null; schoolName: string | null; subject: string | null }>>> {
+  const owner = await requireSpaceOwner(spaceId);
+  if (!owner.ok) return owner;
+ const { supabase } = owner.data;
+
+  // 范围按「同公司」而不是「同学校」：跨校教研空间要能拉外校的老师进来，
+  // 本公司之外的人一律不给。
+  const { data: me, error: meError } = await supabase.from('profiles').select('organization_id').eq('id', owner.data.profileId).maybeSingle();
+  if (meError) return fail('error', `当前账号读取失败：${meError.message}`);
+  const organizationId = me?.organization_id ?? null;
+  if (!organizationId) return ok([]);
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id,display_name,login_id,subject,school_id,schools(name)')
+    .eq('organization_id', organizationId)
+    .in('role', ['teacher', 'admin'])
+    .eq('status', 'active')
+    .order('display_name', { ascending: true });
+  if (error) return fail('error', `共同教师候选加载失败：${error.message}`);
+
+  const { data: existing } = await supabase.from('space_collaborators').select('profile_id').eq('space_id', spaceId);
+  const taken = new Set(((existing ?? []) as Array<{ profile_id: string }>).map((row) => row.profile_id));
+
+  return ok(((data ?? []) as Array<{ id: string; display_name: string; login_id: string | null; subject: string | null; school_id: string | null; schools: { name: string | null } | Array<{ name: string | null }> | null }>)
+    .filter((row) => !taken.has(row.id))
+    .map((row) => {
+      const school = Array.isArray(row.schools) ? row.schools[0] : row.schools;
+      return { id: row.id, displayName: row.display_name, loginId: row.login_id, schoolName: school?.name?.trim() || null, subject: row.subject };
+    }));
+}
+
+export async function addSpaceCollaboratorAction(_previous: ActionState, formData: FormData): Promise<ActionState> {
+  const spaceId = String(formData.get('space_id') ?? '').trim();
+  const profileId = String(formData.get('profile_id') ?? '').trim();
+  if (!spaceId || !profileId) return { ok: false, message: '请选择要添加的同事。' };
+
+  const owner = await requireSpaceOwner(spaceId);
+  if (!owner.ok) return { ok: false, message: owner.message };
+  const { supabase } = owner.data;
+
+  // 幂等加入 + 查命中行：重复添加不是错误，但要能区分"加进来了"和"本来就在"。
+  const { data: added, error } = await supabase
+    .from('space_collaborators')
+    .upsert({ space_id: spaceId, profile_id: profileId, role: 'co_teacher', created_by: owner.data.profileId }, { onConflict: 'space_id,profile_id', ignoreDuplicates: true })
+    .select('space_id');
+  if (error) return { ok: false, message: `添加共同教师失败：${error.message}` };
+
+  revalidateSpaceSurfaces();
+  revalidatePath('/teacher/collaborators');
+  return { ok: true, message: added && added.length > 0 ? '已加入共同教师。' : '这位同事本来就在这个空间里。' };
+}
+
+export async function removeSpaceCollaboratorAction(_previous: ActionState, formData: FormData): Promise<ActionState> {
+  const spaceId = String(formData.get('space_id') ?? '').trim();
+  const profileId = String(formData.get('profile_id') ?? '').trim();
+  if (!spaceId || !profileId) return { ok: false, message: '缺少空间或同事。' };
+
+  const owner = await requireSpaceOwner(spaceId);
+  if (!owner.ok) return { ok: false, message: owner.message };
+  const { supabase } = owner.data;
+
+  // owner 那条协作边不能删：teacher_can_access_space 与 teacher_space_ids 都靠它
+  // 让空间所有者看见自己的空间，删掉之后所有者反而第一个看不见它。
+  const { data: removed, error } = await supabase
+    .from('space_collaborators')
+    .delete()
+    .eq('space_id', spaceId)
+    .eq('profile_id', profileId)
+    .eq('role', 'co_teacher')
+    .select('space_id');
+  if (error) return { ok: false, message: `移出共同教师失败：${error.message}` };
+  if (!removed || removed.length === 0) return { ok: false, message: '这条协作关系不存在，或对方是空间所有者（所有者不能被移出）。' };
+
+  revalidateSpaceSurfaces();
+  revalidatePath('/teacher/collaborators');
+  return { ok: true, message: '已移出共同教师。该同事名下自己建的班级与学习数据不受影响。' };
 }

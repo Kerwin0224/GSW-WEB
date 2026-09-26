@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Brain, Layers3, Loader2, Sparkles, Zap } from 'lucide-react';
 import { toast } from 'sonner';
@@ -27,39 +27,29 @@ import { saveModelTierBinding, saveScenarioTierBindings, type AdminModelTierStat
 import { ModelCombobox } from '@/components/workbench/model-combobox';
 import type { ModelTier } from '@/lib/supabase/database.types';
 
-export const capabilities = [
-  'student_chat',
-  'teacher_chat',
-  'bloom_classification',
-  'project_classification',
-  'practice_generation',
-  'practice_evaluation',
-  'audit_assist',
-  'embedding',
-] as const;
-
-const CAPABILITY_LABELS: Record<string, string> = {
-  student_chat: '学生会话回答',
-  teacher_chat: '备课问答',
-  bloom_classification: '学生提问类型判断',
-  project_classification: '项目归属',
-  practice_generation: '挑战出题',
-  practice_evaluation: '挑战评阅',
-  audit_assist: 'AI 预审',
-  embedding: '向量嵌入',
+/**
+ * 场景目录从 teaching_scenarios 表读（见 /api/admin/providers/scenarios）。
+ * 这里曾经有第二份 capabilities 常量，于是「加一种教学形态」要改四处代码；
+ * 少改一处的症状是静默的：新场景不出现在矩阵页，或后端报 unknown capability。
+ */
+type ScenarioRow = {
+  key: string;
+  displayName: string;
+  description: string | null;
 };
 
-const SCENARIO_ROWS = [
-  { role: '学生 /student', scenario: 'student_chat', defaultTier: 'flash', impact: '学习提问的即时会话回答' },
-  { role: '学生 /student', scenario: 'bloom_classification', defaultTier: 'flash', impact: '标记学生提问类型' },
-  { role: '学生 /student', scenario: 'project_classification', defaultTier: 'flash', impact: '首问项目归属' },
-  { role: '学生 /student/challenge', scenario: 'practice_generation', defaultTier: 'flash', impact: '低成本挑战生成' },
-  { role: '教师 /teacher/chat', scenario: 'teacher_chat', defaultTier: 'advanced', impact: '备课问答' },
-  { role: '挑战评阅', scenario: 'practice_evaluation', defaultTier: 'advanced', impact: '判断挑战是否通过并给出反馈' },
-  { role: '教师 /teacher/audit', scenario: 'audit_assist', defaultTier: 'advanced', impact: '学习记录核实前的 AI 预审' },
-] as const satisfies ReadonlyArray<{ role: string; scenario: AdminScenarioTierBinding['scenario']; defaultTier: ModelTier; impact: string }>;
+type ScenarioCatalog = {
+  rows: readonly ScenarioRow[];
+  /** scenario_key → 路由层；查不到的键不在表里。 */
+  tiers: Readonly<Record<string, ModelTier>>;
+  defaultTier: ModelTier;
+  error: string | null;
+};
 
-const EMBEDDING_ROW = { role: 'RAG /student', scenario: 'embedding', impact: '项目检索的独立向量嵌入配置' } as const;
+/** 向量嵌入是模型能力而不是教学场景，它没有场景目录行，单独列出来。 */
+const EMBEDDING_CAPABILITY = 'embedding';
+const EMBEDDING_LABEL = '向量嵌入';
+const EMBEDDING_IMPACT = '项目检索的独立向量嵌入配置';
 
 
 /** 谁能改公司级模板：org_admin 全权；校 admin（admin）只读公司级那一批。 */
@@ -98,13 +88,16 @@ type TierView = {
   provider: ProviderListItem | undefined;
   viewStatus: TierStatus;
   statusText: string;
+  /** 展示用场景名（已从场景目录取 display_name），不是场景键。 */
   scenarios: readonly string[];
 };
 
-function getTierView(tier: ModelTier, providers: ProviderListItem[], modelTiers: Record<ModelTier, AdminModelTierStatus>, scenarioTierBindings: AdminScenarioTierBinding[]): TierView {
+function getTierView(tier: ModelTier, providers: ProviderListItem[], modelTiers: Record<ModelTier, AdminModelTierStatus>, scenarioTierBindings: AdminScenarioTierBinding[], labels: Readonly<Record<string, string>>): TierView {
   const status = modelTiers[tier];
   const provider = status.providerId ? providers.find((item) => item.id === status.providerId) : undefined;
-  const scenarios = scenarioTierBindings.filter((binding) => binding.tier === tier).map((binding) => binding.scenario);
+  const scenarios = scenarioTierBindings
+    .filter((binding) => binding.tier === tier)
+    .map((binding) => labels[binding.scenario] ?? binding.scenario);
 
   if (status.ready) return { tier, status, provider, viewStatus: 'ready', statusText: '可路由', scenarios };
   if (status.providerId || status.modelId || status.blockedReason) return { tier, status, provider, viewStatus: 'blocked', statusText: '不可路由', scenarios };
@@ -168,10 +161,7 @@ function TierAssignmentDialog({ tierView, providers }: { tierView: TierView; pro
           <Label>影响场景</Label>
           <div className="flex flex-wrap gap-1.5">
             {tierView.scenarios.map((scenario) => (
-              <Badge key={scenario} variant="secondary" className="gap-1">
-                {CAPABILITY_LABELS[scenario]}
-                <span className="font-mono text-[10px] opacity-70">{scenario}</span>
-              </Badge>
+              <Badge key={scenario} variant="secondary">{scenario}</Badge>
             ))}
           </div>
         </div>
@@ -271,10 +261,7 @@ function ModelTierCard({ tierView, providers }: { tierView: TierView; providers:
           <div className="text-xs font-medium text-muted-foreground">受影响场景</div>
           <div className="flex flex-wrap gap-1.5">
             {tierView.scenarios.map((scenario) => (
-              <Badge key={scenario} variant="outline" className="gap-1">
-                {CAPABILITY_LABELS[scenario]}
-                <span className="font-mono text-[10px] opacity-70">{scenario}</span>
-              </Badge>
+              <Badge key={scenario} variant="outline">{scenario}</Badge>
             ))}
           </div>
         </div>
@@ -287,7 +274,7 @@ function ModelTierCard({ tierView, providers }: { tierView: TierView; providers:
   );
 }
 
-function ScenarioMappingTable({ tierViews, embeddingConfigured, scenarioTierBindings, canEdit }: { tierViews: Record<ModelTier, TierView>; embeddingConfigured: boolean; scenarioTierBindings: AdminScenarioTierBinding[]; canEdit: boolean }) {
+function ScenarioMappingTable({ tierViews, embeddingConfigured, scenarioTierBindings, catalog, canEdit }: { tierViews: Record<ModelTier, TierView>; embeddingConfigured: boolean; scenarioTierBindings: AdminScenarioTierBinding[]; catalog: ScenarioCatalog; canEdit: boolean }) {
   const router = useRouter();
   const [draftBindings, setDraftBindings] = useState(scenarioTierBindings);
   const [savedBindings, setSavedBindings] = useState(scenarioTierBindings);
@@ -302,8 +289,7 @@ function ScenarioMappingTable({ tierViews, embeddingConfigured, scenarioTierBind
     })
     .filter((change): change is { scenario: AdminScenarioTierBinding['scenario']; from: ModelTier; to: ModelTier } => change !== null);
   const hasChanges = changes.length > 0;
-
-
+  const labelOf = (key: string) => catalog.rows.find((row) => row.key === key)?.displayName ?? key;
 
   function discard() {
     setDraftBindings(savedBindings);
@@ -330,65 +316,85 @@ function ScenarioMappingTable({ tierViews, embeddingConfigured, scenarioTierBind
 
   return (
     <div className="space-y-3">
+      {catalog.error ? (
+        <Alert variant="destructive" role="alert">
+          <AlertTitle>教学场景目录读取失败</AlertTitle>
+          <AlertDescription>
+            {catalog.error} 下表只剩已保存的路由映射。场景目录来自 teaching_scenarios 表，
+            读不到就看不到新增的教学形态——请刷新页面重试。
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <div className="overflow-x-auto rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>角色 / 页面</TableHead>
-              <TableHead>场景</TableHead>
+              <TableHead>教学场景</TableHead>
               <TableHead>路由层</TableHead>
               <TableHead>状态</TableHead>
-              <TableHead>影响</TableHead>
+              <TableHead>说明</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {SCENARIO_ROWS.map((row) => {
-              const currentTier = draftBindings.find((binding) => binding.scenario === row.scenario)?.tier ?? row.defaultTier;
+            {catalog.rows.map((row) => {
+              const saved = savedBindings.find((binding) => binding.scenario === row.key);
+              // 目录里出现、但后端还写不了映射的场景（新加的教学形态）先只读展示：
+              // 写入口 save_scenario_tier_bindings_and_sync 目前只接受模型能力枚举里的键。
+              const editable = canEdit && saved !== undefined;
+              const mappedTier = catalog.tiers[row.key];
+              const currentTier = draftBindings.find((binding) => binding.scenario === row.key)?.tier
+                ?? mappedTier
+                ?? catalog.defaultTier;
               const view = tierViews[currentTier];
-              const changed = savedBindings.find((binding) => binding.scenario === row.scenario)?.tier !== currentTier;
+              const changed = saved !== undefined && saved.tier !== currentTier;
+              // 只有既没有保存值、场景映射表里也没有记录时才是真的「没配」；
+              // 校管理员只是改不了，不该被告知这个场景没配。
+              const unmapped = saved === undefined && mappedTier === undefined;
               return (
-                <TableRow key={row.scenario}>
-                  <TableCell className="text-sm text-muted-foreground">{row.role}</TableCell>
+                <TableRow key={row.key}>
                   <TableCell>
-                    <div className="font-medium">{CAPABILITY_LABELS[row.scenario]}</div>
-                    <div className="font-mono text-xs text-muted-foreground">{row.scenario}</div>
+                    <div className="font-medium">{row.displayName}</div>
+                    <div className="font-mono text-xs text-muted-foreground">{row.key}</div>
                   </TableCell>
                   <TableCell>
-                    <Select
-                      value={currentTier}
-                      items={[
-                        { value: 'flash', label: 'Flash Model' },
-                        { value: 'advanced', label: 'Advanced Model' },
-                      ]}
-                      onValueChange={(value) => updateScenarioTier(row.scenario, value as ModelTier)}
-                      disabled={!canEdit}
-                    >
-                      <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="flash">Flash Model</SelectItem>
-                        <SelectItem value="advanced">Advanced Model</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    {editable ? (
+                      <Select
+                        value={currentTier}
+                        items={[
+                          { value: 'flash', label: TIER_LABEL.flash },
+                          { value: 'advanced', label: TIER_LABEL.advanced },
+                        ]}
+                        onValueChange={(value) => updateScenarioTier(row.key as AdminScenarioTierBinding['scenario'], value as ModelTier)}
+                      >
+                        <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="flash">{TIER_LABEL.flash}</SelectItem>
+                          <SelectItem value="advanced">{TIER_LABEL.advanced}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Badge variant="outline">{TIER_LABEL[currentTier]}</Badge>
+                    )}
                     {changed ? <div className="mt-1 text-[10px] text-primary">待保存</div> : null}
+                    {unmapped ? <div className="mt-1 text-[10px] text-muted-foreground">未配置映射，按租户默认档位</div> : null}
                   </TableCell>
                   <TableCell>
                     <Badge variant={statusBadgeVariant(view.viewStatus)}>{view.statusText}</Badge>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{row.impact}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{row.description ?? '—'}</TableCell>
                 </TableRow>
               );
             })}
             <TableRow>
-              <TableCell className="text-sm text-muted-foreground">{EMBEDDING_ROW.role}</TableCell>
               <TableCell>
-                <div className="font-medium">{CAPABILITY_LABELS[EMBEDDING_ROW.scenario]}</div>
-                <div className="font-mono text-xs text-muted-foreground">{EMBEDDING_ROW.scenario}</div>
+                <div className="font-medium">{EMBEDDING_LABEL}</div>
+                <div className="font-mono text-xs text-muted-foreground">{EMBEDDING_CAPABILITY}</div>
               </TableCell>
               <TableCell><Badge variant="outline">Embedding</Badge></TableCell>
               <TableCell>
                 <Badge variant={embeddingConfigured ? 'default' : 'outline'}>{embeddingConfigured ? '已配置' : '需单独配置'}</Badge>
               </TableCell>
-              <TableCell className="text-sm text-muted-foreground">{EMBEDDING_ROW.impact}</TableCell>
+              <TableCell className="text-sm text-muted-foreground">{EMBEDDING_IMPACT}</TableCell>
             </TableRow>
           </TableBody>
         </Table>
@@ -405,7 +411,7 @@ function ScenarioMappingTable({ tierViews, embeddingConfigured, scenarioTierBind
             <ul className="list-disc space-y-0.5 pl-4">
               {changes.map((change) => (
                 <li key={change.scenario}>
-                  {CAPABILITY_LABELS[change.scenario]}：{TIER_LABEL[change.from]} → {TIER_LABEL[change.to]}
+                  {labelOf(change.scenario)}：{TIER_LABEL[change.from]} → {TIER_LABEL[change.to]}
                 </li>
               ))}
             </ul>
@@ -431,6 +437,39 @@ function ScenarioMappingTable({ tierViews, embeddingConfigured, scenarioTierBind
     </div>
   );
 }
+/**
+ * 场景目录走一次接口取，不随页面 props 下发：教学场景是数据不是代码，
+ * 页面侧再维护一份 props 就等于把刚拆掉的那份常量又建回来。
+ */
+function useScenarioCatalog(): ScenarioCatalog {
+  const [catalog, setCatalog] = useState<ScenarioCatalog>({ rows: [], tiers: {}, defaultTier: 'flash', error: null });
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/admin/providers/scenarios')
+      .then(async (response) => {
+        const body = await response.json() as { scenarios?: ScenarioRow[]; tiers?: Record<string, ModelTier>; defaultTier?: ModelTier; error?: string };
+        if (!active) return;
+        if (!response.ok) {
+          setCatalog((current) => ({ ...current, error: body.error ?? `场景目录读取失败（HTTP ${response.status}）。` }));
+          return;
+        }
+        setCatalog({
+          rows: body.scenarios ?? [],
+          tiers: body.tiers ?? {},
+          defaultTier: body.defaultTier ?? 'flash',
+          error: null,
+        });
+      })
+      .catch((error: unknown) => {
+        if (active) setCatalog((current) => ({ ...current, error: error instanceof Error ? error.message : '场景目录读取失败' }));
+      });
+    return () => { active = false; };
+  }, []);
+
+  return catalog;
+}
+
 
 function ProviderOperationsTable({ providers, modelTiers, viewerRole }: { providers: ProviderListItem[]; modelTiers: Record<ModelTier, AdminModelTierStatus>; viewerRole: ViewerRole }) {
 
@@ -522,10 +561,15 @@ function ProviderOperationsTable({ providers, modelTiers, viewerRole }: { provid
 }
 
 export function ProviderCapabilityMatrix({ providers, modelTiers, scenarioTierBindings, canEditScenarioRouting = false, viewerRole }: { providers: ProviderListItem[]; modelTiers: Record<ModelTier, AdminModelTierStatus>; scenarioTierBindings: AdminScenarioTierBinding[]; /** 场景→tier 是公司级资产，只有 org_admin 能改（见 saveScenarioTierBindings）。 */ canEditScenarioRouting?: boolean; /** 决定公司级模板是否只读。 */ viewerRole: ViewerRole }) {
+  const catalog = useScenarioCatalog();
+  const labels = useMemo(
+    () => Object.fromEntries(catalog.rows.map((row) => [row.key, row.displayName])),
+    [catalog.rows],
+  );
   const tierViews = useMemo(() => ({
-    flash: getTierView('flash', providers, modelTiers, scenarioTierBindings),
-    advanced: getTierView('advanced', providers, modelTiers, scenarioTierBindings),
-  }), [providers, modelTiers, scenarioTierBindings]);
+    flash: getTierView('flash', providers, modelTiers, scenarioTierBindings, labels),
+    advanced: getTierView('advanced', providers, modelTiers, scenarioTierBindings, labels),
+  }), [providers, modelTiers, scenarioTierBindings, labels]);
   const embeddingConfigured = providers.some((provider) =>
     provider.isEnabled &&
     provider.capabilities.some((capability) => capability.capability === 'embedding' && capability.modelId.trim())
@@ -548,7 +592,8 @@ export function ProviderCapabilityMatrix({ providers, modelTiers, scenarioTierBi
             <Sparkles className="mr-1 size-3" />模型路由状态
           </Badge>
         </div>
-        <ScenarioMappingTable tierViews={tierViews} embeddingConfigured={embeddingConfigured} scenarioTierBindings={scenarioTierBindings} canEdit={canEditScenarioRouting} />
+        <ScenarioMappingTable tierViews={tierViews} embeddingConfigured={embeddingConfigured} scenarioTierBindings={scenarioTierBindings} catalog={catalog} canEdit={canEditScenarioRouting} />
+
       </section>
 
       <section className="space-y-3">

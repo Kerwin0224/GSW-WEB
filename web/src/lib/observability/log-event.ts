@@ -1,6 +1,9 @@
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
-export type LogEvent = {
+/** 租户归属。app_log_events 按学校收敛读策略，没有这两列就是所有学校混成一锅粥。 */
+export type LogTenant = { schoolId?: string; organizationId?: string };
+
+export type LogEvent = LogTenant & {
   timestamp?: string;
   level: LogLevel;
   area: 'auth' | 'api' | 'render' | 'proxy' | 'client' | 'data' | 'runtime';
@@ -14,7 +17,6 @@ export type LogEvent = {
   digest?: string;
   context?: Record<string, unknown>;
 };
-
 const SECRET_KEY_PATTERN = /password|secret|token|cookie|authorization|apikey|api_key|key/i;
 
 function redactValue(value: unknown): unknown {

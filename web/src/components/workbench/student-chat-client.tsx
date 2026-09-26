@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
-import { BookOpen, ChevronDown, FolderOpen, LibraryBig, Loader2, Plus, Sparkles, Swords } from 'lucide-react';
+import { BookOpen, ChevronDown, FolderOpen, LibraryBig, Loader2, Pencil, Plus, Sparkles, Swords } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
@@ -19,13 +20,25 @@ import {
 } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { AIMessageList, type MessageEditState } from '@/components/workbench/ai-message-list';
+import { TeacherFeedbackCard, type StudentAppealSummary } from '@/components/workbench/teacher-feedback-card';
+import { listMyAppeals, type StudentAppeal } from '@/lib/data/appeals';
+
+const toAppealSummary = (appeal: StudentAppeal): StudentAppealSummary => ({
+  id: appeal.id,
+  conversationId: appeal.conversationId,
+  state: appeal.state,
+  body: appeal.body,
+  resolutionNote: appeal.resolutionNote,
+  createdAt: appeal.createdAt,
+});
 import { ChatWorkspace } from '@/components/workbench/chat-workspace';
 import { ThinkingIndicator } from '@/components/workbench/thinking-indicator';
 import { ChatComposer } from '@/components/workbench/chat-composer';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { SessionRow } from '@/components/workbench/session-row';
+import { Pagination } from '@/components/workbench/pagination';
 import { SpaceDirectory } from '@/components/workbench/space-directory';
-import type { DailyArchiveSummary, ProjectSummary, StudentConversationInitial } from '@/lib/data/student';
+import type { ProjectSummary, StudentConversationInitial, StudentHistoryResult } from '@/lib/data/student';
 import type { StudentSpace } from '@/lib/data/spaces';
 import {
   buildStudentChatRequestBody,
@@ -42,7 +55,8 @@ import { useConversationSync } from '@/hooks/use-conversation-sync';
 import { useStudentAssignment } from '@/hooks/use-student-assignment';
 
 const globalPromptChips = ['这个主题里最关键的一点是什么？', '换个说法能讲得更清楚吗？', '我这样理解对吗？', '再往下追问一层'];
-const finalizedConversationBlockedReason = '这条会话已完成教师核实，不能继续追问。请从项目或空白入口新开会话。';
+// 封口 ≠ 已核实：教师可以先封口，也可以核实完仍允许追问。两者混成一句话，学生会以为核实了就再也问不了。
+const lockedConversationBlockedReason = '这条会话已被教师封口，不能继续追问。请从项目或空白入口新开会话。';
 
 type StudentChatMessage = UIMessage<unknown, {
   'student-assignment': StudentAssignmentData;
@@ -54,7 +68,8 @@ export function StudentChatClient({
   projectClassificationBlocked,
   bloomClassificationBlocked,
   projects,
-  dailyArchive,
+  history,
+  starterPrompts = [],
   initialActiveProjectId,
   initialConversation,
   spaces = [],
@@ -64,9 +79,12 @@ export function StudentChatClient({
   projectClassificationBlocked?: string;
   bloomClassificationBlocked?: string;
   projects: ProjectSummary[];
-  dailyArchive: DailyArchiveSummary;
-  initialActiveProjectId?: string;
+  /** 检索结果：带查询词时覆盖当前空间的全部会话，否则只含未归项目的会话。 */
+  history: StudentHistoryResult;
+  /** 空间作者配置的首屏追问示例；为空则用内置默认四句。 */
+  starterPrompts?: string[];
   initialConversation?: StudentConversationInitial;
+  initialActiveProjectId?: string;
   /** 我被拉进去的学习空间。空数组表示没有空间，界面不出切换器。 */
   spaces?: StudentSpace[];
   /** 当前选中的空间 id（URL 状态）；空表示没选，归类交给模型在多条口径间自选。 */
@@ -81,10 +99,39 @@ export function StudentChatClient({
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [lastSubmittedInput, setLastSubmittedInput] = useState('');
-  const [conversationLocked, setConversationLocked] = useState(Boolean(initialConversation?.conversationFinalized));
+  const [conversationLocked, setConversationLocked] = useState(Boolean(initialConversation?.conversationLocked));
+  // 我对各段会话提过的申诉。数据层给的是完整记录，组件要的是轻量摘要。
+  const [appeals, setAppeals] = useState<StudentAppealSummary[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void listMyAppeals().then((result) => {
+      if (cancelled || !result.ok) return;
+      setAppeals(result.data.map((appeal) => toAppealSummary(appeal)));
+    });
+    return () => { cancelled = true; };
+  }, []);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string; projectId?: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [renameTarget, setRenameTarget] = useState<{ id: string; title: string } | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  // 项目内会话铺开条数。数据层已不截断，铺几条是纯视图决定，可以随时展开全部。
+  const [expandedSessionProjectIds, setExpandedSessionProjectIds] = useState<string[]>([]);
+  // 检索词输入框。URL 里的 q 变化（清除、后退键）要回灌进输入框，
+  // 否则框里留着旧词、列表已经换掉，学生会以为搜索没生效。
+  const [sessionQuery, setSessionQuery] = useState(() => history.query);
+  // URL 里的 q 变化（清除、后退键）要回灌进输入框，否则框里留着旧词、列表已经换掉，
+  // 学生会以为搜索没生效。
+  //
+  // 用「渲染期调整 state」而不是 useEffect + setState：后者在 effect 里同步 setState
+  // 会触发级联渲染（React Compiler 直接判错），而输入框的受控值在回灌那一刻本来就该变。
+  const [syncedQuery, setSyncedQuery] = useState(history.query);
+  if (history.query !== syncedQuery) {
+    setSyncedQuery(history.query);
+    setSessionQuery(history.query);
+  }
   const sidebarScrollRef = useSidebarScroll();
   const { bloomStatus, applyBloomStatus, markQueued: markBloomQueued, markPending: markBloomPending, reset: resetBloomStatus } = useBloomStatus();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -220,11 +267,13 @@ export function StudentChatClient({
   const activeProject = useMemo(() => projects.find((project) => project.id === activeProjectId), [activeProjectId, projects]);
   const inProjectContext = Boolean(activeProjectId);
   const projectDisplayName = activeProject?.name ? `《${activeProject.name}》` : '当前项目';
+  // 首屏追问示例：空间作者配了就用他写的，没配回落内置四句。
+  const blankPromptChips = starterPrompts.length > 0 ? starterPrompts : globalPromptChips;
   const promptChips = !inProjectContext
-    ? globalPromptChips
+    ? blankPromptChips
     : activeProject?.name
       ? [`《${activeProject.name}》里最需要讲清的一点是什么？`, '换个角度还能怎么理解？', '我这样理解对吗？', '再往下追问一层']
-      : globalPromptChips;
+      : blankPromptChips;
   const classificationRequired = shouldClassifyProjectForStudentTurn({
     hasConversation: Boolean(conversationId),
     hasProject: inProjectContext,
@@ -284,7 +333,7 @@ export function StudentChatClient({
 
     setConversationId(initialConversation?.id ?? '');
     conversationIdRef.current = initialConversation?.id ?? '';
-    setConversationLocked(Boolean(initialConversation?.conversationFinalized));
+    setConversationLocked(Boolean(initialConversation?.conversationLocked));
     syncFromConversation(initialConversation, initialActiveProjectId, projects);
     clearQueue();
     // 从服务端载入的历史消息 parts 里提取提问类型状态，恢复 bloomStatus，
@@ -480,7 +529,46 @@ export function StudentChatClient({
     });
   }, [router]);
 
-  const blocked = conversationLocked ? finalizedConversationBlockedReason : providerBlocked;
+  // 检索与翻页都走 URL：结果可分享，后退键能回到搜索前。
+  // spaceId 必须一起带上，否则换一次筛选就静默退出当前空间。
+  const buildHistoryHref = (next: { q?: string; page?: number }) => {
+    const params = new URLSearchParams();
+    if (activeSpaceId) params.set('spaceId', activeSpaceId);
+    const query = next.q ?? history.query;
+    if (query) params.set('q', query);
+    const page = next.page ?? 1;
+    if (page > 1) params.set('historyPage', String(page));
+    const suffix = params.toString();
+    return suffix ? `/student?${suffix}` : '/student';
+  };
+
+  const submitRename = async () => {
+    if (!renameTarget || renaming) return;
+    const title = renameValue.trim();
+    if (!title) {
+      setRenameError('标题不能为空。');
+      return;
+    }
+    setRenaming(true);
+    setRenameError('');
+    try {
+      const response = await fetch('/api/student/conversations/title', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: renameTarget.id, title }),
+      });
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? '标题没能改成功。');
+      setRenameTarget(null);
+      router.refresh();
+    } catch (renameFailure) {
+      setRenameError(renameFailure instanceof Error ? renameFailure.message : '标题没能改成功。');
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  const blocked = conversationLocked ? lockedConversationBlockedReason : providerBlocked;
   const activeSpace = spaces.find((space) => space.id === activeSpaceId);
   const activeSpaceName = activeSpace?.name ?? '未归类空间';
   const spaceDirectoryItems = spaces.map((space) => ({ id: space.id, name: space.name, subject: space.subject, colorKey: space.colorKey, kind: space.kind }));
@@ -578,15 +666,38 @@ export function StudentChatClient({
                             在《{project.name}》下提问
                           </button>
                           {project.sessions.length === 0 ? <p className="rounded-lg border border-dashed bg-background/55 px-3 py-2 text-xs text-muted-foreground">暂无会话，可继续提问。</p> : null}
-                          {project.sessions.map((session) => (
-                            <SessionRow
-                              key={session.id}
-                              session={session}
-                              current={session.id === conversationId}
-                              href={`/student?conversationId=${session.id}${activeSpaceId ? `&spaceId=${activeSpaceId}` : ''}`}
-                              onDelete={() => { setDeleteTarget({ id: session.id, title: session.title, projectId: project.id }); setDeleteError(''); }}
-                            />
+                          {/* 默认铺 5 条，其余按需展开：数据层已返回该项目的全部会话，
+                              截断必须发生在视图里并且可展开，否则历史会话等于不存在。 */}
+                          {project.sessions.slice(0, expandedSessionProjectIds.includes(project.id) ? project.sessions.length : 5).map((session) => (
+                            <div key={session.id} className="flex items-stretch gap-0.5">
+                              <SessionRow
+                                session={session}
+                                current={session.id === conversationId}
+                                href={`/student?conversationId=${session.id}${activeSpaceId ? `&spaceId=${activeSpaceId}` : ''}`}
+                                onDelete={() => { setDeleteTarget({ id: session.id, title: session.title, projectId: project.id }); setDeleteError(''); }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => { setRenameTarget({ id: session.id, title: session.title }); setRenameValue(session.title); setRenameError(''); }}
+                                title={`修改标题 ${session.title}`}
+                                aria-label={`修改标题 ${session.title}`}
+                                className="flex min-h-11 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground/70 transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-7 sm:min-h-0 sm:w-7"
+                              >
+                                <Pencil className="size-3.5" aria-hidden="true" />
+                              </button>
+                            </div>
                           ))}
+                          {project.sessions.length > 5 ? (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedSessionProjectIds((current) => current.includes(project.id)
+                                ? current.filter((id) => id !== project.id)
+                                : [...current, project.id])}
+                              className="w-full cursor-pointer rounded-lg border border-dashed border-border/70 px-2 py-1.5 text-xs text-muted-foreground transition hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              {expandedSessionProjectIds.includes(project.id) ? '收起会话' : `展开全部 ${project.sessions.length} 条会话`}
+                            </button>
+                          ) : null}
                           <Link
                             href={`/student/challenge?projectId=${project.id}${activeSpaceId ? `&spaceId=${activeSpaceId}` : ''}`}
                             className="mt-1 flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-accent/45 bg-accent/8 px-2 py-2 text-xs text-accent-foreground/85 transition-colors hover:border-accent/70 hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -606,28 +717,71 @@ export function StudentChatClient({
           <section className="border-y border-border/70 bg-transparent px-1 py-4">
             <div className="mb-3 flex items-start justify-between gap-3 px-1">
               <div>
-                <p className="font-heading text-lg">{activeSpaceName} · 未归项目会话</p>
-                <p className="mt-1 text-xs text-muted-foreground">这些会话还没有归入项目，但仍然属于当前空间。</p>
+                <p className="font-heading text-lg">会话历史</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {history.query
+                    ? `在「${activeSpaceName}」的全部会话里检索「${history.query}」，命中 ${history.total} 条。`
+                    : `还没归入项目的会话，属于「${activeSpaceName}」。`}
+                </p>
               </div>
-              <Badge variant="secondary">{dailyArchive.sessions.length}</Badge>
+              <Badge variant="secondary">{history.total}</Badge>
             </div>
-            {dailyArchive.sessions.length === 0 ? (
+
+            {/* 检索是服务端过滤（q 走 URL）：一学期几百条会话全量下发既慢，又会被行数上限悄悄截断。
+                提交走 router.push 而不是原生 GET 表单：原生表单会整页刷新，正在读的会话随之闪断。 */}
+            <form className="mb-3 flex gap-2 px-1" onSubmit={(event) => {
+              event.preventDefault();
+              router.push(buildHistoryHref({ q: sessionQuery.trim(), page: 1 }));
+            }}>
+              <Input
+                type="search"
+                name="q"
+                value={sessionQuery}
+                onChange={(event) => setSessionQuery(event.target.value)}
+                placeholder="搜索会话标题"
+                aria-label="搜索会话标题"
+                className="h-9"
+              />
+              <Button type="submit" size="sm" variant="outline" className="shrink-0 cursor-pointer">搜索</Button>
+              {history.query ? (
+                <Button type="button" size="sm" variant="ghost" className="shrink-0 cursor-pointer" onClick={() => { setSessionQuery(''); router.push(buildHistoryHref({ q: '', page: 1 })); }}>清除</Button>
+              ) : null}
+            </form>
+
+            {history.sessions.length === 0 ? (
               <div className="rounded-xl border border-dashed bg-background/50 px-3 py-4 text-xs text-muted-foreground">
-                暂无其他会话。
+                {history.query ? `没有匹配「${history.query}」的会话。` : '暂无其他会话。'}
               </div>
             ) : (
               <div className="space-y-1 rounded-xl border bg-background/60 p-2">
-                {dailyArchive.sessions.map((session) => (
-                  <SessionRow
-                    key={session.id}
-                    session={session}
-                    current={session.id === conversationId}
-                    href={`/student?conversationId=${session.id}${activeSpaceId ? `&spaceId=${activeSpaceId}` : ''}`}
-                    onDelete={() => { setDeleteTarget({ id: session.id, title: session.title }); setDeleteError(''); }}
-                  />
+                {history.sessions.map((session) => (
+                  <div key={session.id} className="flex items-stretch gap-0.5">
+                    <SessionRow
+                      session={session}
+                      current={session.id === conversationId}
+                      href={`/student?conversationId=${session.id}${activeSpaceId ? `&spaceId=${activeSpaceId}` : ''}`}
+                      onDelete={() => { setDeleteTarget({ id: session.id, title: session.title }); setDeleteError(''); }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setRenameTarget({ id: session.id, title: session.title }); setRenameValue(session.title); setRenameError(''); }}
+                      title={`修改标题 ${session.title}`}
+                      aria-label={`修改标题 ${session.title}`}
+                      className="flex min-h-11 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground/70 transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-7 sm:min-h-0 sm:w-7"
+                    >
+                      <Pencil className="size-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
+            <Pagination
+              page={history.page}
+              pageSize={history.pageSize}
+              total={history.total}
+              itemLabel="条会话"
+              buildHref={(target) => buildHistoryHref({ page: target })}
+            />
           </section>
         </>)}
       header={(
@@ -647,11 +801,11 @@ export function StudentChatClient({
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <h2 className="font-heading text-xl tracking-tight sm:text-2xl">{inProjectContext ? projectDisplayName : conversationId ? initialConversation?.title ?? '当前会话' : '从一个学习问题开始'}</h2>
-              <Badge className="border-primary/25 bg-primary/8 text-primary" variant="outline"><Sparkles className="mr-1 size-3" />{conversationLocked ? '教师已核实' : '学习提问'}</Badge>
+              <Badge className="border-primary/25 bg-primary/8 text-primary" variant="outline"><Sparkles className="mr-1 size-3" />{conversationLocked ? '教师已封口' : '学习提问'}</Badge>
             </div>
             <p className="text-sm leading-6 text-muted-foreground">
               {conversationLocked
-                ? '这条会话已完成教师核实，只能回看，不能继续追问。'
+                ? '这条会话已被教师封口，只能回看，不能继续追问。'
                 : inProjectContext ? `新问题会归入当前空间中的《${activeProject?.name ?? '当前项目'}》。` : conversationId ? '继续追问会保留在当前会话和当前空间中。' : `在${activeSpaceName}里提出问题，系统会按这个空间的归类口径创建项目。`}
             </p>
         </>
@@ -697,6 +851,19 @@ export function StudentChatClient({
                 onEditCancel={cancelEdit}
               />
             )}
+
+            {/* 教师核实后的评语与申诉入口。学生此前完全看不到核实这件事，
+                只能发现「突然不能继续问了」。 */}
+            {conversationId && (initialConversation?.teacherComment || initialConversation?.finalizedAt) ? (
+              <TeacherFeedbackCard
+                conversationId={conversationId}
+                teacherComment={initialConversation?.teacherComment ?? null}
+                finalizedAt={initialConversation?.finalizedAt ?? null}
+                locked={conversationLocked}
+                appeals={appeals}
+                onAppealResolved={() => setAppeals((current) => current)}
+              />
+            ) : null}
             {messages.length > 0 && assignmentNotice ? (
               <div className={cn('animate-in fade-in rounded-lg border px-4 py-3 text-sm duration-200', assignmentNotice.kind === 'project' ? 'border-primary/20 bg-primary/5' : 'bg-muted/50 text-muted-foreground')} aria-live="polite">
                 <BookOpen className={cn('mr-2 inline size-4', assignmentNotice.kind === 'project' ? 'text-primary' : 'text-muted-foreground')} aria-hidden="true" />
@@ -771,6 +938,29 @@ export function StudentChatClient({
             <Button type="button" variant="destructive" disabled={deleting} onClick={confirmDeleteSession}>
               {deleting ? <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" /> : null}
               确认删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(renameTarget)} onOpenChange={(open) => { if (!open && !renaming) setRenameTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>修改会话标题</DialogTitle>
+            <DialogDescription>标题只影响你自己和教师的检索；正文与已形成的记录不会变。</DialogDescription>
+          </DialogHeader>
+          <Input
+            value={renameValue}
+            onChange={(event) => { setRenameValue(event.target.value); setRenameError(''); }}
+            maxLength={80}
+            aria-label="会话标题"
+            aria-invalid={Boolean(renameError)}
+          />
+          {renameError ? <p className="text-sm text-destructive">{renameError}</p> : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={renaming} onClick={() => setRenameTarget(null)}>取消</Button>
+            <Button type="button" disabled={renaming || !renameValue.trim()} onClick={submitRename}>
+              {renaming ? <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" /> : null}
+              保存标题
             </Button>
           </DialogFooter>
         </DialogContent>

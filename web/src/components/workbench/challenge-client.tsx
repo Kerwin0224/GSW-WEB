@@ -8,12 +8,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { MarkdownContent } from '@/components/workbench/markdown-content';
+import { ChatComposer } from '@/components/workbench/chat-composer';
+import { BlockedState, ErrorState } from '@/components/workbench/state-surfaces';
 import { BloomBadge } from '@/components/workbench/bloom-badge';
 import { BLOOM_LEVELS, BLOOM_LEVEL_INFO, type BloomLevel } from '@/lib/bloom-levels';
-import { BlockedState, ErrorState } from '@/components/workbench/state-surfaces';
 import type { Database } from '@/lib/supabase/database.types';
 import { cn } from '@/lib/utils';
 
@@ -23,6 +22,9 @@ type ApiIssue = { message?: string };
 type ApiIssueBag = ApiIssue[] | { formErrors?: string[]; fieldErrors?: Record<string, string[] | undefined> };
 type ApiError = { state?: ChallengeState | string; error?: string; resolution?: string; issues?: ApiIssueBag };
 
+
+/** 作答附件。上传接口回执里带的是短时效签名链接，path 才是能长期再签的句柄。 */
+type AnswerFile = { name: string; path: string; mediaType: string; url: string; indexed: boolean };
 const evaluationStateLabel: Record<PracticeRecord['evaluation_state'], string> = {
   pending: '待作答',
   evaluated: '已通过',
@@ -103,6 +105,12 @@ export function ChallengeClient({
   const [state, setState] = useState<ChallengeState>(initialChallengeState(initialPractice));
   const [message, setMessage] = useState('');
   const [targetLevel, setTargetLevel] = useState<BloomLevel>((initialPractice?.target_bloom_level ?? Math.min((confirmedLevel ?? 0) + 1 || 1, 6)) as BloomLevel);
+  const [answerFiles, setAnswerFiles] = useState<AnswerFile[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadError, setUploadError] = useState('');
+  // 纯文本附件会被切块挂在这个会话上，评阅时按它做检索。
+  const [answerConversationId, setAnswerConversationId] = useState<string | undefined>();
   const localConfirmedLevel = challenge?.evaluation_state === 'evaluated' && challenge.achieved
     ? Math.max(confirmedLevel ?? 0, challenge.target_bloom_level) as BloomLevel
     : confirmedLevel;
@@ -154,6 +162,35 @@ export function ChallengeClient({
     }
   };
 
+  const uploadAnswerFile = async (file: File) => {
+    if (uploading) return;
+    setUploading(true);
+    setUploadStatus('');
+    setUploadError('');
+    const form = new FormData();
+    form.set('file', file);
+    form.set('metadata', JSON.stringify({ workspace: 'student', projectId }));
+    try {
+      const response = await fetch('/api/attachments', { method: 'POST', body: form });
+      const payload = await response.json() as { ok?: boolean; message?: string; fileName?: string; mime?: string; path?: string; signedUrl?: string; chunkCount?: number; conversationId?: string };
+      const { path, signedUrl, mime, fileName, chunkCount, conversationId, message } = payload;
+      if (!payload.ok || !path || !signedUrl) throw new Error(message || '附件上传失败。');
+      setAnswerFiles((files) => [...files, {
+        name: fileName ?? file.name,
+        path,
+        mediaType: mime ?? file.type,
+        url: signedUrl,
+        indexed: (chunkCount ?? 0) > 0,
+      }]);
+      if (conversationId) setAnswerConversationId(conversationId);
+      setUploadStatus(`${fileName ?? file.name} 已加入这次作答。`);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : '附件上传失败。');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const evaluateChallenge = async () => {
     if (!challenge) return;
     setState('evaluating');
@@ -162,7 +199,12 @@ export function ChallengeClient({
       const response = await fetch('/api/challenge/evaluate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ practiceId: challenge.id, answer }),
+        body: JSON.stringify({
+          practiceId: challenge.id,
+          answer,
+          parts: answerFiles.map((item) => ({ type: 'file', mediaType: item.mediaType, filename: item.name, url: item.url, path: item.path })),
+          conversationId: answerConversationId,
+        }),
       });
       const payload: unknown = await response.json();
       if (!response.ok) {
@@ -250,17 +292,33 @@ export function ChallengeClient({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="challenge-answer">你的作答</Label>
-                <Textarea id="challenge-answer" value={answer} onChange={(event) => setAnswer(event.target.value)} disabled={challenge.evaluation_state === 'evaluated' || Boolean(challengeBlocked)} className="min-h-40" placeholder="结合学习内容和自己的理解作答。" />
+                <p className="text-sm font-medium text-foreground">你的作答</p>
+                {/* 与会话同一个输入条：附件通道复用上传与校验，不另写一套。 */}
+                <ChatComposer
+                  value={answer}
+                  onChange={setAnswer}
+                  onSubmit={evaluateChallenge}
+                  disabled={!canEvaluate}
+                  inputDisabled={challenge.evaluation_state === 'evaluated' || Boolean(challengeBlocked)}
+                  placeholder="结合学习内容和自己的理解作答。"
+                  onFileUpload={uploadAnswerFile}
+                  uploadDisabled={uploading || challenge.evaluation_state === 'evaluated' || Boolean(challengeBlocked)}
+                  uploadStatus={uploadStatus}
+                  uploadError={uploadError}
+                />
+                {answerFiles.length > 0 ? (
+                  <ul className="flex flex-wrap gap-2 px-2">
+                    {answerFiles.map((file) => (
+                      <li key={file.path}>
+                        <Badge variant="outline">{file.name}{file.indexed ? ' · 已可检索' : ''}</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <p className="px-2 text-xs text-muted-foreground">纯文本附件会作为参考进入评阅；图片与 PDF 随这次作答一起保存。</p>
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-muted-foreground">提交后你会看到本次是否通过，以及下一步可以怎么学。</p>
-                <Button type="button" disabled={!canEvaluate} onClick={evaluateChallenge}>
-                  {state === 'evaluating' ? <Loader2 className="mr-2 size-4 animate-spin" /> : <CheckCircle2 className="mr-2 size-4" />}
-                  提交作答
-                </Button>
-              </div>
+              <p className="text-sm text-muted-foreground">提交后你会看到本次是否通过，以及下一步可以怎么学。用上面的发送按钮提交作答。</p>
 
               {challenge.evaluation_state === 'evaluated' ? (
                 <Alert className={challenge.achieved ? 'border-primary/30 bg-primary/5' : undefined}>
