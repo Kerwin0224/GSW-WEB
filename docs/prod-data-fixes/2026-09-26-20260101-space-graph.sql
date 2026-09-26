@@ -17,12 +17,12 @@ insert into auth.users (id, email, encrypted_password, email_confirmed_at, creat
 select v.id, v.login_id || '@demo.local',
        extensions.crypt('demo1234', extensions.gen_salt('bf')), now(), now(), now()
 from (values
-  ('20150003'::uuid, '20150003'),
-  ('20150004'::uuid, '20150004'),
-  ('20150005'::uuid, '20150005'),
-  ('20150006'::uuid, '20150006'),
-  ('20150007'::uuid, '20150007'),
-  ('20150008'::uuid, '20150008')
+  ('d0000000-0000-4000-8000-000000000003'::uuid, '20150003'),
+  ('d0000000-0000-4000-8000-000000000004'::uuid, '20150004'),
+  ('d0000000-0000-4000-8000-000000000005'::uuid, '20150005'),
+  ('d0000000-0000-4000-8000-000000000006'::uuid, '20150006'),
+  ('d0000000-0000-4000-8000-000000000007'::uuid, '20150007'),
+  ('d0000000-0000-4000-8000-000000000008'::uuid, '20150008')
 ) as v(id, login_id)
 where not exists (select 1 from auth.users u where u.id = v.id);
 
@@ -31,12 +31,12 @@ select v.id, v.login_id, v.display_name, 'teacher', 'active',
        extensions.crypt('demo1234', extensions.gen_salt('bf')), false,
        o.id, s.id, v.subject
 from (values
-  ('20150003'::uuid, '20150003', '林知远', '英语'),
-  ('20150004'::uuid, '20150004', '周砚青', '物理'),
-  ('20150005'::uuid, '20150005', '许清和', '化学'),
-  ('20150006'::uuid, '20150006', '苏问渠', '生物'),
-  ('20150007'::uuid, '20150007', '程子墨', '历史'),
-  ('20150008'::uuid, '20150008', '何叙白', '道德与法治')
+  ('d0000000-0000-4000-8000-000000000003'::uuid, '20150003', '林知远', '英语'),
+  ('d0000000-0000-4000-8000-000000000004'::uuid, '20150004', '周砚青', '物理'),
+  ('d0000000-0000-4000-8000-000000000005'::uuid, '20150005', '许清和', '化学'),
+  ('d0000000-0000-4000-8000-000000000006'::uuid, '20150006', '苏问渠', '生物'),
+  ('d0000000-0000-4000-8000-000000000007'::uuid, '20150007', '程子墨', '历史'),
+  ('d0000000-0000-4000-8000-000000000008'::uuid, '20150008', '何叙白', '道德与法治')
 ) as v(id, login_id, display_name, subject)
 join public.schools s on s.name = '主校区'
 join public.organizations o on o.id = s.org_id
@@ -228,7 +228,7 @@ from (values
 ) as v(id, project_id, title)
 join public.profiles p on p.login_id = '20260101'
 join public.classes c on c.name = '高一(1)班'
-join public.projects pr on pr.id = v.project_id
+join public.projects pr on pr.id = v.project_id::uuid
 where not exists (select 1 from public.conversations cv where cv.id = v.id);
 
 insert into public.conversation_messages (id, conversation_id, role, content, parts, bloom_state)
@@ -265,7 +265,7 @@ from (values
   ('f1000000-0000-4000-8000-000000000102'::uuid, 'b1000000-0000-4000-8000-000000000103'::uuid, '用一句话说明一般现在时。')
 ) as v(id, project_id, prompt)
 join public.profiles p on p.login_id = '20260101'
-join public.projects pr on pr.id = v.project_id
+join public.projects pr on pr.id = v.project_id::uuid
 where not exists (select 1 from public.practice_records r where r.id = v.id);
 
 commit;
