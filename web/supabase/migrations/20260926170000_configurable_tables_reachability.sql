@@ -133,8 +133,11 @@ $$;
 -- 而 scenario 列存的是占位枚举值——多场景会互相覆盖。
 delete from public.scenario_tier_bindings where scenario_key is not null;
 
-alter table public.scenario_tier_bindings
-  add constraint scenario_tier_bindings_scenario_key_uniq unique (scenario_key)
+-- ADD CONSTRAINT UNIQUE **不支持 WHERE 子句**，部分唯一索引只能走 CREATE UNIQUE INDEX。
+-- 写成 alter table ... add constraint unique (...) where ... 会在 where 处报 42601。
+drop index if exists public.scenario_tier_bindings_scenario_key_uniq;
+create unique index if not exists scenario_tier_bindings_scenario_key_uniq
+  on public.scenario_tier_bindings (scenario_key)
   where scenario_key is not null;
 
 -- 旧行（scenario_key 为 NULL）按枚举值回填一次，保持原行为
@@ -145,6 +148,10 @@ update public.scenario_tier_bindings
 
 do $$
 declare
+  v_policies text[] := array[
+    'review_dimensions_read', 'rubric_levels_read', 'subjects_read',
+    'space_collaborators_self_read', 'space_members_teacher_read'
+  ];
   v_p text;
 begin
   if (select count(*) from public.rubric_levels where school_id is null and space_id is null) <> 6 then
@@ -153,8 +160,7 @@ begin
   if (select count(*) from public.review_dimensions where school_id is null) <> 6 then
     raise exception 'platform review dimensions must remain exactly 6';
   end if;
-  for v_p in array['review_dimensions_read', 'rubric_levels_read', 'subjects_read',
-                    'space_collaborators_self_read', 'space_members_teacher_read'] loop
+  foreach v_p in array v_policies loop
     if not exists (
       select 1 from pg_policies
        where schemaname = 'public' and policyname = v_p
