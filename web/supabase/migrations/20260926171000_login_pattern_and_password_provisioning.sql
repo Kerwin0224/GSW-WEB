@@ -305,7 +305,10 @@ grant execute on function public.redeem_tenant_invite(text, text, text, text, te
 
 -- 旧入口收回：它们还锁着 8 位正则与「初始密码 = 账号」。
 -- 调用方已全部迁到 v2/v4；留着只会有人继续走旧路径。
-revoke execute on function public.provision_school_account(text, text, public.app_role, uuid, text) from anon, service_role;
+-- 注意：旧函数的第三个参数在库里是 text（两版建号函数都是 p_role text），
+-- 不是 app_role。create or replace 不能改参数类型，所以只有 (text,text,text,uuid,text)
+-- 这个签名真实存在；写成 app_role 会报 42883 并让整条迁移失败。
+revoke execute on function public.provision_school_account(text, text, text, uuid, text) from anon, service_role;
 revoke execute on function public.set_initial_password_by_profile(uuid, text) from anon, service_role;
 revoke execute on function public.authenticate_school_account_v3(text, text, text, uuid) from anon, service_role;
 
