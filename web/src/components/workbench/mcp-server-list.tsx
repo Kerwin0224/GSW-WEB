@@ -163,7 +163,7 @@ export function McpServerList({ servers, viewerRole }: { servers: ServerRow[]; v
                           <div className="space-y-2 rounded-lg border bg-muted/25 p-4">
                             <div className="flex items-center gap-2 text-muted-foreground">
                               <Link2 className="size-4" />
-                              <span className="font-medium">连接引用</span>
+                              <span className="font-medium">远程 MCP 地址</span>
                             </div>
                             <code className="block overflow-x-auto rounded-md bg-background px-3 py-2 text-xs text-foreground">
                               {server.connection_ref ?? '未登记'}

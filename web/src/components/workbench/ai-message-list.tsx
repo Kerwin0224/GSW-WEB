@@ -49,7 +49,7 @@ export function AIMessagePart({ part, markdown = false }: { part: unknown; markd
     if (toolCall) return toolCall;
   }
   if (type.includes('citation') || type.includes('retrieval')) {
-    return <Badge variant="outline">检索 / 引用状态</Badge>;
+    return <Badge variant="outline">参考来源</Badge>;
   }
   if (type === 'data-teacher-revision') {
     return (
@@ -60,7 +60,7 @@ export function AIMessagePart({ part, markdown = false }: { part: unknown; markd
     );
   }
   if (type.includes('classification')) {
-    return <Badge variant="outline">提问类型已更新</Badge>;
+    return <Badge variant="outline">认知层级已更新</Badge>;
   }
   return null;
 }
@@ -133,7 +133,7 @@ export function AIMessageList({
                     aria-label="编辑这条提问"
                   />
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs text-muted-foreground">发送后会回滚到这条提问并重写之后的对话。</p>
+                    <p className="text-xs text-muted-foreground">发送后会替换这条提问，并删除它之后的回答。</p>
                     <div className="flex shrink-0 gap-2">
                       <Button type="button" variant="outline" size="sm" onClick={onEditCancel}>
                         <X className="mr-1 size-3.5" aria-hidden="true" />

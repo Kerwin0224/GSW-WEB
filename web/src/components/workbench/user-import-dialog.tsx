@@ -15,7 +15,7 @@ import type { CsvUserPreview } from '@/lib/data/admin';
 
 const SAMPLE = `display_name,login_id,role,subject,class_name
 陈砚秋,20260101,student,,高一(1)班
-沈立行,20180001,teacher,语文,高一(1)班`;
+沈立行,20180001,teacher,数学,高一(1)班`;
 
 /**
  * 服务端返回形状随数据层演进（统一结构化 ActionState 后会带上 imported / succeededCount），

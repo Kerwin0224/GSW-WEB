@@ -53,7 +53,7 @@ export function StudentProjectCreateButton({ spaceId }: { spaceId?: string | nul
         open={open}
         onOpenChange={setOpen}
         title="新建自定义项目"
-        description="围绕自己想学的主题建一个项目，之后在这个项目里的提问同样会进入教师核实范围。"
+        description="围绕自己想学的主题建一个项目，之后可以在这里继续提问。"
         icon={<Plus className="size-5" />}
         footer={(
           <div className="flex w-full justify-end gap-2">
@@ -72,7 +72,7 @@ export function StudentProjectCreateButton({ spaceId }: { spaceId?: string | nul
               id="student-project-title"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="例如：文言虚词笔记、一次函数易错点"
+              placeholder="例如：第三单元复习、阅读专题、易错点整理"
               maxLength={80}
             />
             <p className="text-xs text-muted-foreground">不超过 80 字。已有的同名项目会直接复用，不会重复创建。</p>
@@ -83,7 +83,7 @@ export function StudentProjectCreateButton({ spaceId }: { spaceId?: string | nul
               id="student-project-author"
               value={subtitle}
               onChange={(event) => setSubtitle(event.target.value)}
-              placeholder="例如：苏轼、人教版必修一"
+              placeholder="例如：作者、版本、单元"
               maxLength={60}
             />
           </div>

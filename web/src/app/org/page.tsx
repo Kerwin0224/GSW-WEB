@@ -17,7 +17,7 @@ export default async function OrgHomePage() {
       <WorkspaceHero
         eyebrow="公司管理"
         title="学校总览"
-        description="公司管校、校管人：在这里创建和停用学校、供给各校管理员账号；师生与班级的日常管理由各校管理员完成。"
+        description="公司管理员在这里创建和停用学校、发放校管理员账号；师生名册与班级的日常管理由各校校管理员完成。"
         primaryAction={{ label: '模型与工具', href: '/org/platform', variant: 'outline' }}
         metrics={[
           { label: '学校', value: result.data.length, hint: '本公司名下全部学校' },

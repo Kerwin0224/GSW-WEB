@@ -14,31 +14,31 @@ export function BloomStatusBadge({ status }: { status: BloomStatus }) {
   if (status.state === 'classified') {
     return (
       <span className="inline-flex items-center gap-1.5">
-        <span className="text-xs text-muted-foreground">提问类型</span>
+        <span className="text-xs text-muted-foreground">认知层级</span>
         <BloomBadge level={status.level} />
       </span>
     );
   }
   if (status.state === 'failed') {
     return (
-      <Badge variant="destructive" title={status.reason ?? '提问类型判断失败'}>
-        <AlertTriangle className="mr-1 size-3" />提问类型判断失败
+      <Badge variant="destructive" title={status.reason ?? '认知层级判断失败'}>
+        <AlertTriangle className="mr-1 size-3" />认知层级判断失败
       </Badge>
     );
   }
   if (status.state === 'pending') {
     return (
       <Badge variant="outline" className="bg-muted/60">
-        <Clock className="mr-1 size-3" />正在判断提问类型
+        <Clock className="mr-1 size-3" />正在判断认知层级
       </Badge>
     );
   }
   if (status.state === 'queued') {
     return (
       <Badge variant="outline" className="bg-muted/60">
-        <Clock className="mr-1 size-3" />回答排队中
+        <Clock className="mr-1 size-3" />认知判定排队中
       </Badge>
     );
   }
-  return <Badge variant="secondary">未判断提问类型</Badge>;
+  return <Badge variant="secondary">未判断认知层级</Badge>;
 }

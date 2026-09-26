@@ -25,10 +25,10 @@ export default async function AdminExportsPage() {
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
         title="SFT / DPO 导出"
-        description="按类型和筛选条件预览样本，再生成 SFT、DPO 或审核元数据 JSONL。"
+        description="按类型和筛选条件预览样本，再生成 SFT、DPO 或审阅元数据 JSONL。"
         metrics={[
           { label: '可导出', value: approved.length, hint: '每条回答只取最新可导出版本' },
-          { label: '历史批次', value: history.length, hint: 'export_batches' },
+          { label: '历史批次', value: history.length, hint: '已生成的导出批次总数' },
           { label: '格式', value: 'SFT/DPO', hint: '按样本类型输出' },
         ]}
       />
@@ -58,7 +58,7 @@ export default async function AdminExportsPage() {
               {history.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6}>
-                    <EmptyState title="暂无导出记录" description="完成首次数据集导出后，历史记录将显示在这里。" />
+                    <EmptyState title="暂无导出记录" description="完成首次教学数据导出后，历史记录将显示在这里。" />
                   </TableCell>
                 </TableRow>
               ) : (

@@ -90,7 +90,7 @@ export async function updatePromptPreset(_previousState: PresetActionState, form
 export async function setPromptPresetStatus(presetId: string, status: PresetStatus): Promise<PresetActionState> {
   const role = await requireRole('admin');
   if (!role.ok) return { ok: false, message: role.message };
-  if (!presetId || !PRESET_STATUSES.includes(status)) return { ok: false, message: '参数无效。' };
+  if (!presetId || !PRESET_STATUSES.includes(status)) return { ok: false, message: '未指定预设或目标状态，请刷新预设列表后重试。' };
 
   const supabase = await createClient();
   const { error } = await supabase.from('prompt_presets').update({ status }).eq('id', presetId);
@@ -104,7 +104,7 @@ export async function setPromptPresetStatus(presetId: string, status: PresetStat
 export async function deletePromptPreset(presetId: string): Promise<PresetActionState> {
   const role = await requireRole('admin');
   if (!role.ok) return { ok: false, message: role.message };
-  if (!presetId) return { ok: false, message: '参数无效。' };
+  if (!presetId) return { ok: false, message: '未指定要删除的预设，请刷新预设列表后重试。' };
 
   const supabase = await createClient();
   const { error } = await supabase.from('prompt_presets').delete().eq('id', presetId);

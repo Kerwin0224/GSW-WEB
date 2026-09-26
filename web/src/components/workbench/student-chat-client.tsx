@@ -41,8 +41,8 @@ import { useMessageQueue, type QueuedStudentMessage } from '@/hooks/use-message-
 import { useConversationSync } from '@/hooks/use-conversation-sync';
 import { useStudentAssignment } from '@/hooks/use-student-assignment';
 
-const globalPromptChips = ['《静夜思》的“疑”是什么意思？', '这句怎么翻译？', '诗人为什么这样写？', '帮我换一个分析角度追问'];
-const finalizedConversationBlockedReason = '这条会话已完成教师审核，不能继续追问。请从项目或空白入口新开会话。';
+const globalPromptChips = ['这个主题里最关键的一点是什么？', '换个说法能讲得更清楚吗？', '我这样理解对吗？', '再往下追问一层'];
+const finalizedConversationBlockedReason = '这条会话已完成教师核实，不能继续追问。请从项目或空白入口新开会话。';
 
 type StudentChatMessage = UIMessage<unknown, {
   'student-assignment': StudentAssignmentData;
@@ -223,8 +223,8 @@ export function StudentChatClient({
   const promptChips = !inProjectContext
     ? globalPromptChips
     : activeProject?.name
-      ? [`《${activeProject.name}》里这句怎么翻译？`, '这处字词是什么意思？', '作者为什么这样写？', '帮我换一个分析角度追问']
-      : ['这句怎么翻译？', '这处字词是什么意思？', '作者为什么这样写？', '帮我换一个分析角度追问'];
+      ? [`《${activeProject.name}》里最需要讲清的一点是什么？`, '换个角度还能怎么理解？', '我这样理解对吗？', '再往下追问一层']
+      : globalPromptChips;
   const classificationRequired = shouldClassifyProjectForStudentTurn({
     hasConversation: Boolean(conversationId),
     hasProject: inProjectContext,
@@ -647,7 +647,7 @@ export function StudentChatClient({
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <h2 className="font-heading text-xl tracking-tight sm:text-2xl">{inProjectContext ? projectDisplayName : conversationId ? initialConversation?.title ?? '当前会话' : '从一个学习问题开始'}</h2>
-              <Badge className="border-primary/25 bg-primary/8 text-primary" variant="outline"><Sparkles className="mr-1 size-3" />{conversationLocked ? '教师已审核' : '学习提问'}</Badge>
+              <Badge className="border-primary/25 bg-primary/8 text-primary" variant="outline"><Sparkles className="mr-1 size-3" />{conversationLocked ? '教师已核实' : '学习提问'}</Badge>
             </div>
             <p className="text-sm leading-6 text-muted-foreground">
               {conversationLocked
@@ -664,12 +664,12 @@ export function StudentChatClient({
             ) : null}
             {bloomUnavailable ? (
               <div className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-muted-foreground">
-                提问类型判断暂不可用；问题会照常保存，但暂不显示提问类型。
+                认知层级判断暂不可用；问题会照常保存，但暂不显示提问类型。
               </div>
             ) : null}
             {messages.length === 0 ? (
               <EmptyState
-                title={inProjectContext ? `继续提问${activeProject?.name ? `《${activeProject.name}》` : '当前项目'}` : '把正在学的问题直接问出来'}
+                title={inProjectContext ? `继续提问${activeProject?.name ? `《${activeProject.name}》` : '当前项目'}` : '还没有提问'}
                 description={inProjectContext
                   ? '这条新会话已归入当前项目。'
                   : conversationId
@@ -761,7 +761,7 @@ export function StudentChatClient({
           <DialogHeader>
             <DialogTitle>删除会话</DialogTitle>
             <DialogDescription>
-              删除后，这条会话会从学习记录中移除；其中尚未完成教师审核的内容不再用于提问类型判断或挑战参考。已经形成的导出数据仍会保留。
+              删除后，这条会话会从学习记录中移除；其中尚未完成教师核实的内容不再用于提问类型判断或挑战参考。已经形成的导出数据仍会保留。
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-lg border bg-muted/40 p-3 text-sm">{deleteTarget?.title}</div>

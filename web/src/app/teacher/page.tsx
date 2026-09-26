@@ -90,7 +90,7 @@ export default async function TeacherChatPage() {
             </CardTitle>
             {rows.length > highRiskRows.length ? (
               <Link href="/teacher/audit" className="inline-flex items-center gap-1 text-xs text-primary underline-offset-4 hover:underline">
-                查看全部 {rows.length} 条
+                进核实队列继续处理
                 <ChevronRight className="size-3.5" aria-hidden="true" />
               </Link>
             ) : null}
@@ -121,7 +121,7 @@ export default async function TeacherChatPage() {
             <CardTitle className="flex items-center gap-2 font-heading"><FileSearch className="size-5 text-primary" aria-hidden="true" />班级核实队列</CardTitle>
             {classSummaryTotal > classSummaries.length ? (
               <Link href="/teacher/audit" className="inline-flex items-center gap-1 text-xs text-primary underline-offset-4 hover:underline">
-                查看全部 {classSummaryTotal} 个班级
+                本班之外还有 {classSummaryTotal} 个班级，进队列查看
                 <ChevronRight className="size-3.5" aria-hidden="true" />
               </Link>
             ) : null}
@@ -145,7 +145,7 @@ export default async function TeacherChatPage() {
           <CardHeader><CardTitle className="flex items-center gap-2 font-heading"><ClipboardCheck className="size-5 text-primary" aria-hidden="true" />近 7 天新增会话核实</CardTitle></CardHeader>
           <CardContent className="grid gap-3 text-sm sm:grid-cols-3">
             <div className="rounded-lg border border-primary/20 bg-primary/6 p-4">
-              <p className="text-xs text-muted-foreground">覆盖率</p>
+              <p className="text-xs text-muted-foreground">近 7 天新增会话已核实占比</p>
               <p className="mt-2 text-3xl font-semibold text-primary">{analytics.weeklyAuditCoverage.coveragePercent}%</p>
             </div>
             <div className="rounded-lg border border-border/65 bg-background/78 p-4">

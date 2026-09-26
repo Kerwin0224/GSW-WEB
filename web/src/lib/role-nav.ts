@@ -60,7 +60,7 @@ const teacherNavGroups: RoleNavGroup[] = [
     items: [
       { icon: BarChart3, label: '教学总览', href: '/teacher', description: '班级学情与待办', primary: true },
       { icon: MessageSquare, label: '备课问答', href: '/teacher/chat', description: '讨论讲解思路与课堂练习', primary: true },
-      { icon: FileSearch, label: '学习记录核实', href: '/teacher/audit', description: '核验 AI 回答与教学标签', primary: true },
+      { icon: FileSearch, label: '学习记录核实', href: '/teacher/audit', description: '检查学生会话中的 AI 回答与疑点', primary: true },
     ],
   },
 ];
@@ -80,7 +80,7 @@ const adminNavGroups: RoleNavGroup[] = [
       { icon: Cpu, label: '模型供应商', href: '/admin/providers', description: 'Provider、Model ID 与角色路由', primary: true },
       { icon: Puzzle, label: 'MCP Server', href: '/admin/mcp', description: '连接、授权与工具白名单' },
       { icon: FileText, label: 'Prompt 预设', href: '/admin/presets', description: '系统提示词与教师模板' },
-      { icon: Download, label: 'SFT / DPO 导出', href: '/admin/exports', description: '导出已审核的训练样本' },
+      { icon: Download, label: 'SFT / DPO 导出', href: '/admin/exports', description: '导出已核实的训练样本' },
       { icon: Activity, label: '运行日志', href: '/admin/logs', description: '请求追踪与故障诊断', primary: true },
     ],
   },

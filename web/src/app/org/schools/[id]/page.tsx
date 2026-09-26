@@ -23,7 +23,7 @@ export default async function OrgSchoolDetailPage({ params }: { params: Promise<
       <WorkspaceHero
         eyebrow="公司管理 / 学校详情"
         title={result.data.school.name}
-        description="在这里供给学校管理员账号（初始密码 = 工号，首次登录强制改密）；师生名册与班级的日常管理由学校管理员在本校后台完成。"
+        description="在这里发放校管理员账号（初始密码 = 工号，首次登录强制改密）；师生名册与班级的日常管理由校管理员在本校后台完成。"
         metrics={[
           { label: '状态', value: result.data.school.status === 'active' ? '运行中' : '已停用', hint: '启用/停用在总览页操作' },
           { label: '成员账号', value: result.data.users.length, hint: '含校管理员、教师与学生' },

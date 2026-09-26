@@ -966,13 +966,13 @@ export async function previewUserCsv(csvText: string): Promise<CsvUserPreview> {
     const subject = row.subject?.trim() || null;
     const className = row.class_name?.trim() || null;
     const errors: string[] = [];
-    if (!displayName) errors.push('缺少 display_name');
-    if (!loginId) errors.push('缺少 login_id');
-    else if (!/^\d{8}$/.test(loginId)) errors.push('login_id 必须是 8 位数字');
-    if (loginId && seen.has(loginId)) errors.push('login_id 在文件内重复');
+    if (!displayName) errors.push('缺少姓名');
+    if (!loginId) errors.push('缺少账号');
+    else if (!/^\d{8}$/.test(loginId)) errors.push('账号必须是 8 位数字');
+    if (loginId && seen.has(loginId)) errors.push('账号在文件内重复');
     if (loginId) seen.add(loginId);
-    if (!role) errors.push('role 必须是 admin / teacher / student');
-    if (role === 'teacher' && !subject) errors.push('教师缺少 subject');
+    if (!role) errors.push('角色必须是管理员 / 教师 / 学生');
+    if (role === 'teacher' && !subject) errors.push('教师缺少科目');
     const existingRole = existingByLoginId.get(loginId) ?? null;
     if (existingRole && role && existingRole !== role) {
       errors.push(`该工号在本校已是 ${existingRole}，本次要改成 ${role}（权限变更），必须显式处理`);

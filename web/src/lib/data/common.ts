@@ -73,8 +73,8 @@ export function resolveReadyModel(capability: CapabilityStatus): { ok: true; mod
     return {
       ok: false,
       status: 503,
-      error: `${capability.capability} 模型未就绪`,
-      resolution: capability.blockedReason ?? `缺少 ${capability.capability} 真实模型能力配置。`,
+      error: '该功能所需的模型未配置',
+      resolution: '请到「模型供应商」页补齐该功能的模型 ID，保存后重新进入本页。',
     };
   }
   const model = resolveLanguageModel(capability);
@@ -83,7 +83,7 @@ export function resolveReadyModel(capability: CapabilityStatus): { ok: true; mod
       ok: false,
       status: 503,
       error: `${capability.capability} 模型密钥未解析`,
-      resolution: `${capability.providerName ?? 'Provider'} 的 secret_ref 未在服务端环境中解析成功；不会从浏览器读取 Provider 密钥。`,
+      resolution: '服务端没有取到该 Provider 的密钥，请到「模型供应商」页重新保存该 Provider。',
     };
   }
   return { ok: true, model, modelId: capability.modelId };
@@ -110,7 +110,7 @@ export async function requireAnyRole(roles: readonly AppRole[]): Promise<DataRes
     if (profile.status !== 'active') return fail('forbidden', '当前账号已停用。');
     // 强制首登改密：除改密接口（不走 requireRole）外，所有 API 一律拒绝。
     if (profile.must_change_password) return fail('password_change_required', '请先在账号设置中修改初始密码。');
-    if (!roles.includes(profile.role)) return fail('forbidden', `当前账号不是 ${roles.join(' / ')} 角色。`);
+    if (!roles.includes(profile.role)) return fail('forbidden', '当前账号没有该页面的管理权限，请联系公司管理员分配角色。');
     return ok(profile);
   } catch (error) {
     return fail('error', error instanceof Error ? error.message : '读取角色资料失败');
@@ -119,13 +119,13 @@ export async function requireAnyRole(roles: readonly AppRole[]): Promise<DataRes
 
 function tierBlockedMessage(tier: ModelTier) {
   return tier === 'flash'
-    ? '缺少 Flash Model 真实模型层配置；学生会话回答、学生问题布鲁姆路径判断与挑战生成不会降级到默认模型。'
-    : '缺少 Advanced Model 真实模型层配置；教师问答、挑战评估与教学正确性核实辅助不会降级到默认模型。';
+    ? '缺少基础模型配置；学生会话回答、学生问题布鲁姆认知路径判断与挑战生成不会降级到默认模型。'
+    : '缺少高阶模型配置；教师问答、挑战评阅与 AI 预审不会降级到默认模型。';
 }
 
 function providerHealthBlockedReason(providerName: string, healthStatus: string) {
   if (healthStatus === 'healthy' || healthStatus === 'unchecked') return null;
-  return `${providerName} 健康状态为 ${healthStatus}。`;
+  return `${providerName} 最近一次连接检查为${healthStatus === 'failed' ? '失败' : '被阻塞'}，请到「模型供应商」页重新检查连接。`;
 }
 
 export async function getModelTier(tier: ModelTier): Promise<DataResult<ModelTierStatus>> {

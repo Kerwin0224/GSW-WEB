@@ -6,8 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
+import { roleConfig } from '@/components/workbench/role-badge';
 import { WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { requireProfile } from '@/lib/auth';
+import type { AppRole } from '@/lib/supabase/database.types';
 import { getAdminDashboard } from '@/lib/data/admin';
 import {
   buildAdminLogHref,
@@ -99,7 +101,7 @@ export default async function AdminDashboard() {
         title="运行概览"
         description="查看账号、班级与模型路由配置；服务连通性以供应商连接检查为准。"
         primaryAction={{ label: '查看用户管理', href: '/admin/users' }}
-        secondaryAction={{ label: '查看模型接入', href: '/admin/providers' }}
+        secondaryAction={{ label: '查看模型供应商', href: '/admin/providers' }}
         metrics={[
           { label: '账号', value: users.length, hint: '教师、学生与管理员' },
           { label: '班级', value: classes.length, hint: '教学范围' },
@@ -259,8 +261,8 @@ export default async function AdminDashboard() {
                     <TableRow key={user.id}>
                       <TableCell className="font-medium">{user.display_name}</TableCell>
                       <TableCell className="font-mono">{user.login_id}</TableCell>
-                      <TableCell><Badge variant="outline">{user.role}</Badge></TableCell>
-                      <TableCell>{user.status}</TableCell>
+                      <TableCell><Badge variant="outline">{roleConfig[user.role as AppRole].label}</Badge></TableCell>
+                      <TableCell>{user.status === 'active' ? '启用' : '停用'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

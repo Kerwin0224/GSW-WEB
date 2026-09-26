@@ -66,7 +66,7 @@ export function SchoolDetailClient({ school, users, classes }: {
 
         <Card>
           <CardHeader>
-            <CardTitle className="font-sans text-lg">新任学校管理员</CardTitle>
+            <CardTitle className="font-sans text-lg">新任校管理员</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={submitCreateAdmin} className="space-y-3">

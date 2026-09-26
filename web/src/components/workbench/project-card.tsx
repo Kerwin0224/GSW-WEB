@@ -49,7 +49,7 @@ export function ProjectCard({ project, spaceId }: { project: ProjectCardData; sp
             <CardTitle className="truncate font-heading text-2xl leading-8 tracking-tight">《{project.name}》</CardTitle>
             <p className="truncate text-xs text-muted-foreground">
               {project.subtitle ? <span>{project.subtitle} · </span> : null}
-              {project.updatedLabel ?? '最近学习时间待同步'}
+              {project.updatedLabel ?? '最近学习时间'}
             </p>
           </div>
           {confirmedLevel ? (

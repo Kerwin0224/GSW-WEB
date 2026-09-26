@@ -32,7 +32,7 @@ export default async function AdminClassesPage() {
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
       <WorkspaceHero
         title="班级管理"
-        description="班级成员关系决定教师可查看和审核哪些学生记录。"
+        description="班级成员关系决定教师可查看和核实哪些学生学习记录。"
         metrics={[
           { label: '班级', value: classes.length, hint: '当前班级数' },
           { label: '教师成员分配', value: teacherCount, hint: '教师可负责多个班级' },
@@ -95,7 +95,7 @@ export default async function AdminClassesPage() {
                   </div>
                 </div>
                 {klass.teachers.length === 0 ? (
-                  <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">该班级暂无负责教师，教学总览和回答审核范围会受影响。</p>
+                  <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">该班级暂无负责教师，教学总览和学习记录核实范围会受影响。</p>
                 ) : null}
                 <AdminClassMembersDialog
                   klass={klass}

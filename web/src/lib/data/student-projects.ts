@@ -30,7 +30,7 @@ export async function createStudentProject(formData: FormData): Promise<CreateSt
   if (!role.ok) return { ok: false, message: role.message };
 
   const name = normalizeConcreteProjectTitle(String(formData.get('name') ?? ''));
-  if (!name) return { ok: false, message: '请填写有效的项目名称（不超过 80 字，且不能是系统占位名）。' };
+  if (!name) return { ok: false, message: '请填写项目名称（不超过 80 字）。' };
   const subtitle = normalizeProjectSubtitle(String(formData.get('subtitle') ?? ''));
   const spaceId = String(formData.get('space_id') ?? '').trim();
   if (!spaceId) return { ok: false, message: '请先选择一个学习空间，再创建项目。' };
@@ -44,7 +44,7 @@ export async function createStudentProject(formData: FormData): Promise<CreateSt
     .eq('space_id', spaceId)
     .eq('name', name)
     .maybeSingle();
-  if (existingError) return { ok: false, message: `项目查重失败：${existingError.message}` };
+  if (existingError) return { ok: false, message: '项目没能创建，请稍后重试。' };
   if (existing) return { ok: true, projectId: existing.id, name: existing.name };
 
   const { data: project, error } = await supabase
@@ -59,7 +59,7 @@ export async function createStudentProject(formData: FormData): Promise<CreateSt
     })
     .select('id,name')
     .single();
-  if (error || !project) return { ok: false, message: `项目创建失败：${error?.message ?? 'unknown'}` };
+  if (error || !project) return { ok: false, message: '项目没能创建，请稍后重试。' };
 
   revalidatePath('/student/me');
   revalidatePath('/student');

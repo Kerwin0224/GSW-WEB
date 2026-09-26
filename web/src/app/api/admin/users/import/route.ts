@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     }
 
     const parsed = bodySchema.safeParse(body);
-    if (!parsed.success) return Response.json({ error: 'Invalid request', issues: parsed.error.flatten() }, { status: 400 });
+    if (!parsed.success) return Response.json({ error: '请求内容无法解析，请刷新页面后重新导入。' }, { status: 400 });
 
     if (!parsed.data.commit) {
       return Response.json(await previewUserCsv(parsed.data.csvText));

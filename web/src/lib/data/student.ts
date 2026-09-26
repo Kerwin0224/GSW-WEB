@@ -109,9 +109,9 @@ function buildChallengeProgress(practices: PracticeSummaryRow[]): ProjectChallen
     if (isComplete) return '已完成全部六层挑战';
     if (!latestPractice) return '等待挑战';
     if (latestPractice.evaluation_state === 'pending') return `L${latestPractice.target_bloom_level} 待作答`;
-    if (latestPractice.evaluation_state === 'blocked') return '挑战暂时被阻塞';
+    if (latestPractice.evaluation_state === 'blocked') return '挑战暂时不能使用，请联系学校管理员。';
     if (latestPractice.evaluation_state === 'failed') return '挑战生成失败';
-    if (latestPractice.evaluation_state === 'evaluated' && latestPractice.achieved) return `已确认 L${completedLevels}`;
+    if (latestPractice.evaluation_state === 'evaluated' && latestPractice.achieved) return `已通过到 L${completedLevels}`;
     if (latestPractice.evaluation_state === 'evaluated' && latestPractice.achieved === false) return consecutiveFailedAttempts >= 2 ? '需要巩固' : '待巩固';
     return '继续挑战';
   })();
@@ -138,8 +138,10 @@ export async function getStudentWorkspace(options: { spaceId?: string | null } =
   const role = await requireRole('student');
   if (!role.ok) return role;
   const caps = await getCapabilities(['student_chat', 'bloom_classification', 'project_classification', 'practice_generation', 'practice_evaluation']);
-  const bloomClassificationBlocked = caps.bloom_classification.ready ? undefined : caps.bloom_classification.blockedReason ?? '缺少 bloom_classification 真实模型能力配置。';
-  const projectClassificationBlocked = caps.project_classification.ready ? undefined : caps.project_classification.blockedReason ?? '缺少 project_classification 真实模型能力配置。';
+  // blockedReason 是运维口径（secret_ref、unhealthy、能力键名），只进日志不进学生界面：
+  // 学生只需要知道「这件事暂时做不了、找谁」，配置细节由管理员在运行日志里看。
+  const bloomClassificationBlocked = caps.bloom_classification.ready ? undefined : '问题会照常保存，但暂时不能判断提问所属的认知层级。';
+  const projectClassificationBlocked = caps.project_classification.ready ? undefined : '问题会照常保存，但暂时不能自动归入项目。';
 
   const supabase = await createClient();
   const spaceId = options.spaceId;
@@ -159,10 +161,10 @@ export async function getStudentWorkspace(options: { spaceId?: string | null } =
   if (archiveError) return fail('error', `日常会话归档加载失败：${archiveError.message}`);
 
   return ok({
-    providerBlocked: caps.student_chat.ready ? undefined : caps.student_chat.blockedReason,
+    providerBlocked: caps.student_chat.ready ? undefined : '现在还不能提问，请联系学校管理员。',
     projectClassificationBlocked,
     bloomClassificationBlocked,
-    challengeBlocked: caps.practice_generation.ready && caps.practice_evaluation.ready ? undefined : '挑战生成或挑战确认能力尚未就绪。',
+    challengeBlocked: caps.practice_generation.ready && caps.practice_evaluation.ready ? undefined : '挑战暂时不能使用，请联系学校管理员。',
     dailyArchive: {
       sessions: (archiveConversations ?? []).map((conversation) => toSessionSummary(conversation as ConversationSummaryRow)),
       updatedLabel: archiveConversations?.[0]?.updated_at ? new Date(archiveConversations[0].updated_at).toLocaleString('zh-CN') : undefined,

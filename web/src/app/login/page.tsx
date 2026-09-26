@@ -229,10 +229,10 @@ export default function LoginPage() {
         </section>
         <section className="space-y-4 border-t border-border/70 pt-5 lg:col-start-1 lg:row-start-2 lg:self-start" aria-label="使用场景">
           <dl className="space-y-3 text-sm leading-6">
-            <div className="flex gap-4"><dt className="shrink-0 font-medium">学生</dt><dd className="text-muted-foreground">问字词、读篇章，用挑战练习检验理解。</dd></div>
-            <div className="flex gap-4"><dt className="shrink-0 font-medium">教师</dt><dd className="text-muted-foreground">辅助备课、查看学情、审核 AI 回答。</dd></div>
+            <div className="flex gap-4"><dt className="shrink-0 font-medium">学生</dt><dd className="text-muted-foreground">向 AI 提问并完成挑战练习。</dd></div>
+            <div className="flex gap-4"><dt className="shrink-0 font-medium">教师</dt><dd className="text-muted-foreground">辅助备课、查看学情、核实 AI 回答。</dd></div>
           </dl>
-          <p className="text-xs leading-5 text-muted-foreground">AI 回答仅供参考，请结合原文与教师指导核实。</p>
+          <p className="text-xs leading-5 text-muted-foreground">AI 回答仅供参考，请结合自己的学习内容和教师指导判断。</p>
         </section>
       </div>
     </main>

@@ -15,14 +15,14 @@ import type { ReviewState } from '@/lib/data/audit-record';
 export function reviewStateLabel(state: ReviewState): string {
   if (state === 'confirmed') return '已提交';
   if (state === 'revised') return '已提交含修订';
-  return '待最终提交';
+  return '待核实';
 }
 
 /** 单条 AI 回答气泡的核实状态。 */
 export function assistantStateLabel(state?: ReviewState): string {
   if (state === 'revised') return '已修订';
   if (state === 'confirmed') return '已确认无误';
-  return '待随会话提交';
+  return '待核实（随会话提交）';
 }
 
 /**

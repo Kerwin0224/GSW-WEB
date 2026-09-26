@@ -5,7 +5,7 @@
  */
 export function ThinkingIndicator() {
   return (
-    <div className="flex items-center gap-1.5 py-2 pl-12" role="status" aria-label="正在思考">
+    <div className="flex items-center gap-1.5 py-2 pl-12" role="status" aria-label="正在生成回答">
       {[0, 1, 2].map((dot) => (
         <span
           key={dot}

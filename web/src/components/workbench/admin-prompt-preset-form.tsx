@@ -112,7 +112,7 @@ export function AdminPromptPresetDialog() {
         </Button>
       )}
       title="新建 Prompt 预设"
-      description="保存为草稿或发布新版本，历史互动可追踪版本。"
+      description="保存为草稿或发布新版本，教师问答历史可追踪版本。"
       icon={<Plus className="size-5" />}
       className="max-w-2xl"
     >
@@ -138,7 +138,7 @@ export function AdminPromptPresetEditDialog({ preset }: { preset: PromptPresetIt
         </Button>
       )}
       title={`编辑预设 · v${preset.version}`}
-      description="保存后会记为新版本，历史互动仍按旧版本追溯。"
+      description="保存后会记为新版本，教师问答历史仍按旧版本追溯。"
       icon={<Pencil className="size-5" />}
       className="max-w-2xl"
     >
@@ -208,7 +208,7 @@ export function PresetRowActions({ preset }: { preset: PromptPresetItem }) {
       >
         <Alert variant="destructive">
           <AlertDescription>
-            已产生的历史互动仍会记录预设 ID 与版本，但界面上无法再找回这个预设的正文。只想暂时下线请改用「停用」。
+            已产生的教师问答历史仍会记录预设 ID 与版本，但界面上无法再找回这个预设的正文。只想暂时下线请改用「停用」。
           </AlertDescription>
         </Alert>
       </AdminDialogShell>

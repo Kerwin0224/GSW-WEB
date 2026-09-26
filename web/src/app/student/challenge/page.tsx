@@ -61,7 +61,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
     getStudentWorkspace({ spaceId: firstParam(params?.spaceId) }),
     getStudentChallengeProjects({ spaceId: firstParam(params?.spaceId) }),
   ]);
-  if (!workspace.ok) return <div className="p-6"><ErrorState title="挑战入口加载失败" description={workspace.message} /></div>;
+  if (!workspace.ok) return <div className="p-6"><ErrorState title="挑战练习加载失败" description={workspace.message} /></div>;
   if (!projectsResult.ok) return <div className="p-6"><ErrorState title="挑战练习加载失败" description={projectsResult.message} /></div>;
 
   const projects = projectsResult.data;
@@ -108,8 +108,8 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
       <header className="flex flex-col gap-4 rounded-lg border bg-background/80 p-5 sm:flex-row sm:items-start sm:justify-between">
         <SectionHeader
           eyebrow="挑战"
-          title="选择项目，开始挑战练习"
-          description="选一篇学过的文章，完成当前层级的挑战题。"
+          title="挑战练习"
+          description="选一个已学过的项目，完成当前层级的挑战题。"
         />
         <div className="flex shrink-0 flex-wrap gap-2">
           <Button nativeButton={false} render={<Link href={buildHref()} />} variant="outline">
@@ -123,7 +123,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
       ) : null}
 
       {projects.length === 0 ? (
-        <EmptyState title="还没有可挑战的项目" description="先在学习提问中选择项目并完成一次对话。" />
+        <EmptyState title="还没有可挑战的项目" description="先在学习提问中选择项目并完成一次会话。" />
       ) : (
         <section className="grid gap-5 lg:grid-cols-[22rem_minmax(0,1fr)]">
           <aside className="space-y-4">
@@ -186,7 +186,7 @@ export default async function ChallengePage({ searchParams }: { searchParams?: P
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="truncate font-medium">《{project.name}》</p>
-                            <p className="mt-1 truncate text-xs text-muted-foreground">{project.subtitle ?? '作者未标注'} · {project.questionCount} 条提问记录</p>
+                            <p className="mt-1 truncate text-xs text-muted-foreground">{project.subtitle ?? '未填补充标识'} · {project.questionCount} 条提问记录</p>
                           </div>
                           {project.challengeProgress.confirmedLevel ? <BloomBadge level={project.challengeProgress.confirmedLevel} /> : <Badge variant="outline">尚未通过</Badge>}
                         </div>

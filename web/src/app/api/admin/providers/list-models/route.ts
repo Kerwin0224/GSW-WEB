@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Invalid request' }, { status: 400 });
     }
     const parsed = providerRequestSchema.safeParse(body);
-    if (!parsed.success) return Response.json({ error: 'Invalid request', issues: parsed.error.flatten() }, { status: 400 });
+    if (!parsed.success) return Response.json({ error: '请求内容无法解析，请刷新页面后重试。' }, { status: 400 });
 
     const resolved = await resolveProviderCredentials(parsed.data);
     if (!resolved.ok) return Response.json({ error: resolved.message }, { status: resolved.status });

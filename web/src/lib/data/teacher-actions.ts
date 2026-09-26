@@ -323,7 +323,7 @@ export async function reviseLearningRecord(sourceMessageId: string, _previousSta
   if (!updatedRows || updatedRows.length === 0) {
     return {
       ok: false,
-      message: '学生侧修订同步失败：RLS 未放行对会话消息的 UPDATE。请联系管理员检查 conversation_messages 的教师修订策略。',
+      message: '修订没有同步到学生侧，本次未保存。请稍后重试；若持续失败请联系管理员。',
     };
   }
 
@@ -360,7 +360,7 @@ export async function reviseLearningRecord(sourceMessageId: string, _previousSta
   revalidatePath('/teacher');
   revalidatePath('/teacher/audit');
   revalidatePath('/student');
-  return { ok: true, message: '修订已保存并同步学生侧；最终提交整个会话前不会进入 SFT/DPO。' };
+  return { ok: true, message: '修订已保存并同步学生侧；确认提交整个会话后才会进入教学数据导出。' };
 }
 
 const preReviewIssueSchema = z.object({
@@ -494,7 +494,7 @@ export async function runConversationPreReview(conversationId: string, _previous
   if (!capability.ok) return { ok: false, message: capability.message };
   if (!capability.data.ready) return { ok: false, message: capability.data.blockedReason ?? 'AI 预审能力未就绪。' };
   const model = resolveLanguageModel(capability.data);
-  if (!model) return { ok: false, message: `${capability.data.providerName ?? 'Provider'} 的 secret_ref 未在服务端环境中解析成功，不能发起 AI 预审。` };
+  if (!model) return { ok: false, message: 'AI 预审暂时无法发起，请稍后重试；若持续失败请联系管理员。' };
 
   let preReview: Awaited<ReturnType<typeof runPreReview>>;
   try {
@@ -668,7 +668,7 @@ export async function finalizeLearningConversation(conversationId: string, _prev
     if (!syncedRows || syncedRows.length === 0) {
       return {
         ok: false,
-        message: '会话级修订同步学生侧失败：RLS 未放行对会话消息的 UPDATE。请联系管理员检查 conversation_messages 的教师修订策略。',
+        message: '修订没有同步到学生侧，本次未保存。请稍后重试；若持续失败请联系管理员。',
       };
     }
   }
@@ -742,10 +742,10 @@ export async function saveTeacherPromptPreset(_previousState: AuditSubmissionSta
   const userTemplate = String(formData.get('user_template') ?? '').trim() || null;
   const variables = String(formData.get('variables') ?? '').split(',').map((value) => value.trim()).filter(Boolean);
   const errors: Record<string, string> = {};
-  if (!title) errors.title = '请填写预设标题。';
+  if (!title) errors.title = '请填写模板名称。';
   if (!scenario) errors.scenario = '请填写教学场景。';
-  if (!systemInstruction) errors.system_instruction = '请填写提示词内容。';
-  if (Object.keys(errors).length > 0) return { ok: false, message: '请补齐教师预设信息。', errors };
+  if (!systemInstruction) errors.system_instruction = '请填写模板内容。';
+  if (Object.keys(errors).length > 0) return { ok: false, message: '请补齐模板信息。', errors };
 
   const supabase = await createClient();
   const { error } = await supabase.from('prompt_presets').insert({
@@ -761,6 +761,6 @@ export async function saveTeacherPromptPreset(_previousState: AuditSubmissionSta
   if (error) return { ok: false, message: `教师预设保存失败：${error.message}` };
   revalidatePath('/teacher/chat');
   revalidatePath('/teacher');
-  return { ok: true, message: '教师预设已保存为草稿。' };
+  return { ok: true, message: '模板已保存，可在上方模板列表中选用。' };
 }
 

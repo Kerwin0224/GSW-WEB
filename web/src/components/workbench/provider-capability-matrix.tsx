@@ -84,7 +84,7 @@ const TIER_COPY: Record<ModelTier, {
   advanced: {
     title: 'Advanced Model',
     subtitle: '更强推理、更高质量',
-    intent: '面向备课问答、挑战评阅与 AI 初筛，优先复杂推理和输出质量。',
+    intent: '面向备课问答、挑战评阅与 AI 预审，优先复杂推理和输出质量。',
     tone: 'from-accent/25 via-background to-background',
     icon: <Brain className="size-5" />,
   },
@@ -438,7 +438,7 @@ function ProviderOperationsTable({ providers, modelTiers, viewerRole }: { provid
     return (
       <EmptyState
         title="尚未配置模型 Provider"
-        description="先在“模型接入”里添加服务；然后做健康检查、拉取模型，并在 Flash / Advanced 卡片中绑定模型。"
+        description="先在「模型供应商」页添加服务；然后做连接检查、拉取模型，并在基础 / 高阶模型卡片中绑定模型。"
       />
     );
   }

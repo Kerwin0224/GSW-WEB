@@ -52,16 +52,18 @@ test('班级派生成员标注来源且不可直接移除', () => {
   assert.doesNotMatch(spacePanel, /derivedDirectStudents\.map\(\(student\) => <StudentChip/, '派生成员不能挂 StudentChip（那会给出移除按钮）');
 });
 
-test('备课问答：切会话走 push，生成中禁用切换', () => {
+test('备课问答：切问答走 push，生成中禁用切换', () => {
   // 此前对所有 conversationId 都 replaceState，把教师刚点过来的那条历史抹掉了。
   assert.doesNotMatch(teacherChat, /const nextUrl = conversationId \?/, '不应再用全局 replaceState 同步 URL');
-  assert.match(teacherChat, /router\.push\('\/teacher\/chat'\)/, '新会话应是一次真实导航，后退键才回得去');
-  assert.match(teacherChat, /inert=\{busy \|\| undefined\}/, '生成中必须禁用会话切换（inert 同时断指针与 Tab）');
-  assert.match(teacherChat, /正在回答，暂不能切换或删除历史会话/, '禁用要给出可读原因，不能只是点了没反应');
+  assert.match(teacherChat, /router\.push\('\/teacher\/chat'\)/, '新问答应是一次真实导航，后退键才回得去');
+  assert.match(teacherChat, /inert=\{busy \|\| undefined\}/, '生成中必须禁用问答切换（inert 同时断指针与 Tab）');
+  // CONTEXT：教师侧统一称「教师问答」，界面里不该再出现「会话」。
+  assert.match(teacherChat, /正在回答，暂不能切换或删除历史问答/, '禁用要给出可读原因，不能只是点了没反应');
+  assert.doesNotMatch(teacherChat, /历史会话|新会话|暂无历史会话/, '教师侧不得用「会话」称呼自己的问答历史');
 });
 
 test('备课问答历史有搜索与更多入口', () => {
-  assert.match(teacherChat, /搜索历史会话/, '历史会话需要搜索入口');
+  assert.match(teacherChat, /搜索历史问答/, '历史问答需要搜索入口');
   assert.match(teacherChat, /setShowAllSessions\(true\)/, '需要「更多」展开入口');
 });
 

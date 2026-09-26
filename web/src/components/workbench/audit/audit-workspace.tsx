@@ -47,7 +47,7 @@ export function AuditWorkspace({ queue, session, sessionError, initialView }: {
             title={sessionError ? '这条会话打不开' : view === 'pending' ? '请选择一条会话' : `请选择一条${auditQueueViewLabel(view)}会话`}
             description={sessionError ?? (view === 'pending'
               ? '左侧按班级 → 学生 → 项目 → 会话组织；选中后可运行 AI 预审、逐条修订并确认提交整个会话。'
-              : '这里只列已提交完成的会话，可回看修订前后对照。选中后可逐条复核。')}
+              : '这里只列已提交完成的会话，可回看修订前后对照。选中后可逐条回看修订前后的回答。')}
             action={<FileSearch className="size-5 text-primary" />}
           />
         )}

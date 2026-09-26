@@ -79,7 +79,7 @@ export default function DatasetExportClient() {
       }
       if (previewOnly) {
         setPreview(data);
-        setOutcome({ tone: 'info', title: '预览已生成', message: `候选 ${data.coverage.eligibleRecords} 条，其中有效 ${data.coverage.validRecords} 条。确认无误后再生成批次。` });
+        setOutcome({ tone: 'info', title: '预览已生成', message: `候选 ${data.coverage.eligibleRecords} 条，其中有效 ${data.coverage.validRecords} 条。核对无误后再生成批次。` });
       } else {
         setLastBatchId(data.batchId ?? null);
         setPreview(null);

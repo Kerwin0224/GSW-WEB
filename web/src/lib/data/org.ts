@@ -102,7 +102,7 @@ export async function createSchool(formData: FormData): Promise<ActionState> {
   if (!ctx.ok) return { ok: false, message: ctx.message };
   const name = String(formData.get('name') ?? '').trim();
   if (!name) return { ok: false, message: '学校名称不能为空。' };
-  if (name.length > 60) return { ok: false, message: '学校名称过长。' };
+  if (name.length > 60) return { ok: false, message: '学校名称请控制在 60 字以内。' };
 
   const supabase = await createClient();
   const { error } = await supabase.from('schools').insert({ org_id: ctx.data.organizationId, name });
@@ -116,7 +116,7 @@ export async function setSchoolStatus(formData: FormData): Promise<ActionState> 
   if (!ctx.ok) return { ok: false, message: ctx.message };
   const schoolId = String(formData.get('schoolId') ?? '');
   const status = String(formData.get('status') ?? '');
-  if (!schoolId || (status !== 'active' && status !== 'disabled')) return { ok: false, message: '参数无效。' };
+  if (!schoolId || (status !== 'active' && status !== 'disabled')) return { ok: false, message: '未指定学校或目标状态，请刷新学校列表后重试。' };
   const owned = await assertSchoolInOrg(schoolId, ctx.data.organizationId);
   if (!owned.ok) return { ok: false, message: owned.message };
 
@@ -133,7 +133,7 @@ export async function renameSchool(formData: FormData): Promise<ActionState> {
   if (!ctx.ok) return { ok: false, message: ctx.message };
   const schoolId = String(formData.get('schoolId') ?? '');
   const name = String(formData.get('name') ?? '').trim();
-  if (!schoolId || !name || name.length > 60) return { ok: false, message: '参数无效。' };
+  if (!schoolId || !name || name.length > 60) return { ok: false, message: '请填写学校名称（不超过 60 字），或刷新页面后重试。' };
   const owned = await assertSchoolInOrg(schoolId, ctx.data.organizationId);
   if (!owned.ok) return { ok: false, message: owned.message };
 

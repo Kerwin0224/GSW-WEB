@@ -31,7 +31,7 @@ export function AuditQueueNav({ queue, view, selectedId }: { queue: TeacherAudit
       <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/6 p-4 shadow-soft">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">学习记录核实</p>
+            <p className="text-xs font-medium text-muted-foreground">学习记录核实</p>
             <h1 className="mt-2 font-heading text-xl">{view === 'pending' ? '待核实队列' : '已提交记录'}</h1>
           </div>
           <Badge variant="outline" className="bg-card/80">{queue.total} {view === 'pending' ? '待核实' : '已提交'}</Badge>
@@ -66,7 +66,7 @@ export function AuditQueueNav({ queue, view, selectedId }: { queue: TeacherAudit
         {/* 口径必须写清：分页总数是服务端按当前视图算的（不受翻页影响），
             而列表只渲染含 AI 回答的会话——两者不等是设计如此，不是丢数据。 */}
         <p className="text-xs leading-5 text-muted-foreground">
-          待核实 {queue.pendingTotal} 条 · 已提交 {queue.finalizedTotal} 条，均为全局口径、不受分页影响。没有 AI 回答的会话不进入核实队列，因此本页列出的条数可能少于分页窗口。
+          待核实 {queue.pendingTotal} 条 · 已提交 {queue.finalizedTotal} 条，均按队列全量合计，不随翻页变化。没有 AI 回答的会话不进入核实队列，因此本页列出的条数可能少于分页窗口。
         </p>
       </div>
 

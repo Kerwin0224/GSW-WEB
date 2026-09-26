@@ -172,7 +172,7 @@ function AddMemberForm({ klass, users, memberRole }: { klass: AdminClassListItem
       </div>
       {memberRole === 'student' ? (
         <p className="rounded-lg border border-primary/20 bg-primary/5 p-2 text-xs text-primary">
-          学生会从原班级迁入当前班级；其历史项目和未删除的学习会话也会归入新班级，供新班教师审核。
+          学生会从原班级迁入当前班级；其历史项目和未删除的学习会话也会归入新班级，供新班教师核实。
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">教师可以负责多个班级；重复加入同一班级会被忽略。</p>
@@ -229,7 +229,7 @@ export function AdminClassMembersDialog({ klass, users }: AdminClassMembersDialo
           </TabsList>
           <TabsContent value="teachers" className="space-y-4">
             {klass.teachers.length === 1 ? (
-              <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">该班级只有这一位负责教师，移除按钮已禁用：移除后教学总览和回答审核将没有负责人。请先添加另一位教师。</p>
+              <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">该班级只有这一位负责教师，移除按钮已禁用：移除后教学总览和学习记录核实将没有负责人。请先添加另一位教师。</p>
             ) : null}
             <AddMemberForm klass={klass} users={users} memberRole="teacher" />
             <ScrollArea className="max-h-80 pr-3">
@@ -276,7 +276,7 @@ export function AdminClassMembersDialog({ klass, users }: AdminClassMembersDialo
           <AlertDescription>
             {removeTarget?.isLastTeacher
               ? '这是该班级最后一位负责教师，请先添加另一位教师再移除。'
-              : '移除会立即生效：学生的历史项目与学习记录会转由新班级教师负责，教师的审核范围也会随之变化。'}
+              : '移除会立即生效：学生的历史项目与学习记录会转由新班级教师负责，教师的核实范围也会随之变化。'}
           </AlertDescription>
         </Alert>
       </AdminDialogShell>

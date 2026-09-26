@@ -25,8 +25,8 @@ type ApiError = { state?: ChallengeState | string; error?: string; resolution?: 
 
 const evaluationStateLabel: Record<PracticeRecord['evaluation_state'], string> = {
   pending: '待作答',
-  evaluated: '已评阅',
-  failed: '评阅失败',
+  evaluated: '已通过',
+  failed: '本次未出结果',
   blocked: '暂不可用',
 };
 
@@ -112,7 +112,7 @@ export function ChallengeClient({
   const canEvaluate = Boolean(challenge?.id && answer.trim() && !localIsComplete && !challengeBlocked && state !== 'evaluating' && state !== 'generating' && challenge.evaluation_state !== 'evaluated');
   const resultTone = useMemo(() => {
     if (!challenge || challenge.evaluation_state !== 'evaluated') return null;
-    if (challenge.achieved) return '已确认';
+    if (challenge.achieved) return '已通过';
     return challengeStatusLabel === '需要巩固' ? '需要巩固' : '待巩固';
   }, [challenge, challengeStatusLabel]);
 
@@ -207,9 +207,9 @@ export function ChallengeClient({
         </CardContent>
       </Card>
 
-      {challengeBlocked ? <BlockedState title="挑战功能未就绪" description={challengeBlocked} /> : null}
+      {challengeBlocked ? <BlockedState title="挑战暂时不能使用" description={challengeBlocked} /> : null}
       {message && state === 'blocked' ? <BlockedState title="挑战暂不可用" description={message} /> : null}
-      {message && (state === 'failed' || state === 'error') ? <ErrorState title={state === 'failed' ? '模型调用失败' : '挑战流程失败'} description={message} /> : null}
+      {message && (state === 'failed' || state === 'error') ? <ErrorState title={state === 'failed' ? '挑战生成失败' : '挑战没有完成'} description={message} /> : null}
       {message && ['pending', 'evaluated'].includes(state) ? (
         <Alert className="border-primary/30 bg-primary/5" role="status">
           <CheckCircle2 className="size-4" />
@@ -223,7 +223,7 @@ export function ChallengeClient({
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <CardTitle className="flex items-center gap-2 font-heading"><Swords className="size-5 text-primary" />当前挑战</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">先认真读题，再结合原文和自己的理解完成作答。</p>
+              <p className="mt-1 text-sm text-muted-foreground">先读清题目要求，再结合学习内容和自己的理解作答。</p>
             </div>
             <Button type="button" variant="outline" disabled={!canGenerate} onClick={generateChallenge}>
               {state === 'generating' ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RotateCcw className="mr-2 size-4" />}
@@ -251,7 +251,7 @@ export function ChallengeClient({
 
               <div className="space-y-2">
                 <Label htmlFor="challenge-answer">你的作答</Label>
-                <Textarea id="challenge-answer" value={answer} onChange={(event) => setAnswer(event.target.value)} disabled={challenge.evaluation_state === 'evaluated' || Boolean(challengeBlocked)} className="min-h-40" placeholder="结合原文、关键字句和自己的理解作答。" />
+                <Textarea id="challenge-answer" value={answer} onChange={(event) => setAnswer(event.target.value)} disabled={challenge.evaluation_state === 'evaluated' || Boolean(challengeBlocked)} className="min-h-40" placeholder="结合学习内容和自己的理解作答。" />
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

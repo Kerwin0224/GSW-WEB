@@ -68,7 +68,7 @@ export function SpacePanel({ spaces, classes, studentOptions, defaultSubject }: 
       <CardHeader className="border-b border-border/60 px-5 py-5 sm:px-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <CardTitle className="font-heading text-xl">空间编目</CardTitle>
+            <CardTitle className="font-heading text-xl">空间管理</CardTitle>
             <CardDescription className="mt-1 max-w-2xl">每个科目有自己的空间。学生进入空间后，项目、会话和挑战都在这个范围内。</CardDescription>
           </div>
           <Button type="button" size="sm" variant={creating ? 'default' : 'outline'} onClick={() => setCreating(true)} className="cursor-pointer">
@@ -180,8 +180,8 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject, onCreated
           {subjectError ? <p id="space-subject-error" className="text-xs text-destructive">{subjectError}</p> : null}
         </div>
         <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">空间书脊色</legend>
-          <div role="radiogroup" aria-label="空间书脊色" className="grid grid-cols-3 gap-2">
+          <legend className="text-sm font-medium">空间标识色</legend>
+          <div role="radiogroup" aria-label="空间标识色" className="grid grid-cols-3 gap-2">
             {SPACE_COLOR_KEYS.map((key) => (
               <button
                 key={key}
@@ -199,7 +199,7 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject, onCreated
           <input type="hidden" name="color_key" value={colorKey} />
         </fieldset>
         <div className="space-y-2">
-          <Label htmlFor="space-theme">归类主题</Label>
+          <Label htmlFor="space-theme">空间归类规则（主题）</Label>
           <Textarea id="space-theme" name="theme" value={theme} onChange={(event) => setTheme(event.target.value)} placeholder={THEME_PLACEHOLDER} className="min-h-36" />
           <p className="text-xs leading-5 text-muted-foreground">只写「本空间怎么归类」。两行输出协议与「无法归属」约定由系统自动拼接，不需要你重复，也改不动。</p>
         </div>
@@ -370,7 +370,7 @@ function ArchiveButton({ space, onArchived }: { space: TeacherSpace; onArchived?
               <li className="flex justify-between gap-3"><span className="text-muted-foreground">已拉入班级</span><span className="font-medium">{space.classes.length} 个</span></li>
             </ul>
             {/* 项目与会话数：数据层没有随空间返回这个口径，不能编。改成把「不会丢什么」讲清楚。 */}
-            <p className="text-xs leading-5 text-muted-foreground">空间内已沉淀的项目、会话与挑战数据不会被删除，学生和班主任仍可正常查看，只是不再挂在这个空间的主题下。</p>
+            <p className="text-xs leading-5 text-muted-foreground">空间内已沉淀的项目、会话与挑战数据不会被删除，学生仍可正常查看，只是不再挂在这个空间的归类规则下。</p>
             {state.message ? <p className={state.ok ? 'rounded-lg border border-primary/30 bg-primary/10 p-2 text-sm text-primary' : 'rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive'} role={state.ok ? 'status' : 'alert'}>{state.message}</p> : null}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setConfirmOpen(false)} disabled={pending}>取消</Button>

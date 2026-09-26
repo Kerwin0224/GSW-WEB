@@ -26,7 +26,7 @@ export async function GET(req: Request) {
       .eq('id', parsed.data.batchId)
       .single();
 
-    if (error || !data) return Response.json({ error: `导出批次不存在：${error?.message ?? 'not found'}` }, { status: 404 });
+    if (error || !data) return Response.json({ error: '找不到该导出批次，可能已被清理；请回到导出历史重新生成批次。' }, { status: 404 });
 
     return new Response(data.jsonl, {
       headers: {

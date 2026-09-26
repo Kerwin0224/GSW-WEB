@@ -32,7 +32,7 @@ export function BatchDownloadButton({ batchId, label = '下载', variant = 'outl
           const response = await fetch(`/api/admin/datasets/download?batchId=${batchId}`);
           if (!response.ok) {
             const data = await response.json().catch(() => null);
-            toast.error(data?.error ?? `下载失败（HTTP ${response.status}）。`);
+            toast.error(data?.error ?? `下载失败（HTTP ${response.status}），请到导出历史重新生成批次后下载。`);
             return;
           }
           const blob = await response.blob();

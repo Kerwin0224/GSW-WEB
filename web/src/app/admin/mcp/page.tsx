@@ -27,7 +27,7 @@ export default async function AdminMcpPage() {
         description="查看远程地址、角色、工具白名单和最近一次连接测试；配置完整不等于已经连通。"
         metrics={[
           { label: 'Server', value: servers.length, hint: '已登记 MCP 能力' },
-          { label: '已启用', value: enabledCount, hint: '显式 enabled' },
+          { label: '已启用', value: enabledCount, hint: '已开启启用开关的 Server' },
           { label: '配置完整', value: completeCount, hint: '地址、角色和工具均已填写' },
         ]}
       />

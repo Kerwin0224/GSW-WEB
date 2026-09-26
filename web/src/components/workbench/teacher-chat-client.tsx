@@ -149,7 +149,7 @@ export function TeacherChatClient({
   const busy = status === 'submitted' || status === 'streaming';
   const recentPresets = useMemo(() => presets.slice(0, 5), [presets]);
   const currentSession = sessions.find((session) => session.id === conversationId);
-  const currentSessionTitle = conversationId ? currentSession?.title ?? initialConversation?.title ?? '当前会话' : '新会话';
+  const currentSessionTitle = conversationId ? currentSession?.title ?? initialConversation?.title ?? '当前问答' : '新问答';
   const [sessionQuery, setSessionQuery] = useState('');
   const [showAllSessions, setShowAllSessions] = useState(false);
   // 服务端只回最近 12 条，这里默认只铺开 5 条，剩下的交给「更多」，
@@ -285,29 +285,29 @@ export function TeacherChatClient({
           <section className="rounded-2xl border border-primary/18 bg-background/72 p-4 shadow-soft">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">会话管理</p>
+                <p className="text-xs font-medium text-primary">问答记录</p>
                 <h2 className="mt-2 font-heading text-xl tracking-tight">备课问答</h2>
-                <p className="mt-2 text-xs leading-5 text-muted-foreground">切换历史会话，继续准备课堂内容。</p>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">切换历史问答，继续准备课堂内容。</p>
               </div>
               <Button type="button" size="sm" onClick={openNewConversation} disabled={busy} className="min-h-10 cursor-pointer rounded-xl shadow-ink">
-                <Plus className="size-4" />新会话
+                <Plus className="size-4" />新问答
               </Button>
             </div>
           </section>
 
           <section className="rounded-2xl border border-border/65 bg-card/86 p-3 shadow-soft">
             <div className="mb-3 flex items-center justify-between gap-2 px-1">
-              <label htmlFor="teacher-session-search" className="sr-only">搜索历史会话</label>
+              <label htmlFor="teacher-session-search" className="sr-only">搜索历史问答</label>
               <input
                 id="teacher-session-search"
                 value={sessionQuery}
                 onChange={(event) => setSessionQuery(event.target.value)}
-                placeholder="搜索历史会话标题"
+                placeholder="搜索历史问答标题"
                 className="min-h-10 min-w-0 flex-1 rounded-lg border border-border/65 bg-background/78 px-3 text-sm outline-none placeholder:text-muted-foreground/70 focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-ring"
               />
               <Badge variant="outline" className="shrink-0">{sessions.length}</Badge>
             </div>
-            {sessionQuery ? <p className="mb-2 px-1 text-xs text-muted-foreground" role="status">匹配 {visibleSessions.length} 条历史会话。</p> : null}
+            {sessionQuery ? <p className="mb-2 px-1 text-xs text-muted-foreground" role="status">匹配 {visibleSessions.length} 条历史问答。</p> : null}
             <button
               type="button"
               onClick={openNewConversation}
@@ -315,12 +315,12 @@ export function TeacherChatClient({
               className={cn('mb-2 flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-xl border border-dashed px-3 py-3 text-left text-xs transition-[border-color,background-color,color] duration-200 hover:border-primary/35 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', !conversationId && 'border-primary/45 bg-primary/7 text-primary')}
             >
               <Sparkles className="size-3.5 shrink-0" aria-hidden="true" />
-              从空白输入开始一个新会话
+              新建一条教师问答
             </button>
             {sessions.length === 0 ? (
-              <div className="rounded-xl border border-dashed bg-background/50 px-3 py-4 text-xs text-muted-foreground">暂无历史会话。</div>
+              <div className="rounded-xl border border-dashed bg-background/50 px-3 py-4 text-xs text-muted-foreground">暂无历史问答。</div>
             ) : visibleSessions.length === 0 ? (
-              <div className="rounded-xl border border-dashed bg-background/50 px-3 py-4 text-xs text-muted-foreground">没有匹配「{sessionQuery}」的历史会话。</div>
+              <div className="rounded-xl border border-dashed bg-background/50 px-3 py-4 text-xs text-muted-foreground">没有匹配「{sessionQuery}」的历史问答。</div>
             ) : (
               <>
                 {/* 生成中不允许切会话：切换会重挂载整个客户端，正在流式输出的那条回答会被丢掉。
@@ -336,13 +336,13 @@ export function TeacherChatClient({
                     />
                   ))}
                 </div>
-                {busy ? <p className="mt-2 px-1 text-xs text-muted-foreground" role="status">正在回答，暂不能切换或删除历史会话。</p> : null}
+                {busy ? <p className="mt-2 px-1 text-xs text-muted-foreground" role="status">正在回答，暂不能切换或删除历史问答。</p> : null}
                 {!sessionQuery && !showAllSessions && sessions.length > 5 ? (
                   <Button type="button" variant="ghost" size="sm" onClick={() => setShowAllSessions(true)} className="mt-2 w-full cursor-pointer text-xs">
                     更多（还有 {sessions.length - 5} 条）
                   </Button>
                 ) : null}
-                <p className="mt-2 px-1 text-xs text-muted-foreground">这里只加载最近 12 条会话，更早的记录不在列表里。</p>
+                <p className="mt-2 px-1 text-xs text-muted-foreground">这里只加载最近 12 条问答，更早的记录不在列表里。</p>
               </>
             )}
           </section>
@@ -361,7 +361,7 @@ export function TeacherChatClient({
             </CardHeader>
             <CardContent className="space-y-3 px-4 py-4">
               {recentPresets.length === 0 ? (
-                <BlockedState title="暂无可用提示词模板" description="可以先直接提问；需要复用固定问法时，点击下方按钮创建模板。" />
+                <BlockedState title="暂无教学模板" description="可以先直接提问；需要复用固定问法时，点击下方按钮创建模板。" />
               ) : (
                 <div className="grid gap-2">
                   {recentPresets.map((preset) => (
@@ -392,11 +392,10 @@ export function TeacherChatClient({
                 <p className="text-sm font-medium text-muted-foreground">当前会话</p>
                 <p className="font-heading text-2xl tracking-tight">{currentSessionTitle}</p>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {conversationId ? '继续围绕当前问题链追问、上传附件或套用模板。' : '从空白输入开始，不打断备课问答节奏。'}
+                  {conversationId ? '继续围绕当前问题链追问、上传附件或套用模板。' : '新建一条备课问答，历史记录会保留在左侧列表。'}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Badge className="w-fit border-primary/25 bg-primary/8 text-primary" variant="outline">{conversationId ? '继续会话' : '新会话'}</Badge>
                 <Badge className="w-fit" variant="secondary">{uploadStatus ? '已含附件' : '可传附件'}</Badge>
               </div>
             </div>
@@ -449,7 +448,7 @@ export function TeacherChatClient({
         <DialogContent>
           <DialogHeader>
              <DialogTitle>删除备课会话</DialogTitle>
-             <DialogDescription>删除后，这条备课问答会话会从侧栏移除，相关附件也不再用于这条会话。</DialogDescription>
+             <DialogDescription>删除后这条备课问答会从列表移除，相关附件不再用于这条问答，且无法在本产品内恢复。</DialogDescription>
           </DialogHeader>
           <div className="rounded-lg border bg-muted/40 p-3 text-sm">{deleteTarget?.title}</div>
           {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}

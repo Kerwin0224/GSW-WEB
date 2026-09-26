@@ -39,7 +39,7 @@ export function Pagination({
   return (
     <nav className={cn('flex flex-wrap items-center justify-between gap-3', className)} aria-label="分页">
       <p className="text-xs text-muted-foreground" aria-live="polite">
-        第 {from}–{to} {itemLabel}，共 {total} {itemLabel} · 第 {current}/{pageCount} 页
+        第 {from}–{to}，共 {total} {itemLabel} · 第 {current}/{pageCount} 页
       </p>
       <div className="flex items-center gap-2">
         {current > 1 ? (

@@ -156,7 +156,7 @@ export function CapabilityAssignmentDialog({ provider, gate }: { provider: Provi
         </Button>
       }
       title={`配置 Embedding — ${provider.name}`}
-       description="学生提问、备课问答、挑战和 AI 初筛由场景路由映射统一管理；这里仅配置向量嵌入模型。"
+       description="学生提问、教师问答、挑战和 AI 预审由场景路由映射统一管理；这里仅配置向量嵌入模型。"
       icon={<SlidersHorizontal className="size-5" />}
       footer={(
         <Button onClick={submit} disabled={submitting || !modelId.trim()} type="button">

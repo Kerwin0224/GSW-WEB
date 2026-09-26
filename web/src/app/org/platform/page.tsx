@@ -39,7 +39,7 @@ export default async function OrgPlatformPage() {
       <WorkspaceHero
         eyebrow="公司管理 / 平台配置"
         title="模型与工具"
-        description="公司级模板是全校共用的兜底：学校没自带模型网关或 MCP 时用它。学校自带的那份由各校管理员在自家后台维护。"
+        description="公司级模板是全校共用的兜底：学校没自带模型服务或 MCP 时用它。学校自带的那份由校管理员在自家后台维护。"
         metrics={[
           { label: '模型供应商', value: providers.length, hint: `其中公司级模板 ${companyProviders} 个` },
           { label: 'MCP Server', value: servers.length, hint: `其中公司级模板 ${companyServers} 个` },

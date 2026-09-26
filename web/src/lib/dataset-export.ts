@@ -118,7 +118,7 @@ async function fetchAuditRecords(
         const scoped = chunkIds ? query.in('source_conversation_id', chunkIds) : query;
         return scoped.not('source_message_id', 'is', null).order('created_at', { ascending: false }).range(from, to);
       },
-      '查询审计记录失败',
+      '查询审阅记录失败',
     );
     if (error) return { records: [], latestRecords: [], error };
     auditRows.push(...rows);
@@ -188,7 +188,7 @@ export async function exportDataset(
     if (error) {
       return {
         success: false,
-        error: `查询审计记录失败：${error}`,
+        error: `查询审阅记录失败：${error}`,
         resolution: '请检查筛选条件是否合法，或确认数据库连接正常。',
       };
     }
@@ -198,7 +198,7 @@ export async function exportDataset(
       return {
         success: false,
         empty: true,
-        error: '没有符合条件的审计记录可导出',
+        error: '没有符合条件的审阅记录可导出',
         resolution: '请放宽筛选条件，或确认存在尚未导出的最新可导出样本。',
       };
     }
@@ -237,7 +237,7 @@ export async function exportDataset(
     const message = error instanceof Error ? error.message : 'Unknown error';
     return {
       success: false,
-      error: `数据集导出失败：${message}`,
+      error: `教学数据导出失败：${message}`,
     };
   }
 }
@@ -251,7 +251,7 @@ export async function previewDataset(
     const { records, latestRecords, error } = await fetchAuditRecords(type, filters, limit);
     if (error) {
       return {
-        error: `查询审计记录失败：${error}`,
+        error: `查询审阅记录失败：${error}`,
         resolution: '请检查筛选条件是否合法，或确认数据库连接正常。',
       };
     }
