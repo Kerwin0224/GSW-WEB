@@ -42,9 +42,9 @@ export default async function AdminProvidersPage() {
             <ProviderConfigDialog />
           )}
         />
-        {/* 不传 canEditScenarioRouting：场景路由是公司级资产，编辑入口只在 /org/platform；
-            本页角色恒为 admin（见上方 requireProfile('admin')），传它只会是恒 false 的死分支。 */}
-        <ProviderCapabilityMatrix providers={providers} modelTiers={modelTiers} scenarioTierBindings={scenarioTierBindings} />
+        {/* 不传 canEditScenarioRouting：场景路由是公司级资产，编辑入口只在 /org/platform。
+            viewerRole='admin'：本页恒为校管理员，公司级模板对公司以外只读。 */}
+        <ProviderCapabilityMatrix providers={providers} modelTiers={modelTiers} scenarioTierBindings={scenarioTierBindings} viewerRole="admin" />
       </section>
     </div>
   );

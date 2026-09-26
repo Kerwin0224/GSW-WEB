@@ -58,7 +58,7 @@ export function AppSidebar({ role }: AppSidebarProps) {
                       isActive={active}
                       tooltip={`${item.label}${item.description ? ` · ${item.description}` : ''}`}
                       render={<Link href={item.href} aria-label={item.label} aria-current={active ? 'page' : undefined} onClick={() => setOpenMobile(false)} />}
-                      className="h-11 cursor-pointer gap-3 rounded-lg px-3 text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground data-active:bg-sidebar-accent data-active:text-sidebar-primary group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-11! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! [&>svg]:size-5"
+                      className="cursor-pointer gap-3 rounded-lg px-3 text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground data-active:bg-sidebar-accent data-active:text-sidebar-primary [&>svg]:size-5"
                     >
                       <Icon className="size-4" aria-hidden="true" />
                       <span className="truncate group-data-[collapsible=icon]:hidden">{item.label}</span>

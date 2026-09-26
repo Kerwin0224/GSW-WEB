@@ -258,7 +258,7 @@ export async function getTeacherConversation(conversationId: string): Promise<Da
 //   · 选中态只能存在客户端 state 里，于是看板点进来落不到具体会话
 // 现在：列表只取导航需要的字段，详情按会话 id 单独取，选中态放进 URL。
 
-export type TeacherAuditQueueStatus = 'pending' | 'all';
+export type TeacherAuditQueueStatus = 'pending' | 'finalized';
 export type TeacherAuditQueueOptions = { page?: number; pageSize?: number; status?: TeacherAuditQueueStatus };
 export type { PreReviewState, AuditQueueSession, AuditQueueGroup } from '@/lib/audit-queue';
 
@@ -268,6 +268,8 @@ export type TeacherAuditQueuePage = {
   total: number;
   /** 待核实会话总数（不受筛选/分页影响）。 */
   pendingTotal: number;
+  /** 已核实会话总数（不受筛选/分页影响）——与 pendingTotal 对称，好让教师看到进度。 */
+  finalizedTotal: number;
   page: number;
   pageSize: number;
   status: TeacherAuditQueueStatus;
@@ -356,10 +358,11 @@ export async function getTeacherAuditQueue(options: TeacherAuditQueueOptions = {
   const page = Math.max(1, options.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, options.pageSize ?? 20));
   const status: TeacherAuditQueueStatus = options.status ?? 'pending';
-  const emptyPage = { groups: [], total: 0, pendingTotal: 0, page, pageSize, status };
-  if (classScope.classIds.length === 0) return ok(emptyPage);
+  const emptyPage = { groups: [], total: 0, pendingTotal: 0, finalizedTotal: 0, page, pageSize, status };
 
   const supabase = await createClient();
+  // pending / 不过滤两个分支就够：已核实数 = 不过滤 - pending，两者恰好构成同一批会话的划分。
+  // （再加一个 .not() 分支，这个 builder 的泛型会展开到 TS 直接报 TS2589。）
   const countScoped = (pendingOnly: boolean) => {
     const query = supabase
       .from('conversations')
@@ -371,7 +374,7 @@ export async function getTeacherAuditQueue(options: TeacherAuditQueueOptions = {
     return pendingOnly ? query.is('finalized_at', null) : query;
   };
 
-  let queueQuery = supabase
+  const scopedQuery = supabase
     .from('conversations')
     .select('id,title,class_id,project_id,updated_at,finalized_at,profiles(display_name),projects(name),classes(name)', { count: 'exact' })
     .in('class_id', classScope.classIds)
@@ -379,20 +382,32 @@ export async function getTeacherAuditQueue(options: TeacherAuditQueueOptions = {
     .is('deleted_at', null)
     .not('project_id', 'is', null)
     .order('updated_at', { ascending: false });
-  if (status === 'pending') queueQuery = queueQuery.is('finalized_at', null);
+  const range = { from: (page - 1) * pageSize, to: page * pageSize - 1 };
 
-  const [queueResult, pendingResult, auditCap] = await Promise.all([
-    queueQuery.range((page - 1) * pageSize, page * pageSize - 1),
+  // 过滤在 SQL 里做完：JS 端再筛一次就是当初「已核实的占坑、把未核实的挤出去」那个 bug。
+  // 分页查询单独 await，不和计数一起进 Promise.all：这个 select 带三处嵌套关系，
+  // builder 的泛型已经在 TS 的实例化深度边缘，把两种过滤形态收进同一个数组就报 TS2589。
+  // `.not<'finalized_at'>` 上那个显式类型参数同理：不写它，重载解析会一路展开到 TS2589。
+  const queueResult = status === 'pending'
+    ? await scopedQuery.is('finalized_at', null).range(range.from, range.to)
+    : await scopedQuery.not<'finalized_at'>('finalized_at', 'is', null).range(range.from, range.to);
+
+  const [pendingResult, scopedResult, auditCap] = await Promise.all([
     countScoped(true),
+    countScoped(false),
     getCapability('audit_assist'),
   ]);
   if (queueResult.error) return fail('error', `学习记录核实加载失败：${queueResult.error.message}`);
   if (pendingResult.error) return fail('error', `待核实数量统计失败：${pendingResult.error.message}`);
+  if (scopedResult.error) return fail('error', `已核实数量统计失败：${scopedResult.error.message}`);
 
   const conversationRows = (queueResult.data ?? []) as QueueConversationRow[];
   const total = queueResult.count ?? 0;
   const pendingTotal = pendingResult.count ?? 0;
-  if (conversationRows.length === 0) return ok({ ...emptyPage, total, pendingTotal });
+  // 已核实 = 本范围全部 − 待核实；两者是同一批会话的划分，所以减法是精确的，
+  // 不受当前筛选与分页影响。
+  const finalizedTotal = Math.max((scopedResult.count ?? 0) - pendingTotal, 0);
+  if (conversationRows.length === 0) return ok({ ...emptyPage, total, pendingTotal, finalizedTotal });
 
   const conversationIds = conversationRows.map((row) => row.id);
   const [messageResult, preReviewResult] = await Promise.all([
@@ -449,7 +464,7 @@ export async function getTeacherAuditQueue(options: TeacherAuditQueueOptions = {
     }];
   });
 
-  return ok({ groups: buildAuditQueueGroups(entries), total, pendingTotal, page, pageSize, status });
+  return ok({ groups: buildAuditQueueGroups(entries), total, pendingTotal, finalizedTotal, page, pageSize, status });
 }
 
 /**

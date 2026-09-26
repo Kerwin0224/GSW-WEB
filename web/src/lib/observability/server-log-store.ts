@@ -6,6 +6,8 @@ import path from 'node:path';
 
 import { createDatabaseSessionSignature } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
+
+import type { LogSource } from '@/lib/observability/admin-log-presentation';
 import { emitLogEvent, sanitizeLogEvent, type LogEvent } from '@/lib/observability/log-event';
 
 const LOG_DIR = path.join(process.cwd(), '.logs');
@@ -104,22 +106,33 @@ export type AppEventFilters = {
   traceId?: string;
   userId?: string;
   search?: string;
+  /** 时间范围下界（ISO），下推到 created_at，避免"窗口外搜不到"。 */
+  since?: string;
 };
+
+function matchesTrace(event: StoredLogEvent, needle: string): boolean {
+  const candidates = [
+    event.requestId,
+    event.context?.['trace_id'],
+    event.context?.['traceId'],
+  ].filter((value): value is string => typeof value === 'string');
+  return candidates.some((candidate) => candidate.toLowerCase().includes(needle));
+}
 
 function eventMatchesFilters(event: StoredLogEvent, filters: AppEventFilters) {
   if (filters.level && event.level !== filters.level) return false;
 
   const traceId = filters.traceId?.trim().toLowerCase();
-  if (traceId) {
-    const eventTrace = String(event.requestId ?? event.context?.trace_id ?? event.context?.traceId ?? '').toLowerCase();
-    if (!eventTrace.includes(traceId)) return false;
-  }
+  if (traceId && !matchesTrace(event, traceId)) return false;
 
   const userId = filters.userId?.trim().toLowerCase();
   if (userId) {
     const eventUser = String(event.context?.user_id ?? event.context?.userId ?? event.context?.profile_id ?? '').toLowerCase();
     if (!eventUser.includes(userId)) return false;
   }
+
+  const since = filters.since ? Date.parse(filters.since) : Number.NaN;
+  if (Number.isFinite(since) && Date.parse(event.timestamp) < since) return false;
 
   const search = filters.search?.trim().toLowerCase();
   if (search) {
@@ -140,6 +153,7 @@ function eventMatchesFilters(event: StoredLogEvent, filters: AppEventFilters) {
 
   return true;
 }
+
 
 type AppLogEventRow = {
   created_at: string;
@@ -185,6 +199,12 @@ function orIlikeContains(column: string, term: string) {
   return `${column}.ilike."%${escaped}%"`;
 }
 
+
+export type AppEventReadResult = {
+  readonly source: LogSource;
+  readonly events: readonly StoredLogEvent[];
+};
+
 /**
  * 优先读数据库（生产唯一持久通道，管理员经 RLS 读取），
  * 数据库不可用或非管理员会话（本地开发）时回落本地 .logs 文件。
@@ -192,55 +212,107 @@ function orIlikeContains(column: string, term: string) {
  * 过滤条件交给数据库判定：先前是在内存里过滤一个固定取样窗口，窗口之外的匹配事件
  * 永远搜不到，管理员会把「窗口里没有」误读成「没发生过」。
  */
-export async function readRecentAppEvents(limit = 80, filters: AppEventFilters = {}): Promise<StoredLogEvent[]> {
+export async function readRecentAppEvents(limit = 80, filters: AppEventFilters = {}): Promise<AppEventReadResult> {
   // try 正常完成时在下方赋值、抛异常时由 catch 赋值，进入文件回落前必然已有值
   let databaseCause: unknown;
   try {
-    const supabase = await createClient();
-    let query = supabase
-      .from('app_log_events')
-      .select('created_at,level,area,event,route,method,status,request_id,message,digest,context')
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (filters.level) query = query.eq('level', filters.level);
-
-    const traceId = filters.traceId?.trim();
-    if (traceId) query = query.ilike('request_id', `%${literalLikeTerm(traceId)}%`);
-
-    // context 是 jsonb，PostgREST 不能整篇全文匹配；其中真正要检索的 trace/user 标识
-    // 各有专用过滤框，所以搜索只覆盖日志行自身的文本列。
-    const search = filters.search?.trim();
-    if (search) {
-      query = query.or(
-        ['event', 'message', 'route', 'area', 'method'].map((column) => orIlikeContains(column, search)).join(','),
-      );
-    }
-
-    const userId = filters.userId?.trim();
-    if (userId) {
-      query = query.or(
-        ['context->>user_id', 'context->>profile_id'].map((column) => orIlikeContains(column, userId)).join(','),
-      );
-    }
-
-    const { data, error } = await query;
-    if (!error && data) {
-      return (data as AppLogEventRow[]).map(rowToStoredEvent);
-    }
-    databaseCause = error;
+    const result = await queryAppLogEvents(filters, { limit });
+    return { source: 'database', events: result.rows.map(rowToStoredEvent) };
   } catch (error) {
     databaseCause = error;
   }
   try {
-    return (await readTailUtf8Lines(APP_LOG_FILE, APP_EVENT_TAIL_BYTES))
+    const events = (await readTailUtf8Lines(APP_LOG_FILE, APP_EVENT_TAIL_BYTES))
       .map((line) => JSON.parse(line) as StoredLogEvent)
       .filter((event) => eventMatchesFilters(event, filters))
       .slice(-limit)
       .reverse();
+    return { source: 'file', events };
   } catch (fileCause) {
     throw new AppLogReadError(databaseCause, fileCause);
   }
+}
+
+export type AppEventCount = { readonly count: number; readonly source: LogSource };
+
+/**
+ * 时间范围内的条数。概览页原先统计"最近 6 条里有几条 error"并叫它"技术错误"，
+ * 那是取样窗口不是系统状态；概览要的是选定时间范围内的真实计数。
+ */
+export async function countLogEvents(filters: AppEventFilters = {}): Promise<AppEventCount> {
+  try {
+    const result = await queryAppLogEvents(filters, { count: true });
+    return { count: result.count ?? 0, source: 'database' };
+  } catch {
+    // 数据库读不到时退回文件通道；两条通道都读不到时返回 0，由页面显示"不可用"。
+  }
+  try {
+    const events = (await readTailUtf8Lines(APP_LOG_FILE, APP_EVENT_TAIL_BYTES))
+      .map((line) => JSON.parse(line) as StoredLogEvent)
+      .filter((event) => eventMatchesFilters(event, filters));
+    return { count: events.length, source: 'file' };
+  } catch {
+    return { count: 0, source: 'file' };
+  }
+}
+
+type AppLogEventQueryResult = {
+  readonly rows: AppLogEventRow[];
+  readonly count: number | null;
+};
+
+/**
+ * 过滤条件全部下推到 PostgREST：先前是在内存里过滤一个固定取样窗口，
+ * 窗口之外的匹配事件永远搜不到，管理员会把「窗口里没有」误读成「没发生过」。
+ * 读取与计数共用这一个查询构造器，两处口径不会漂移。
+ */
+async function queryAppLogEvents(
+  filters: AppEventFilters,
+  options: { readonly limit?: number; readonly count?: boolean },
+): Promise<AppLogEventQueryResult> {
+  const supabase = await createClient();
+  const query = supabase
+    .from('app_log_events')
+    .select('created_at,level,area,event,route,method,status,request_id,message,digest,context', {
+      count: options.count ? 'exact' : undefined,
+      head: options.count === true,
+    })
+    .order('created_at', { ascending: false });
+
+  if (options.limit) query.limit(options.limit);
+  if (filters.level) query.eq('level', filters.level);
+  if (filters.since) query.gte('created_at', filters.since);
+
+  // trace 检索必须同时命中 request_id 与 context 里的 trace 标识：请求级日志写 request_id，
+  // 业务侧日志只写 context.trace_id，只查其中一列会让「按 Trace ID 检索」永远查不到东西。
+  const traceId = filters.traceId?.trim();
+  if (traceId) {
+    query.or(
+      ['request_id', 'context->>trace_id', 'context->>traceId']
+        .map((column) => orIlikeContains(column, traceId))
+        .join(','),
+    );
+  }
+
+  // context 是 jsonb，PostgREST 不能整篇全文匹配；其中真正要检索的 trace/user 标识
+  // 各有专用过滤框，所以关键字搜索只覆盖日志行自身的文本列。
+  const search = filters.search?.trim();
+  if (search) {
+    query.or(
+      ['event', 'message', 'route', 'area', 'method'].map((column) => orIlikeContains(column, search)).join(','),
+    );
+  }
+
+  const userId = filters.userId?.trim();
+  if (userId) {
+    query.or(
+      ['context->>user_id', 'context->>profile_id'].map((column) => orIlikeContains(column, userId)).join(','),
+    );
+  }
+
+  const { data, count, error } = await query;
+  if (error) throw new Error(error.message);
+  return { rows: (data ?? []) as AppLogEventRow[], count: count ?? null };
 }
 
 

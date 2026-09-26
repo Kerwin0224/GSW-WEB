@@ -1,12 +1,12 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { Calendar, Download, Eye, Filter, Loader2 } from 'lucide-react';
+import { Calendar, CheckCircle2, Eye, Filter, Info, Loader2, XCircle } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { AdminDialogShell } from '@/components/workbench/admin-dialog-shell';
 import type { DatasetType, PreviewResult } from '@/lib/dataset-export-record';
+import { BatchDownloadButton } from './batch-download-button';
 
 interface DatasetFilters {
   startDate?: string;
@@ -24,26 +25,30 @@ interface DatasetFilters {
 
 type DatasetPreview = Extract<PreviewResult, { totalCount: number }>;
 
+/** 弹窗内的结果分级：空结果是中性提示，不是"导出成功"。 */
+type Outcome = { tone: 'info' | 'success' | 'error'; title: string; message: string } | null;
+
 export default function DatasetExportClient() {
+  const router = useRouter();
   const [type, setType] = useState<DatasetType>('sft');
   const [filters, setFilters] = useState<DatasetFilters>({ scope: 'unexported' });
   const [preview, setPreview] = useState<DatasetPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<Outcome>(null);
+  const [lastBatchId, setLastBatchId] = useState<string | null>(null);
 
   const changeType = (value: string | null) => {
     if (value !== 'sft' && value !== 'dpo' && value !== 'metadata') return;
     setType(value);
     setPreview(null);
-    setSuccess(null);
+    setOutcome(null);
   };
 
   const changeFilters = (nextFilters: DatasetFilters) => {
     setFilters(nextFilters);
     setPreview(null);
-    setSuccess(null);
+    setOutcome(null);
   };
 
   const requestExport = async (previewOnly: boolean) => {
@@ -53,8 +58,7 @@ export default function DatasetExportClient() {
     } else {
       setExporting(true);
     }
-    setError(null);
-    setSuccess(null);
+    setOutcome(null);
 
     try {
       const response = await fetch('/api/admin/datasets/export', {
@@ -65,22 +69,30 @@ export default function DatasetExportClient() {
       const data = await response.json();
       // 空结果不是故障：服务端返回 200 + empty，按中性提示呈现。
       if (data.empty) {
-        setSuccess(data.error || '当前筛选条件下没有可导出的记录');
+        setOutcome({ tone: 'info', title: '没有可导出的记录', message: data.error || '当前筛选条件下没有可导出的记录' });
         return;
       }
       if (!response.ok || 'error' in data) {
-        setError(data.error || '请求失败');
+        const failure = data.error || '请求失败';
+        setOutcome({ tone: 'error', title: '导出失败', message: data.resolution ? `${failure}。处理建议：${data.resolution}` : failure });
         return;
       }
       if (previewOnly) {
         setPreview(data);
+        setOutcome({ tone: 'info', title: '预览已生成', message: `候选 ${data.coverage.eligibleRecords} 条，其中有效 ${data.coverage.validRecords} 条。确认无误后再生成批次。` });
       } else {
-        setSuccess(`成功导出 ${data.recordCount} 条记录`);
+        setLastBatchId(data.batchId ?? null);
         setPreview(null);
-        if (data.downloadUrl) window.location.href = data.downloadUrl;
+        setOutcome({
+          tone: 'success',
+          title: '导出成功',
+          message: `成功导出 ${data.recordCount} 条记录，批次 ${data.batchId}。可在下方下载，或到本页"导出历史"随时重下。`,
+        });
+        // 历史表格在页面下方；成功后刷新，让新批次立刻出现在列表里。
+        router.refresh();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '网络请求失败');
+      setOutcome({ tone: 'error', title: '导出失败', message: err instanceof Error ? err.message : '网络请求失败' });
     } finally {
       setLoading(false);
       setExporting(false);
@@ -101,19 +113,25 @@ export default function DatasetExportClient() {
         icon={<Filter className="size-5" />}
         className="max-w-3xl"
         footer={(
-          <>
+          <div className="flex w-full flex-wrap items-center justify-end gap-2">
+            {outcome ? (
+              <span className={`mr-auto text-xs ${outcome.tone === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}>
+                {outcome.title}
+              </span>
+            ) : null}
+            {lastBatchId ? <BatchDownloadButton batchId={lastBatchId} label="下载本批次" variant="secondary" /> : null}
             <Button variant="outline" onClick={() => requestExport(true)} disabled={loading || exporting}>
               {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Eye className="mr-2 size-4" />}
               预览样本
             </Button>
             <Button onClick={() => requestExport(false)} disabled={loading || exporting || !preview || preview.coverage.validRecords === 0}>
-              {exporting ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Download className="mr-2 size-4" />}
-              生成并下载
+              {exporting ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+              生成批次
             </Button>
-          </>
+          </div>
         )}
       >
-          <div className="space-y-4">
+        <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>数据集类型</Label>
@@ -164,71 +182,63 @@ export default function DatasetExportClient() {
           <p className="text-xs text-muted-foreground">
             先预览样本再导出；默认只导出尚未导出过的可导出样本，可切换为全部历史样本再次生成新批次。
           </p>
-          </div>
-      </AdminDialogShell>
 
-      {error ? (
-        <Alert variant="destructive">
-          <AlertTitle>导出失败</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      ) : null}
-      {success ? (
-        <Alert>
-          <AlertTitle>导出成功</AlertTitle>
-          <AlertDescription>{success}</AlertDescription>
-        </Alert>
-      ) : null}
+          {outcome ? (
+            <Alert variant={outcome.tone === 'error' ? 'destructive' : 'default'} role={outcome.tone === 'error' ? 'alert' : 'status'}>
+              {outcome.tone === 'error' ? <XCircle className="size-4" /> : outcome.tone === 'success' ? <CheckCircle2 className="size-4" /> : <Info className="size-4" />}
+              <AlertTitle>{outcome.title}</AlertTitle>
+              <AlertDescription>{outcome.message}</AlertDescription>
+            </Alert>
+          ) : null}
 
-      {preview ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>数据预览</CardTitle>
-            <CardDescription>共 {preview.totalCount} 条{filters.scope === 'all' ? '历史' : '尚未导出'}可导出候选，展示 {preview.sampleRecords.length} 条有效样本。</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid gap-3 md:grid-cols-4">
-              <Badge variant="outline">候选 {preview.coverage.eligibleRecords}</Badge>
-              <Badge variant="secondary">有效 {preview.coverage.validRecords}</Badge>
-              <Badge variant={preview.coverage.invalidRecords > 0 ? 'destructive' : 'outline'}>无效 {preview.coverage.invalidRecords}</Badge>
-              <Badge variant="outline">预览上限 {preview.coverage.sampleLimit}</Badge>
-            </div>
-            <div className="rounded-lg border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>项目</TableHead>
-                    <TableHead>样本数</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {preview.projectDistribution.length === 0 ? (
-                    <TableRow><TableCell colSpan={2}>暂无项目分布</TableCell></TableRow>
-                  ) : (
-                    preview.projectDistribution.map((item) => (
-                      <TableRow key={item.name}>
-                        <TableCell>{item.name}</TableCell>
-                        <TableCell>{item.count}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-            <div className="space-y-3">
-              {preview.sampleRecords.map((record, index) => (
-                <div key={'metadata' in record ? record.metadata.sampleId : record.sampleId} className="rounded-lg border bg-muted/30 p-4">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">样本 #{index + 1}</span>
-                    <span className="text-xs text-muted-foreground">{type.toUpperCase()} 格式</span>
+          {preview ? (
+            <div className="space-y-5">
+              <div className="flex flex-wrap gap-3">
+                <Badge variant="outline">候选 {preview.coverage.eligibleRecords}</Badge>
+                <Badge variant="secondary">有效 {preview.coverage.validRecords}</Badge>
+                <Badge variant={preview.coverage.invalidRecords > 0 ? 'destructive' : 'outline'}>无效 {preview.coverage.invalidRecords}</Badge>
+                <Badge variant="outline">预览上限 {preview.coverage.sampleLimit}</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                共 {preview.totalCount} 条{filters.scope === 'all' ? '历史' : '尚未导出'}可导出候选，下面展示 {preview.sampleRecords.length} 条有效样本。
+              </p>
+              <div className="rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>项目</TableHead>
+                      <TableHead>样本数</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {preview.projectDistribution.length === 0 ? (
+                      <TableRow><TableCell colSpan={2}>暂无项目分布</TableCell></TableRow>
+                    ) : (
+                      preview.projectDistribution.map((item) => (
+                        <TableRow key={item.name}>
+                          <TableCell>{item.name}</TableCell>
+                          <TableCell>{item.count}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="space-y-3">
+                {preview.sampleRecords.map((record, index) => (
+                  <div key={'metadata' in record ? record.metadata.sampleId : record.sampleId} className="rounded-lg border bg-muted/30 p-4">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-xs font-medium text-muted-foreground">样本 #{index + 1}</span>
+                      <span className="text-xs text-muted-foreground">{type.toUpperCase()} 格式</span>
+                    </div>
+                    <Textarea value={JSON.stringify(record, null, 2)} readOnly className="font-mono text-xs" rows={type === 'sft' ? 12 : type === 'dpo' ? 7 : 10} />
                   </div>
-                  <Textarea value={JSON.stringify(record, null, 2)} readOnly className="font-mono text-xs" rows={type === 'sft' ? 12 : type === 'dpo' ? 7 : 10} />
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      ) : null}
+          ) : null}
+        </div>
+      </AdminDialogShell>
     </div>
   );
 }

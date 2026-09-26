@@ -208,8 +208,10 @@ export async function saveSpaceAction(_previous: ActionState, formData: FormData
 
   const supabase = await createClient();
   if (spaceId) {
-    const { error } = await supabase.from('spaces').update({ name, theme, subject: subject || null, color_key: colorKey as SpaceColorKey, space_kind: spaceKind }).eq('id', spaceId);
+    // select 之后 0 行 = RLS 没放行（或已被归档他人删除），不是"已保存"。
+    const { data: updated, error } = await supabase.from('spaces').update({ name, theme, subject: subject || null, color_key: colorKey as SpaceColorKey, space_kind: spaceKind }).eq('id', spaceId).select('id');
     if (error) return { ok: false, message: `空间保存失败：${error.message}` };
+    if (!updated || updated.length === 0) return { ok: false, message: '空间未保存：该空间不存在或不属于你。' };
     revalidateSpaceSurfaces();
     return { ok: true, message: '空间已保存。' };
   }
@@ -247,19 +249,28 @@ export async function setSpaceStudentAction(_previous: ActionState, formData: Fo
   const studentId = String(formData.get('student_id') ?? '').trim();
   const intent = String(formData.get('intent') ?? '').trim();
   if (!spaceId || !studentId) return { ok: false, message: '缺少空间或学生。' };
+  // 白名单，而不是「只要不是 remove 就当加入」：拼错或被篡改的 intent 会静默走成
+  // "加入"分支，于是"移出学生"这个删除动作变成了添加——一个校验缺失换来的越权写入。
+  if (intent !== 'add' && intent !== 'remove') return { ok: false, message: '未知的操作类型。' };
 
   const supabase = await createClient();
   if (intent === 'remove') {
-    const { error } = await supabase.from('space_members').delete().eq('space_id', spaceId).eq('student_id', studentId);
+    const { data: removed, error } = await supabase.from('space_members').delete().eq('space_id', spaceId).eq('student_id', studentId).select('id');
     if (error) return { ok: false, message: `移出学生失败：${error.message}` };
+    if (!removed || removed.length === 0) return { ok: false, message: '该学生本来就不在这个空间里。' };
     revalidateSpaceSurfaces();
     return { ok: true, message: '已移出该学生。' };
   }
 
-  const { error } = await supabase.from('space_members').insert({ space_id: spaceId, student_id: studentId, created_by: role.data.id });
+  // 幂等加入（ON CONFLICT DO NOTHING）+ 查行数：重复加入不是错误，
+  // 但要能区分"加进来了"和"本来就在"。
+  const { data: added, error } = await supabase
+    .from('space_members')
+    .upsert({ space_id: spaceId, student_id: studentId, created_by: role.data.id }, { onConflict: 'space_id,student_id', ignoreDuplicates: true })
+    .select('id');
   if (error) return { ok: false, message: `加入学生失败：${error.message}` };
   revalidateSpaceSurfaces();
-  return { ok: true, message: '已加入该学生。' };
+  return { ok: true, message: added && added.length > 0 ? '已加入该学生。' : '该学生已经在这个空间里。' };
 }
 
 /**
@@ -277,11 +288,13 @@ export async function setSpaceClassAction(_previous: ActionState, formData: Form
   const classId = String(formData.get('class_id') ?? '').trim();
   const intent = String(formData.get('intent') ?? '').trim();
   if (!spaceId || !classId) return { ok: false, message: '缺少空间或班级。' };
+  if (intent !== 'add' && intent !== 'remove') return { ok: false, message: '未知的操作类型。' };
 
   const supabase = await createClient();
   if (intent === 'remove') {
-    const { error } = await supabase.from('space_classes').delete().eq('space_id', spaceId).eq('class_id', classId);
+    const { data: removed, error } = await supabase.from('space_classes').delete().eq('space_id', spaceId).eq('class_id', classId).select('space_id');
     if (error) return { ok: false, message: `移出班级失败：${error.message}` };
+    if (!removed || removed.length === 0) return { ok: false, message: '该班本来就不在这个空间里。' };
     revalidateSpaceSurfaces();
     return { ok: true, message: '已移出该班，班内学生不再属于这个空间。' };
   }
@@ -305,8 +318,10 @@ export async function archiveSpaceAction(_previous: ActionState, formData: FormD
   if (!spaceId) return { ok: false, message: '缺少空间。' };
 
   const supabase = await createClient();
-  const { error } = await supabase.from('spaces').update({ status: 'archived' }).eq('id', spaceId);
+  // 0 行 = 没归档成功。不查行数的话，"归档失败"会被报成"已归档"，学生侧却还在显示。
+  const { data: archived, error } = await supabase.from('spaces').update({ status: 'archived' }).eq('id', spaceId).select('id');
   if (error) return { ok: false, message: `归档失败：${error.message}` };
+  if (!archived || archived.length === 0) return { ok: false, message: '归档失败：该空间不存在或不属于你。' };
 
   revalidateSpaceSurfaces();
   return { ok: true, message: '空间已归档，学生侧不再显示。' };

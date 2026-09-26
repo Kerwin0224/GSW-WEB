@@ -1,10 +1,10 @@
 import Link from 'next/link';
-import { AlertTriangle, ChevronRight, FileSearch, UserRound } from 'lucide-react';
+import { AlertTriangle, ChevronRight, UserRound } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Pagination } from '@/components/workbench/pagination';
 import { EmptyState } from '@/components/workbench/state-surfaces';
-import { buildAuditHref, preReviewSummaryLabel, reviewStateLabel } from '@/components/workbench/audit/presentation';
+import { AUDIT_QUEUE_VIEWS, buildAuditHref, preReviewSummaryLabel, reviewStateLabel, type AuditQueueView } from '@/components/workbench/audit/presentation';
 import type { TeacherAuditQueuePage } from '@/lib/data/teacher';
 import { cn } from '@/lib/utils';
 
@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
  *
  * 选中态是 URL（?session=），不是组件 state：可深链、可后退、可与分页共存。
  */
-export function AuditQueueNav({ queue, selectedId }: { queue: TeacherAuditQueuePage; selectedId?: string }) {
+export function AuditQueueNav({ queue, view, selectedId }: { queue: TeacherAuditQueuePage; view: AuditQueueView; selectedId?: string }) {
   const pageSessionCount = queue.groups.reduce(
     (sum, group) => sum + group.students.reduce((studentSum, student) => studentSum + student.projects.reduce((projectSum, project) => projectSum + project.sessions.length, 0), 0),
     0,
@@ -32,20 +32,52 @@ export function AuditQueueNav({ queue, selectedId }: { queue: TeacherAuditQueueP
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">学习记录核实</p>
-            <h1 className="mt-2 font-heading text-xl">待核实队列</h1>
+            <h1 className="mt-2 font-heading text-xl">{view === 'pending' ? '待核实队列' : '已提交记录'}</h1>
           </div>
-          <Badge variant="outline" className="bg-card/80">{queue.pendingTotal} 待核实</Badge>
+          <Badge variant="outline" className="bg-card/80">{queue.total} {view === 'pending' ? '待核实' : '已提交'}</Badge>
         </div>
-        {/* 待核实是全局口径（不受分页影响）；其余按当前页统计，文案里说清，否则又是一个「看着像总数其实不是」的误导。 */}
+
+        {/* 两态切换做成真正的分段控件：当前态高亮 + aria-current。
+            此前是一条藏在列表底部的文字链接，位置与对比度都不足以说明「我在哪个视图里」，
+            而且它指向的 all 查询并不真的只列已提交会话。 */}
+        <nav className="flex gap-1 rounded-lg border border-border/60 bg-background/70 p-1" aria-label="核实队列视图">
+          {AUDIT_QUEUE_VIEWS.map((item) => {
+            const active = item.value === view;
+            return (
+              <Link
+                key={item.value}
+                href={buildAuditHref({ status: item.value })}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  active ? 'bg-primary/12 text-primary shadow-soft' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                )}
+              >
+                {item.label}
+                <span className="font-mono text-[0.65rem] opacity-75">{item.value === view ? queue.total : item.value === 'pending' ? queue.pendingTotal : queue.total}</span>
+              </Link>
+            );
+          })}
+        </nav>
+
         <p className="text-xs leading-5 text-muted-foreground">
           按班级 → 学生 → 项目 → 会话查看。本页覆盖 {classCount} 个班级 · {studentCount} 名学生 · {projectCount} 个项目 · {pageSessionCount} 条会话。
+        </p>
+        {/* 口径必须写清：分页总数是服务端按当前视图算的（不受翻页影响），
+            而列表只渲染含 AI 回答的会话——两者不等是设计如此，不是丢数据。 */}
+        <p className="text-xs leading-5 text-muted-foreground">
+          待核实 {queue.pendingTotal} 条 · 已提交 {queue.finalizedTotal} 条，均为全局口径、不受分页影响。没有 AI 回答的会话不进入核实队列，因此本页列出的条数可能少于分页窗口。
         </p>
       </div>
 
       {pageSessionCount === 0 ? (
         <EmptyState
-          title={queue.status === 'pending' ? '暂无待核实会话' : '暂无会话'}
-          description={queue.status === 'pending' ? '学生产生新的 AI 学习记录后，会进入这里等待核实。' : '这个范围内还没有可核实的学生会话。'}
+          title={view === 'pending' ? '暂无待核实会话' : '还没有已提交的会话'}
+          description={view === 'pending'
+            ? queue.pendingTotal > 0
+              ? `这一页取到的 ${queue.pendingTotal} 条会话都没有可核实的 AI 回答，可以翻页继续找。`
+              : '学生产生新的 AI 学习记录后，会进入这里等待核实。'
+            : '教师完成最终提交后，会话会归档到这里，随时可以回看。'}
         />
       ) : (
         <div className="space-y-4">
@@ -75,7 +107,7 @@ export function AuditQueueNav({ queue, selectedId }: { queue: TeacherAuditQueueP
                             return (
                               <li key={session.conversationId}>
                                 <Link
-                                  href={buildAuditHref({ status: queue.status, page: queue.page, session: session.conversationId })}
+                                  href={buildAuditHref({ status: view, page: queue.page, session: session.conversationId })}
                                   aria-current={active ? 'true' : undefined}
                                   className={cn(
                                     'block cursor-pointer rounded-lg border px-2.5 py-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
@@ -119,20 +151,8 @@ export function AuditQueueNav({ queue, selectedId }: { queue: TeacherAuditQueueP
         pageSize={queue.pageSize}
         total={queue.total}
         itemLabel="条会话"
-        buildHref={(target) => buildAuditHref({ status: queue.status, page: target })}
+        buildHref={(target) => buildAuditHref({ status: view, page: target })}
       />
-
-      {queue.status === 'pending' ? (
-        <Link href={buildAuditHref({ status: 'all' })} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-4 hover:text-primary hover:underline">
-          <FileSearch className="size-3.5" aria-hidden="true" />
-          查看已提交的记录
-        </Link>
-      ) : (
-        <Link href={buildAuditHref({})} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-4 hover:text-primary hover:underline">
-          <FileSearch className="size-3.5" aria-hidden="true" />
-          只看待核实
-        </Link>
-      )}
     </div>
   );
 }

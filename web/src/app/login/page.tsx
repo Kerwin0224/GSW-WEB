@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { ArrowRight, Loader2 } from 'lucide-react';
 
 import { BrandMark } from '@/components/brand-mark';
@@ -11,6 +11,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ROLE_HOME } from '@/lib/role-home';
 import type { AppRole } from '@/lib/supabase/database.types';
+
+/**
+ * requireProfile 判定不通过时会带着 ?error= 弹回登录页（见 lib/auth.ts）。
+ * 不读它的话，教师只知道「登录后又回到登录页」，看不到真正的原因。
+ * 只认这里实际会写的三个值；未知 code 一律给通用兜底，不把内部标识透给用户。
+ */
+const LOGIN_ERROR_REASONS: Record<string, string> = {
+  role_denied: '这个账号的角色进不了这个页面。请改用对应角色的入口登录，或联系学校管理员调整角色。',
+  account_disabled: '账号已被停用，暂时无法登录。请联系学校管理员恢复后再试。',
+  profile_required: '账号缺少教师或学生资料，无法进入工作台。请联系学校管理员补全资料。',
+};
+
+/** 稳定的空订阅：这个来源不会自己变，只是水合后读一次地址栏。 */
+const subscribeToNothing = () => () => {};
+
 
 type LoginCandidate = {
   schoolId: string | null;
@@ -26,6 +41,14 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [candidates, setCandidates] = useState<LoginCandidate[] | null>(null);
+  // /login 会被静态预渲染：useSearchParams 会触发 CSR bailout，而在 useEffect 里 setError
+  // 又会多一次级联渲染。useSyncExternalStore 两边都对——SSR 取 ''，水合后换成真实地址栏，
+  // 不会产生 hydration mismatch。错误参数本来就是整页导航带过来的。
+  const search = useSyncExternalStore(subscribeToNothing, () => window.location.search, () => '');
+  const redirectReason = LOGIN_ERROR_REASONS[new URLSearchParams(search).get('error') ?? '']
+    ?? (search.includes('error=') ? '登录后未能进入工作台，请重试或联系学校管理员。' : '');
+  // 登录过程报出的错优先；没有新错时继续显示被弹回来的原因，别让教师对着空白登录页猜。
+  const shownError = error || redirectReason;
 
   const handleLogin = async (schoolId?: string) => {
     setError('');
@@ -121,9 +144,9 @@ export default function LoginPage() {
 
             <CardContent className="space-y-6 p-6 sm:p-8">
               <form onSubmit={submitForm} className="space-y-5" aria-busy={loading}>
-                {error ? (
+                {shownError ? (
                   <Alert variant="destructive" className="rounded-lg border-destructive/30 bg-destructive/10" role="alert">
-                    <AlertDescription>{error}</AlertDescription>
+                    <AlertDescription>{shownError}</AlertDescription>
                   </Alert>
                 ) : null}
 

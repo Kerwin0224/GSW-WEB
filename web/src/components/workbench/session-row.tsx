@@ -16,7 +16,7 @@ export function SessionRow({ session, current, href, onDelete }: {
   onDelete: () => void;
 }) {
   return (
-    <div className={cn('group/session flex min-h-11 items-start gap-1 rounded-lg text-xs text-muted-foreground transition-colors duration-200 hover:bg-muted focus-within:bg-muted', current && 'bg-primary/8 text-primary')}>
+    <div className={cn('group/session flex min-h-11 items-stretch gap-0.5 rounded-lg text-xs text-muted-foreground transition-colors duration-200 hover:bg-muted focus-within:bg-muted', current && 'bg-primary/8 text-primary')}>
       <Link href={href} aria-current={current ? 'page' : undefined} className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded-lg px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <MessageSquare className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
         <span className="min-w-0">
@@ -24,10 +24,15 @@ export function SessionRow({ session, current, href, onDelete }: {
           <span>{session.messageCount} 条消息 · {session.updatedLabel}</span>
         </span>
       </Link>
+      {/* 触屏没有 hover：移动端常驻可见（否则等于没有删除入口），但用
+          text-muted-foreground/70 压低存在感、悬停才转朱砂，降低误触；
+          按钮随行高拉伸到 44px，够触摸目标。桌面端维持 hover/focus 才显形，
+          命中区收到 28px，避免与行内文字抢点击。 */}
       <button
         type="button"
         onClick={onDelete}
-        className="mt-1.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:opacity-0 sm:group-hover/session:opacity-100 sm:group-focus-within/session:opacity-100"
+        title={`删除会话 ${session.title}`}
+        className="flex min-h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition hover:bg-destructive/10 hover:text-destructive hover:opacity-100 focus-visible:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-7 sm:min-h-0 sm:w-7 sm:opacity-0 sm:group-hover/session:opacity-100 sm:group-focus-within/session:opacity-100"
         aria-label={`删除会话 ${session.title}`}
       >
         <Trash2 className="size-3.5" aria-hidden="true" />

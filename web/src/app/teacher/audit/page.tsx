@@ -2,17 +2,19 @@ import { Card, CardContent } from '@/components/ui/card';
 import { AuditWorkspace } from '@/components/workbench/audit/audit-workspace';
 import { ErrorState } from '@/components/workbench/state-surfaces';
 import { firstParam, parsePageParam } from '@/lib/pagination';
-import { getTeacherAuditQueue, getTeacherAuditSession, type AuditSessionDetail, type TeacherAuditQueueStatus } from '@/lib/data/teacher';
+import { auditQueueView, type AuditQueueView } from '@/components/workbench/audit/presentation';
+import { getTeacherAuditQueue, getTeacherAuditSession, type AuditSessionDetail } from '@/lib/data/teacher';
 
 type AuditPageSearchParams = { page?: string | string[]; status?: string | string[]; session?: string | string[] };
 
-
-function parseStatus(value: string | string[] | undefined): TeacherAuditQueueStatus {
-  return firstParam(value) === 'all' ? 'all' : 'pending';
-}
-
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
+/**
+ * ?status= 只认待核实与已提交两个真视图；旧链接上的 `all` 也回落到待核实。
+ * 服务端的队列查询按这个值过滤，标签和结果必须一一对应。
+ */
+function parseStatus(value: string | string[] | undefined): AuditQueueView {
+  return auditQueueView(firstParam(value));
+}
 /**
  * 学习记录核实页。
  *
@@ -46,11 +48,11 @@ export default async function TeacherAuditPage({ searchParams }: { searchParams?
 
   // 与学生提问空间、教师问答同一套外框：三者都是整屏工作区，看起来该是同一个产品。
   return (
-    <div className="mx-auto flex min-h-[calc(100svh-4rem)] max-w-[100rem] flex-col px-3 py-3 sm:px-5 lg:h-[calc(100svh-4rem)] lg:overflow-hidden">
+    <div className="mx-auto flex min-h-[calc(100svh-3.5rem)] max-w-[100rem] flex-col px-3 py-3 sm:px-5 lg:h-[calc(100svh-3.5rem)] lg:overflow-hidden">
       <Card className="relative flex min-h-0 flex-1 overflow-hidden border-primary/20 bg-card/92 shadow-ink backdrop-blur-xl">
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-accent to-destructive/70" />
         <CardContent className="flex min-h-0 flex-1 p-0">
-          <AuditWorkspace queue={queueResult.data} session={session} sessionError={sessionError} />
+          <AuditWorkspace queue={queueResult.data} session={session} sessionError={sessionError} initialView={status} />
         </CardContent>
       </Card>
     </div>

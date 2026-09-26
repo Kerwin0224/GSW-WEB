@@ -2,12 +2,14 @@
 
 import Link from 'next/link';
 import { useState, useTransition } from 'react';
-import { Building2, Loader2, Plus } from 'lucide-react';
+import { Building2, CheckCircle2, Loader2, Plus, XCircle } from 'lucide-react';
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { AdminDialogShell } from '@/components/workbench/admin-dialog-shell';
 import { createSchool, setSchoolStatus, type OrgSchoolSummary } from '@/lib/data/org';
 
 export function OrgSchoolsClient({ schools, organizationName, operatorName }: {
@@ -16,15 +18,17 @@ export function OrgSchoolsClient({ schools, organizationName, operatorName }: {
   operatorName: string;
 }) {
   const [newName, setNewName] = useState('');
-  const [feedback, setFeedback] = useState('');
+  /** 成功/失败分级：停用学校会拦住全校师生登录，只有一行灰字时管理员分不清到底成没成。 */
+  const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
   const [pending, startTransition] = useTransition();
+  const [statusTarget, setStatusTarget] = useState<OrgSchoolSummary | null>(null);
 
   const submitCreate = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     startTransition(async () => {
       const result = await createSchool(formData);
-      setFeedback(result.message);
+      setFeedback({ ok: result.ok, message: result.message });
       if (result.ok) {
         setNewName('');
         event.currentTarget.reset();
@@ -32,13 +36,16 @@ export function OrgSchoolsClient({ schools, organizationName, operatorName }: {
     });
   };
 
-  const toggleStatus = (schoolId: string, status: OrgSchoolSummary['status']) => {
+  const confirmStatusChange = () => {
+    const target = statusTarget;
+    if (!target) return;
     const formData = new FormData();
-    formData.set('schoolId', schoolId);
-    formData.set('status', status === 'active' ? 'disabled' : 'active');
+    formData.set('schoolId', target.id);
+    formData.set('status', target.status === 'active' ? 'disabled' : 'active');
     startTransition(async () => {
       const result = await setSchoolStatus(formData);
-      setFeedback(result.message);
+      setFeedback({ ok: result.ok, message: result.message });
+      if (result.ok) setStatusTarget(null);
     });
   };
 
@@ -62,7 +69,13 @@ export function OrgSchoolsClient({ schools, organizationName, operatorName }: {
           创建学校
         </Button>
       </form>
-      {feedback ? <p className="text-sm text-muted-foreground" role="status" aria-live="polite">{feedback}</p> : null}
+      {feedback ? (
+        <Alert variant={feedback.ok ? 'default' : 'destructive'} role={feedback.ok ? 'status' : 'alert'}>
+          {feedback.ok ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}
+          <AlertTitle>{feedback.ok ? '操作完成' : '操作失败'}</AlertTitle>
+          <AlertDescription>{feedback.message}</AlertDescription>
+        </Alert>
+      ) : null}
 
       {schools.length === 0 ? (
         <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">还没有学校。先创建第一所学校，再为它配置管理员和名册。</CardContent></Card>
@@ -100,7 +113,7 @@ export function OrgSchoolsClient({ schools, organizationName, operatorName }: {
                   </div>
                 </dl>
                 <div className="flex items-center justify-between gap-2">
-                  <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => toggleStatus(school.id, school.status)}>
+                  <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => setStatusTarget(school)}>
                     {school.status === 'active' ? '停用学校' : '启用学校'}
                   </Button>
                   <Link href={`/org/schools/${school.id}`} className="text-sm font-medium text-primary hover:underline">
@@ -115,6 +128,44 @@ export function OrgSchoolsClient({ schools, organizationName, operatorName }: {
       <p className="text-xs text-muted-foreground">
         当前公司：{organizationName} · 公司管理员：{operatorName}
       </p>
+
+      <AdminDialogShell
+        open={statusTarget !== null}
+        onOpenChange={(open) => { if (!open && !pending) setStatusTarget(null); }}
+        title={statusTarget?.status === 'active' ? `停用学校「${statusTarget?.name}」` : `启用学校「${statusTarget?.name ?? ''}」`}
+        description={statusTarget?.status === 'active'
+          ? '停用会立刻影响全校师生，先看清影响面再确认。'
+          : '启用后该校师生可重新登录使用。'}
+        icon={statusTarget?.status === 'active' ? <XCircle className="size-5" /> : <CheckCircle2 className="size-5" />}
+        className="max-w-lg"
+        footer={(
+          <>
+            <Button type="button" variant="outline" onClick={() => setStatusTarget(null)} disabled={pending}>取消</Button>
+            <Button type="button" variant={statusTarget?.status === 'active' ? 'destructive' : 'default'} onClick={confirmStatusChange} disabled={pending}>
+              {pending ? <><Loader2 className="mr-2 size-4 animate-spin" />处理中…</> : statusTarget?.status === 'active' ? '确认停用' : '确认启用'}
+            </Button>
+          </>
+        )}
+      >
+        {statusTarget?.status === 'active' ? (
+          <Alert variant="destructive">
+            <XCircle className="size-4" />
+            <AlertTitle>停用后会发生什么</AlertTitle>
+            <AlertDescription>
+              <ul className="list-disc space-y-1 pl-4">
+                <li>{statusTarget.teacherCount} 名教师与 {statusTarget.studentCount} 名学生（连同校管理员）将无法登录。</li>
+                <li>{statusTarget.classCount} 个班级与其中的项目、学习记录都会保留，重新启用后原样恢复。</li>
+                <li>该校的模型与 MCP 配置不受影响；停用可随时在本页改回。</li>
+              </ul>
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <Alert>
+            <CheckCircle2 className="size-4" />
+            <AlertDescription>启用后 {statusTarget?.teacherCount ?? 0} 名教师与 {statusTarget?.studentCount ?? 0} 名学生可重新登录，原有班级与记录不变。</AlertDescription>
+          </Alert>
+        )}
+      </AdminDialogShell>
     </div>
   );
 }

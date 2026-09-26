@@ -1,5 +1,5 @@
 import { withApiLogging } from '@/lib/observability/with-api-logging';
-import { requireRole } from '@/lib/data/common';
+import { requireAnyRole } from '@/lib/data/common';
 import { saveProviderApiModels } from '@/lib/data/admin';
 import { providerModelsRequest, toProviderProtocol } from '@/lib/provider-protocol';
 import { providerRequestSchema, resolveProviderCredentials } from '@/lib/data/provider-credentials';
@@ -14,7 +14,8 @@ type RawModel = { id: string; created?: number; owned_by?: string };
 
 export async function POST(req: Request) {
   return withApiLogging(req, { area: 'api', event: 'provider_list_models', route: '/api/admin/providers/list-models' }, async () => {
-    const role = await requireRole('admin');
+    // 与 getAdminProviders / saveProviderApiModels 同口径：org_admin 管公司级模板。
+    const role = await requireAnyRole(['admin', 'org_admin']);
     if (!role.ok) return Response.json({ error: role.message }, { status: role.reason === 'forbidden' ? 403 : 401 });
 
     let body: unknown;
@@ -50,9 +51,17 @@ export async function POST(req: Request) {
       const models = (data.data ?? []).map((m) => ({ id: m.id, ownedBy: m.owned_by }));
 
       if (providerId) {
-        await saveProviderApiModels(providerId, models);
+        const saved = await saveProviderApiModels(providerId, models);
+        if (!saved.ok) {
+          return Response.json({
+            models,
+            count: models.length,
+            persisted: false,
+            error: saved.message,
+            resolution: '模型已拉取到，但没有写回该 Provider：它可能已被删除，或当前账号无权修改。',
+          }, { status: 409 });
+        }
       }
-
       return Response.json({ models, count: models.length, persisted: providerId !== null });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';

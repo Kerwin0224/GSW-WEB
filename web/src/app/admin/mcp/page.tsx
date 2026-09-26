@@ -69,7 +69,8 @@ export default async function AdminMcpPage() {
           </Card>
         </div>
 
-        <McpServerList servers={servers} />
+        {/* 本页恒为校管理员：公司级 MCP 模板对其只读（见 McpServerList 的作用域闸门）。 */}
+        <McpServerList servers={servers} viewerRole="admin" />
       </section>
     </div>
   );

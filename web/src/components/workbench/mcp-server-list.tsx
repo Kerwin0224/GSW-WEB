@@ -1,14 +1,18 @@
 import { CheckCircle2, KeyRound, Link2, Puzzle, ShieldAlert, Wrench, XCircle } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/workbench/state-surfaces';
 import { McpServerDialog } from '@/components/workbench/mcp-server-dialog';
+import type { ViewerRole } from '@/components/workbench/provider-capability-matrix';
 import { RoleBadge } from '@/components/workbench/role-badge';
 import type { AppRole } from '@/lib/supabase/database.types';
 
 /** 与 mcp_servers.allowed_roles 的实际取值一致：admin 与两个运行时角色。 */
 type Role = Exclude<AppRole, 'org_admin'>;
+
+const READ_ONLY_REASON = '公司级模板由公司管理员维护，本校账号只读';
 
 export type ServerRow = {
   id: string;
@@ -23,6 +27,8 @@ export type ServerRow = {
   is_enabled: boolean;
   last_health_check_at?: string | null;
   last_health_latency_ms?: number | null;
+  /** null = 公司级模板（org_admin 维护）；非空 = 该校自带。 */
+  school_id?: string | null;
 };
 
 export function getEnabledToolNames(value: unknown) {
@@ -85,7 +91,7 @@ function renderHealthBadge(server: ServerRow) {
  * （公司级 Provider/MCP 的归属是公司，不是某一所学校）。
  * 页面各自负责 hero、指标与文案，列表本身只认 servers。
  */
-export function McpServerList({ servers }: { servers: ServerRow[] }) {
+export function McpServerList({ servers, viewerRole }: { servers: ServerRow[]; viewerRole: ViewerRole }) {
   return (
         <Card>
           <CardHeader>
@@ -105,6 +111,8 @@ export function McpServerList({ servers }: { servers: ServerRow[] }) {
                   const tools = getEnabledToolNames(server.enabled_tools);
                   const risk = getRiskSummary(server, tools.length);
                   const RiskIcon = risk.icon;
+                  // 公司级模板归公司管：校管理员只读，按钮直接禁用而不是点了再报错。
+                  const canEdit = Boolean(server.school_id) || viewerRole === 'org_admin';
                   return (
                     <Card key={server.id} className="border-border/70 bg-card/95 shadow-soft transition-shadow duration-200 hover:shadow-lg">
                       <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -116,6 +124,10 @@ export function McpServerList({ servers }: { servers: ServerRow[] }) {
                               {risk.label}
                             </Badge>
                             <Badge variant="outline">{getTransportLabel(server.connection_ref)}</Badge>
+                            {/* 作用域决定谁能改：不给标记就分不清"这条我能改吗"。 */}
+                            <Badge variant={server.school_id ? 'default' : 'outline'}>
+                              {server.school_id ? '学校自配' : '公司级模板'}
+                            </Badge>
                           </div>
                           {server.description ? (
                             <p className="text-sm leading-6 text-muted-foreground">{server.description}</p>
@@ -124,19 +136,25 @@ export function McpServerList({ servers }: { servers: ServerRow[] }) {
                           )}
                         </div>
                         <div className="shrink-0">
-                          <McpServerDialog
-                            mode="edit"
-                            initial={{
-                              id: server.id,
-                              name: server.name,
-                              description: server.description,
-                              connectionRef: server.connection_ref,
-                              secretLastFour: server.secret_last_four,
-                              enabledTools: server.enabled_tools,
-                              allowedRoles: server.allowed_roles,
-                              isEnabled: server.is_enabled,
-                            }}
-                          />
+                          {canEdit ? (
+                            <McpServerDialog
+                              mode="edit"
+                              initial={{
+                                id: server.id,
+                                name: server.name,
+                                description: server.description,
+                                connectionRef: server.connection_ref,
+                                secretLastFour: server.secret_last_four,
+                                enabledTools: server.enabled_tools,
+                                allowedRoles: server.allowed_roles,
+                                isEnabled: server.is_enabled,
+                              }}
+                            />
+                          ) : (
+                            <Button type="button" variant="outline" size="sm" disabled title={READ_ONLY_REASON}>
+                              公司级模板 · 只读
+                            </Button>
+                          )}
                         </div>
                       </CardHeader>
   

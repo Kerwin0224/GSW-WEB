@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/server';
 import { APP_ROLES, type AppRole, type Database, type Json, type ModelTier, type ProviderCapability } from '@/lib/supabase/database.types';
 import { fail, getModelTiers, ok, requireAnyRole, requireRole, scenarioModelTiers, type DataResult, type ModelTierStatus } from './common';
 import { asMetadataObject } from './audit-record';
+import { assertAllowedProviderBaseUrl } from '@/lib/provider-endpoint-policy';
 
 export type AdminActionState = { ok: boolean; message: string; errors?: Record<string, string> };
 export type ProviderActionResult = { ok: true; message?: string } | { ok: false; message: string };
@@ -55,6 +56,10 @@ export type CsvUserPreviewRow = {
   className: string | null;
   status: 'valid' | 'invalid';
   errors: string[];
+  /** 本校已存在同 login_id 账号时的角色；null = 这次会新建。 */
+  existingRole: AppRole | null;
+  /** 这一行是覆盖已有账号而不是新建（覆盖只动姓名，不动密码）。 */
+  willUpdate: boolean;
 };
 export type CsvUserPreview = { rows: CsvUserPreviewRow[]; validCount: number; invalidCount: number };
 export type AdminModelTierStatus = Omit<ModelTierStatus, 'secretRef'>;
@@ -440,70 +445,113 @@ export async function getAdminClasses(): Promise<DataResult<AdminClassesPayload>
   return ok({ classes, duplicateGroups });
 }
 
-export async function addClassMember(formData: FormData): Promise<void> {
+export async function addClassMember(formData: FormData): Promise<AdminActionState> {
   const role = await requireRole('admin');
-  if (!role.ok) return;
+  if (!role.ok) return actionResult(false, role.message);
   const classId = String(formData.get('class_id') ?? '').trim();
   const profileId = String(formData.get('profile_id') ?? '').trim();
   const membershipRole = String(formData.get('role') ?? '').trim();
-  if (!classId || !profileId || !['teacher', 'student'].includes(membershipRole)) return;
+  if (!classId || !profileId || !['teacher', 'student'].includes(membershipRole)) {
+    return actionResult(false, '参数不完整：请选择班级与成员。');
+  }
   const supabase = await createClient();
   const targetRole = membershipRole as 'teacher' | 'student';
   const [{ data: targetClass, error: classError }, { data: targetProfile, error: profileError }] = await Promise.all([
-    supabase.from('classes').select('id').eq('id', classId).maybeSingle(),
-    supabase.from('profiles').select('id,role,status').eq('id', profileId).maybeSingle(),
+    supabase.from('classes').select('id,name').eq('id', classId).maybeSingle(),
+    supabase.from('profiles').select('id,display_name,role,status').eq('id', profileId).maybeSingle(),
   ]);
-  if (classError || profileError || !targetClass || !targetProfile || targetProfile.role !== targetRole || targetProfile.status !== 'active') return;
-  if (targetRole === 'teacher') {
-    const { data: existing, error: existingError } = await supabase
-      .from('class_memberships')
-      .select('id')
-      .eq('class_id', classId)
-      .eq('profile_id', profileId)
-      .eq('role', 'teacher')
-      .limit(1)
-      .maybeSingle();
-    if (existingError || existing) return;
+  if (classError) return actionResult(false, `班级读取失败：${classError.message}`);
+  if (profileError) return actionResult(false, `成员读取失败：${profileError.message}`);
+  if (!targetClass) return actionResult(false, '班级不存在或当前账号无权访问。');
+  if (!targetProfile) return actionResult(false, '成员不存在或不属于本校。');
+  if (targetProfile.role !== targetRole) {
+    return actionResult(false, `「${targetProfile.display_name}」当前角色是 ${targetProfile.role}，不能作为${targetRole === 'teacher' ? '教师' : '学生'}加入班级。`);
   }
-  if (targetRole === 'student') {
-    const { error: migrationError } = await supabase.from('class_memberships').delete().eq('profile_id', profileId).eq('role', 'student');
-    if (migrationError) return;
-  }
-  const { error } = await supabase.from('class_memberships').upsert({ class_id: classId, profile_id: profileId, role: targetRole }, { onConflict: 'class_id,profile_id' });
-  if (error) return;
-  // 迁班后同步历史项目和会话的 class_id，使新班教师可见所有历史核实记录。
-  if (targetRole === 'student') {
-    await supabase.from('projects').update({ class_id: classId }).eq('owner_id', profileId);
-    await supabase.from('conversations').update({ class_id: classId }).eq('owner_id', profileId).eq('source', 'student_chat').is('deleted_at', null);
-  }
-  revalidatePath('/admin/users');
-  revalidatePath('/admin');
-}
+  if (targetProfile.status !== 'active') return actionResult(false, `「${targetProfile.display_name}」已停用，请先启用再分配班级。`);
 
-export async function removeClassMember(formData: FormData): Promise<void> {
-  const role = await requireRole('admin');
-  if (!role.ok) return;
-  const membershipId = String(formData.get('membership_id') ?? '').trim();
-  if (!membershipId) return;
-  const supabase = await createClient();
-  const { error } = await supabase.from('class_memberships').delete().eq('id', membershipId);
-  if (error) return;
+  if (targetRole === 'student') {
+    // 迁班 = 删旧关系 + 插新关系 + 同步 projects/conversations.class_id，一个事务。
+    // 应用层那四步每步一个请求，中途失败就是「不属于任何班、历史还指着旧班」的半迁移态。
+    const { data: touched, error: transferError } = await supabase.rpc('transfer_student_to_class', {
+      p_profile_id: profileId,
+      p_class_id: classId,
+    });
+    if (transferError) return actionResult(false, `学生迁班失败：${transferError.message}`);
+    revalidatePath('/admin/classes');
+    revalidatePath('/admin/users');
+    revalidatePath('/admin');
+    const synced = Math.max(Number(touched ?? 0) - 1, 0);
+    return actionResult(true, `「${targetProfile.display_name}」已迁入「${targetClass.name}」${synced > 0 ? `，并同步了 ${synced} 条历史项目/会话。` : '。'}`);
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from('class_memberships')
+    .select('id')
+    .eq('class_id', classId)
+    .eq('profile_id', profileId)
+    .eq('role', 'teacher')
+    .limit(1)
+    .maybeSingle();
+  if (existingError) return actionResult(false, `教师关系检查失败：${existingError.message}`);
+  // 幂等：教师可以负责多个班，重复加入同一班不是错误，说清楚即可。
+  if (existing) return actionResult(true, `「${targetProfile.display_name}」已经在这个班的教师名单里。`);
+
+  // insert + select：0 行说明 RLS 没放行，不是"已加入"。
+  const { data: inserted, error: insertError } = await supabase
+    .from('class_memberships')
+    .insert({ class_id: classId, profile_id: profileId, role: 'teacher' })
+    .select('id');
+  if (insertError) return actionResult(false, `加入班级失败：${insertError.message}`);
+  if (!inserted || inserted.length === 0) return actionResult(false, '加入班级失败：当前账号无权管理该班级。');
   revalidatePath('/admin/classes');
   revalidatePath('/admin/users');
   revalidatePath('/admin');
+  return actionResult(true, `「${targetProfile.display_name}」已加入「${targetClass.name}」的教师名单。`);
+}
+
+export async function removeClassMember(formData: FormData): Promise<AdminActionState> {
+  const role = await requireRole('admin');
+  if (!role.ok) return actionResult(false, role.message);
+  const membershipId = String(formData.get('membership_id') ?? '').trim();
+  if (!membershipId) return actionResult(false, '缺少成员关系记录。');
+  const supabase = await createClient();
+  const { data: removed, error } = await supabase.from('class_memberships').delete().eq('id', membershipId).select('id');
+  if (error) return actionResult(false, `移出班级失败：${error.message}`);
+  if (!removed || removed.length === 0) return actionResult(false, '该成员关系已不存在或当前账号无权移出。');
+  revalidatePath('/admin/classes');
+  revalidatePath('/admin/users');
+  revalidatePath('/admin');
+  return actionResult(true, '已移出该班级。');
 }
 
 /**
  * 批量把账号恢复为初始密码（初始密码 = 学号/工号本身，并重新强制首登改密）。
  *
- * 走 set_initial_password_by_profile RPC：它内部用 can_admin_profile 做租户边界校验，
- * 校 admin 无法重置他校或公司级账号，因此这里不需要再叠一层校过滤——DB 是唯一闸门。
- * 逐个调用并在失败处停下，返回明确的成功/失败计数，避免"部分成功却提示成功"。
+ * 边界校验做两层，缺一不可：
+ *   · 应用层：先按 caller.school_id 把这批 id 查出来，越界的直接拒绝并点名。
+ *     只靠 DB 的话，界面上选中的每一行都会各自静默失败，管理员看到的是
+ *     「已重置 N 个」而 N 后面跟着一条看不懂的 RPC 报错。
+ *   · DB 层：set_initial_password_by_profile 内部的 can_admin_profile（唯一闸门）。
  */
 export async function resetInitialPasswords(profileIds: string[]): Promise<AdminActionState> {
   const role = await requireRole('admin');
   if (!role.ok) return actionResult(false, role.message);
+  if (profileIds.length === 0) return actionResult(false, '请先选择要重置的账号。');
   const supabase = await createClient();
+  if (!role.data.school_id) {
+    return actionResult(false, '当前管理员账号未归属任何学校，无法重置他人密码。请联系公司管理员补齐归属。');
+  }
+  const { data: targets, error: lookupError } = await supabase
+    .from('profiles')
+    .select('id,display_name,school_id')
+    .in('id', profileIds);
+  if (lookupError) return actionResult(false, `账号查询失败：${lookupError.message}`);
+  const found = new Map((targets ?? []).map((row) => [row.id, row]));
+  const crossTenant = profileIds.filter((id) => found.get(id)?.school_id !== role.data.school_id);
+  if (crossTenant.length > 0) {
+    const names = crossTenant.map((id) => found.get(id)?.display_name ?? id);
+    return actionResult(false, `已拒绝：${names.join('、')} 不属于本校，无法重置密码。`);
+  }
   let reset = 0;
   for (const profileId of profileIds) {
     const { error } = await supabase.rpc('set_initial_password_by_profile', {
@@ -516,7 +564,7 @@ export async function resetInitialPasswords(profileIds: string[]): Promise<Admin
     reset += 1;
   }
   revalidatePath('/admin/users');
-  return actionResult(true, `已将 ${reset} 个账号恢复为初始密码（学号/工号），对方下次登录会被要求改密。`);
+  return actionResult(true, `已将 ${reset} 个账号恢复为初始密码（学号/工号），对方下次登录会被要求改密，旧会话已失效。`);
 }
 
 export async function createClass(formData: FormData): Promise<void>;
@@ -576,12 +624,20 @@ export async function saveProviderConfigV2(input: ProviderConfigInput): Promise<
   if (!role.ok) return providerFailure(role.message);
   const name = input.name.trim();
   const providerType = input.providerType.trim();
-  const baseUrl = input.baseUrl.trim();
   const apiKey = input.apiKey.trim();
-  if (!name || !providerType || !baseUrl || !apiKey) return providerFailure('请填写 Provider 名称、类型、Base URL 和 API Key。');
+  if (!name || !providerType || !input.baseUrl.trim() || !apiKey) return providerFailure('请填写 Provider 名称、类型、Base URL 和 API Key。');
+  // base_url 决定带密钥的出站请求发到哪里：与 MCP 远程地址同一道闸门（见 @/lib/provider-endpoint-policy）。
+  let baseUrl: string;
+  try {
+    baseUrl = assertAllowedProviderBaseUrl(input.baseUrl.trim());
+  } catch (error) {
+    return providerFailure(error instanceof Error ? error.message : 'Base URL 不合法。');
+  }
   const now = new Date().toISOString();
   const supabase = await createClient();
-  const { error } = await supabase.from('provider_configs').insert({
+  // insert ... select：不加 select 时 PostgREST 恒返回空数组，"插入失败"只能靠 error 分支，
+  // 而 RLS 静默过滤掉的插入既不报 error 也不返回行——那正是"保存成功但列表里没有它"。
+  const { data: inserted, error } = await supabase.from('provider_configs').insert({
     name,
     provider_type: providerType,
     base_url: baseUrl,
@@ -592,8 +648,9 @@ export async function saveProviderConfigV2(input: ProviderConfigInput): Promise<
     is_enabled: true,
     health_status: 'unchecked',
     created_by: role.data.id,
-  });
+  }).select('id');
   if (error) return providerFailure(`Provider 保存失败：${error.message}`);
+  if (!inserted || inserted.length === 0) return providerFailure('Provider 保存失败：数据库没有接受这行记录（可能被权限策略过滤），请确认当前账号可管理该层级的 Provider。');
   revalidatePath('/admin/providers');
   revalidatePath('/admin');
   return providerSuccess('Provider 已保存。');
@@ -605,16 +662,30 @@ export async function updateProviderConfig(providerId: string, patch: ProviderPa
   const updates: Database['public']['Tables']['provider_configs']['Update'] = {};
   if (patch.name !== undefined) updates.name = patch.name.trim();
   if (patch.providerType !== undefined) updates.provider_type = patch.providerType.trim();
-  if (patch.baseUrl !== undefined) updates.base_url = patch.baseUrl?.trim() || null;
+  if (patch.baseUrl !== undefined) {
+    if (!patch.baseUrl?.trim()) updates.base_url = null;
+    else {
+      let baseUrl: string;
+      try {
+        baseUrl = assertAllowedProviderBaseUrl(patch.baseUrl.trim());
+      } catch (error) {
+        return providerFailure(error instanceof Error ? error.message : 'Base URL 不合法。');
+      }
+      updates.base_url = baseUrl;
+    }
+  }
   if (patch.isEnabled !== undefined) updates.is_enabled = patch.isEnabled;
   if (patch.apiKey?.trim()) {
     updates.secret_ref = encryptSecret(patch.apiKey.trim());
     updates.secret_last_four = lastFour(patch.apiKey.trim());
     updates.secret_rotated_at = new Date().toISOString();
   }
+  if (Object.keys(updates).length === 0) return providerFailure('没有需要更新的字段。');
   const supabase = await createClient();
-  const { error } = await supabase.from('provider_configs').update(updates).eq('id', providerId);
+  // 同上：0 行 = RLS 没放行这行，而不是"已更新"。
+  const { data: updated, error } = await supabase.from('provider_configs').update(updates).eq('id', providerId).select('id');
   if (error) return providerFailure(`Provider 更新失败：${error.message}`);
+  if (!updated || updated.length === 0) return providerFailure('Provider 未更新：该 Provider 不存在，或当前账号无权修改（可能已被他人删除）。');
   revalidatePath('/admin/providers');
   revalidatePath('/admin');
   return providerSuccess('Provider 已更新。');
@@ -634,9 +705,12 @@ export async function updateProviderCapabilities(providerId: string, rows: Provi
     .eq('provider_id', providerId)
     .eq('capability', 'embedding');
   if (deleteError) return providerFailure(`旧 Embedding 能力清理失败：${deleteError.message}`);
-  const { error } = await supabase.from('provider_capabilities').insert(validRows.map((row) => ({ provider_id: providerId, capability: row.capability, model_id: row.modelId, is_enabled: true })));
+  const { data: inserted, error } = await supabase
+    .from('provider_capabilities')
+    .insert(validRows.map((row) => ({ provider_id: providerId, capability: row.capability, model_id: row.modelId, is_enabled: true })))
+    .select('id');
   if (error) return providerFailure(`Embedding 能力保存失败：${error.message}`);
-
+  if (!inserted || inserted.length === 0) return providerFailure('Embedding 能力未保存：该 Provider 不存在或当前账号无权配置。');
   revalidatePath('/admin/providers');
   revalidatePath('/admin');
   return providerSuccess('Embedding 能力已保存。');
@@ -650,8 +724,9 @@ export async function deleteProvider(providerId: string): Promise<ProviderAction
   if (tierDelete.error) return providerFailure(`模型层绑定清理失败：${tierDelete.error.message}`);
   const capabilityDelete = await supabase.from('provider_capabilities').delete().eq('provider_id', providerId);
   if (capabilityDelete.error) return providerFailure(`Provider 能力清理失败：${capabilityDelete.error.message}`);
-  const { error } = await supabase.from('provider_configs').delete().eq('id', providerId);
+  const { data: deleted, error } = await supabase.from('provider_configs').delete().eq('id', providerId).select('id');
   if (error) return providerFailure(`Provider 删除失败：${error.message}`);
+  if (!deleted || deleted.length === 0) return providerFailure('Provider 未删除：该 Provider 不存在，或当前账号无权删除。');
   revalidatePath('/admin/providers');
   revalidatePath('/admin');
   return providerSuccess('Provider 已删除。');
@@ -661,12 +736,13 @@ export async function saveProviderHealthCheck(providerId: string, result: { heal
   const role = await requireAnyRole(['admin', 'org_admin']);
   if (!role.ok) return providerFailure(role.message);
   const supabase = await createClient();
-  const { error } = await supabase.from('provider_configs').update({
+  const { data: updated, error } = await supabase.from('provider_configs').update({
     health_status: result.healthy ? 'healthy' : 'failed',
     last_health_check_at: new Date().toISOString(),
     last_health_latency_ms: result.latencyMs,
-  }).eq('id', providerId);
+  }).eq('id', providerId).select('id');
   if (error) return providerFailure(`健康检查保存失败：${error.message}`);
+  if (!updated || updated.length === 0) return providerFailure(`健康检查结果未能保存：Provider ${providerId} 不存在或无权写入。`);
   revalidatePath('/admin/providers');
   return providerSuccess(result.message ?? '健康检查已保存。');
 }
@@ -682,8 +758,9 @@ export async function saveProviderApiModels(providerId: string, models: Provider
     return [{ id, ownedBy: model.ownedBy ?? null }];
   });
   const supabase = await createClient();
-  const { error } = await supabase.from('provider_configs').update({ api_models: apiModels }).eq('id', providerId);
+  const { data: updated, error } = await supabase.from('provider_configs').update({ api_models: apiModels }).eq('id', providerId).select('id');
   if (error) return providerFailure(`模型列表保存失败：${error.message}`);
+  if (!updated || updated.length === 0) return providerFailure(`模型列表未能保存：Provider ${providerId} 不存在或无权写入。`);
   revalidatePath('/admin/providers');
   return providerSuccess('模型列表已保存。');
 }
@@ -855,33 +932,34 @@ export async function getAdminPresets() {
   return ok(data ?? []);
 }
 
-export async function savePromptPreset(formData: FormData): Promise<void>;
-export async function savePromptPreset(previousState: AdminActionState, formData: FormData): Promise<AdminActionState>;
-export async function savePromptPreset(first: FormData | AdminActionState, second?: FormData): Promise<void | AdminActionState> {
-  const { formData, shouldReturnState } = resolveActionArgs(first, second);
-  const role = await requireRole('admin');
-  if (!role.ok) return shouldReturnState ? actionResult(false, role.message) : undefined;
-  const title = String(formData.get('title') ?? '').trim();
-  const scenario = String(formData.get('scenario') ?? '').trim();
-  const system_instruction = String(formData.get('system_instruction') ?? '').trim();
-  const variables = String(formData.get('variables') ?? '').split(',').map((value) => value.trim()).filter(Boolean);
-  const status = String(formData.get('status') ?? 'draft') as 'draft' | 'published' | 'disabled';
-  const errors: Record<string, string> = {};
-  if (!title) errors.title = '请填写标题。';
-  if (!scenario) errors.scenario = '请填写教学场景。';
-  if (!system_instruction) errors.system_instruction = '请填写 System Instruction。';
-  if (!['draft', 'published', 'disabled'].includes(status)) errors.status = '状态不合法。';
-  if (Object.keys(errors).length > 0) return shouldReturnState ? actionResult(false, '请补齐 Prompt 预设信息。', errors) : undefined;
-  const supabase = await createClient();
-  const { error } = await supabase.from('prompt_presets').insert({ title, scenario, system_instruction, variables, status, target_role: 'teacher', created_by: role.data.id });
-  if (error) return shouldReturnState ? actionResult(false, `Prompt 预设保存失败：${error.message}`) : undefined;
-  revalidatePath('/admin/presets');
-  revalidatePath('/teacher');
-  return shouldReturnState ? actionResult(true, 'Prompt 预设已保存。') : undefined;
-}
-
+/**
+ * CSV 名册预览。除了字段级校验，还必须回答管理员真正会问的那两个问题：
+ *   · 这一行会**新建**账号还是**覆盖**已有账号？（同校同 login_id）
+ *   · 如果角色和已有账号不一致，这是在**提权**（student → admin）还是**降权**？
+ * 两者都不检查的话，一次手滑的 CSV 就能把整届学生的角色改掉，而预览页全是绿的。
+ *
+ * 角色不一致一律判 invalid：角色是权限边界，只能显式改，不能由一次名册导入顺带完成
+ * （DB 侧 provision_school_account 同样拒绝，见 20260926102000）。
+ */
 export async function previewUserCsv(csvText: string): Promise<CsvUserPreview> {
-  const rows = parseCsv(csvText).map((row, index) => {
+  const caller = await requireRole('admin');
+  const schoolId = caller.ok ? caller.data.school_id : null;
+  const parsed = parseCsv(csvText);
+  // 同校已有账号：一次性查回来，不逐行打数据库。
+  const loginIds = new Set(parsed.map((row) => row.login_id?.trim() ?? '').filter((loginId) => /^\d{8}$/.test(loginId)));
+  const existingByLoginId = new Map<string, AppRole>();
+  if (schoolId && loginIds.size > 0) {
+    const supabase = await createClient();
+    const { data: existing } = await supabase
+      .from('profiles')
+      .select('login_id,role')
+      .eq('school_id', schoolId)
+      .in('login_id', [...loginIds]);
+    for (const row of existing ?? []) if (row.login_id) existingByLoginId.set(row.login_id, row.role);
+  }
+
+  const seen = new Set<string>();
+  const rows = parsed.map((row, index) => {
     const displayName = row.display_name?.trim() ?? '';
     const loginId = row.login_id?.trim() ?? '';
     const role = isAppRole(row.role?.trim() ?? '') ? row.role.trim() as AppRole : null;
@@ -890,46 +968,93 @@ export async function previewUserCsv(csvText: string): Promise<CsvUserPreview> {
     const errors: string[] = [];
     if (!displayName) errors.push('缺少 display_name');
     if (!loginId) errors.push('缺少 login_id');
+    else if (!/^\d{8}$/.test(loginId)) errors.push('login_id 必须是 8 位数字');
+    if (loginId && seen.has(loginId)) errors.push('login_id 在文件内重复');
+    if (loginId) seen.add(loginId);
     if (!role) errors.push('role 必须是 admin / teacher / student');
     if (role === 'teacher' && !subject) errors.push('教师缺少 subject');
-    return { rowNumber: index + 2, displayName, loginId, role, subject, className, status: errors.length > 0 ? 'invalid' : 'valid', errors } satisfies CsvUserPreviewRow;
+    const existingRole = existingByLoginId.get(loginId) ?? null;
+    if (existingRole && role && existingRole !== role) {
+      errors.push(`该工号在本校已是 ${existingRole}，本次要改成 ${role}（权限变更），必须显式处理`);
+    }
+    return {
+      rowNumber: index + 2,
+      displayName,
+      loginId,
+      role,
+      subject,
+      className,
+      status: errors.length > 0 ? 'invalid' : 'valid',
+      errors,
+      existingRole,
+      willUpdate: existingRole !== null,
+    } satisfies CsvUserPreviewRow;
   });
   return { rows, validCount: rows.filter((row) => row.status === 'valid').length, invalidCount: rows.filter((row) => row.status === 'invalid').length };
 }
 
-export async function importUsersFromCsv(csvText: string): Promise<{ ok: true; imported: number } | { ok: false; message: string; preview: CsvUserPreview }> {
+export type CsvImportResult = {
+  ok: boolean;
+  message: string;
+  /** 成功写入（新建或覆盖）的行数；失败时为已成功的那部分。 */
+  imported: number;
+  /** 与 imported 同值，语义化别名：失败时它是"已成功"，不是"总共"。 */
+  succeededCount: number;
+  preview: CsvUserPreview;
+};
+
+export async function importUsersFromCsv(csvText: string): Promise<CsvImportResult> {
   const role = await requireRole('admin');
-  if (!role.ok) return { ok: false, message: role.message, preview: await previewUserCsv(csvText) };
-  // 校 admin 导入本校名册；班级与账号都挂到调用者的学校（org_admin 的学校归属后续版本放开）。
-  const caller = role.data;
   const preview = await previewUserCsv(csvText);
-  if (preview.invalidCount > 0) return { ok: false, message: 'CSV 存在无效行。', preview };
+  if (!role.ok) return { ok: false, message: role.message, imported: 0, succeededCount: 0, preview };
+  // 校 admin 导入本校名册；班级与账号都挂到调用者的学校（org_admin 的学校归属后续版本放开）。
+  const schoolId = role.data.school_id;
+  if (preview.invalidCount > 0) {
+    return { ok: false, message: `CSV 存在 ${preview.invalidCount} 行无效数据（见预览表），未导入任何账号。`, imported: 0, succeededCount: 0, preview };
+  }
+  if (!schoolId) {
+    return { ok: false, message: '当前管理员账号未归属任何学校，无法导入名册。', imported: 0, succeededCount: 0, preview };
+  }
   const supabase = await createClient();
   let imported = 0;
   for (const row of preview.rows) {
-    // 校 admin 导入本校名册；账号/班级挂到调用者的学校。
     // provision RPC 一次完成 auth.users 镜像 + profile + 初始密码（学号）+ 强制改密；
-    // 重导入（同校同号已存在）仅更新姓名角色，不动密码。
+    // 重导入（同校同号、角色相同）仅更新姓名，不动密码——角色不同则 RPC 直接拒绝。
     const { data: profileId, error: provisionError } = await supabase.rpc('provision_school_account', {
       p_login_id: row.loginId,
       p_display_name: row.displayName,
       p_role: row.role ?? 'student',
-      p_school_id: caller.school_id,
+      p_school_id: schoolId,
       p_server_signature: createDatabaseSessionSignature('provision_school_account'),
     });
-    if (provisionError || !profileId) return { ok: false, message: `第 ${row.rowNumber} 行账号导入失败：${provisionError?.message ?? 'unknown'}`, preview };
+    // 逐行推进，所以任何一步失败都必须报「已经成功了多少」：批量导入半途停下时，
+    // 只说"失败"的管理员会以为整份名册都没进去，然后重跑一遍。
+    if (provisionError || !profileId) {
+      return { ok: false, message: `第 ${row.rowNumber} 行账号导入失败：${provisionError?.message ?? 'unknown'}（已成功 ${imported} 行）`, imported, succeededCount: imported, preview };
+    }
     const profileIdText = String(profileId);
     if (row.role === 'teacher') {
-      const { error: subjectError } = await supabase.from('profiles').update({ subject: row.subject }).eq('id', profileIdText);
-      if (subjectError) return { ok: false, message: `第 ${row.rowNumber} 行教师科目保存失败：${subjectError.message}`, preview };
+      const { data: synced, error: subjectError } = await supabase.from('profiles').update({ subject: row.subject }).eq('id', profileIdText).select('id');
+      if (subjectError || !synced || synced.length === 0) {
+        return { ok: false, message: `第 ${row.rowNumber} 行教师科目未能保存：${subjectError?.message ?? '账号不属于本校或已被停用'}（已成功 ${imported} 行）`, imported, succeededCount: imported, preview };
+      }
     }
     if (row.className && row.role !== 'admin') {
-      const { data: classRow, error: classError } = await supabase.from('classes').upsert({ name: row.className, school_id: caller.school_id, created_by: caller.id }, { onConflict: 'school_id,name' }).select('id').single();
-      if (classError) return { ok: false, message: `第 ${row.rowNumber} 行班级导入失败：${classError.message}`, preview };
+      const { data: classRow, error: classError } = await supabase.from('classes').upsert({ name: row.className, school_id: schoolId, created_by: role.data.id }, { onConflict: 'school_id,name' }).select('id').single();
+      if (classError || !classRow) {
+        return { ok: false, message: `第 ${row.rowNumber} 行班级导入失败：${classError?.message ?? '未返回班级记录'}（已成功 ${imported} 行）`, imported, succeededCount: imported, preview };
+      }
       if (row.role === 'student') {
-        const { error: transferError } = await supabase.from('class_memberships').delete().eq('profile_id', profileIdText).eq('role', 'student');
-        if (transferError) return { ok: false, message: `第 ${row.rowNumber} 行自动迁班失败：${transferError.message}`, preview };
-      } else if (row.role === 'teacher') {
+        // 迁班走 RPC：删旧关系 + 插新关系 + 同步历史项目/会话，一个事务，失败不留半迁移态。
+        const { error: transferError } = await supabase.rpc('transfer_student_to_class', {
+          p_profile_id: profileIdText,
+          p_class_id: classRow.id,
+        });
+        if (transferError) {
+          return { ok: false, message: `第 ${row.rowNumber} 行自动迁班失败：${transferError.message}（已成功 ${imported} 行）`, imported, succeededCount: imported, preview };
+        }
+      } else {
+        // 教师可以带多个班，重复加入同一班是幂等的，不是错误。
         const { data: existingTeacher, error: existingTeacherError } = await supabase
           .from('class_memberships')
           .select('id')
@@ -938,18 +1063,18 @@ export async function importUsersFromCsv(csvText: string): Promise<{ ok: true; i
           .eq('role', 'teacher')
           .limit(1)
           .maybeSingle();
-        if (existingTeacherError) return { ok: false, message: `第 ${row.rowNumber} 行教师关系检查失败：${existingTeacherError.message}`, preview };
-        if (existingTeacher) {
-          imported += 1;
-          continue;
+        if (existingTeacherError) {
+          return { ok: false, message: `第 ${row.rowNumber} 行教师关系检查失败：${existingTeacherError.message}（已成功 ${imported} 行）`, imported, succeededCount: imported, preview };
         }
-      }
-      const { error: membershipError } = await supabase.from('class_memberships').upsert({ class_id: classRow.id, profile_id: profileIdText, role: row.role }, { onConflict: 'class_id,profile_id' });
-      if (membershipError) return { ok: false, message: `第 ${row.rowNumber} 行班级关系导入失败：${membershipError.message}`, preview };
-      // 迁班后同步历史项目和会话的 class_id，使新班教师可见所有历史核实记录。
-      if (row.role === 'student') {
-        await supabase.from('projects').update({ class_id: classRow.id }).eq('owner_id', profileIdText);
-        await supabase.from('conversations').update({ class_id: classRow.id }).eq('owner_id', profileIdText).eq('source', 'student_chat').is('deleted_at', null);
+        if (!existingTeacher) {
+          const { data: linked, error: membershipError } = await supabase
+            .from('class_memberships')
+            .insert({ class_id: classRow.id, profile_id: profileIdText, role: 'teacher' })
+            .select('id');
+          if (membershipError || !linked || linked.length === 0) {
+            return { ok: false, message: `第 ${row.rowNumber} 行班级关系导入失败：${membershipError?.message ?? '当前账号无权管理该班级'}（已成功 ${imported} 行）`, imported, succeededCount: imported, preview };
+          }
+        }
       }
     }
     imported += 1;
@@ -957,7 +1082,7 @@ export async function importUsersFromCsv(csvText: string): Promise<{ ok: true; i
   revalidatePath('/admin');
   revalidatePath('/admin/users');
   revalidatePath('/admin/classes');
-  return { ok: true, imported };
+  return { ok: true, message: `已导入 ${imported} 个账号。`, imported, succeededCount: imported, preview };
 }
 
 export async function getAdminExports() {

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Brain, Layers3, Loader2, Sparkles, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -61,6 +61,11 @@ const SCENARIO_ROWS = [
 
 const EMBEDDING_ROW = { role: 'RAG /student', scenario: 'embedding', impact: '项目检索的独立向量嵌入配置' } as const;
 
+
+/** 谁能改公司级模板：org_admin 全权；校 admin（admin）只读公司级那一批。 */
+export type ViewerRole = 'admin' | 'org_admin';
+/** 变更摘要用的层级短名。 */
+const TIER_LABEL: Record<ModelTier, string> = { flash: 'Flash Model', advanced: 'Advanced Model' };
 
 const TIER_COPY: Record<ModelTier, {
   title: string;
@@ -288,7 +293,22 @@ function ScenarioMappingTable({ tierViews, embeddingConfigured, scenarioTierBind
   const [savedBindings, setSavedBindings] = useState(scenarioTierBindings);
   const [error, setError] = useState<string | null>(null);
   const [submitting, startTransition] = useTransition();
-  const hasChanges = draftBindings.some((binding) => savedBindings.find((current) => current.scenario === binding.scenario)?.tier !== binding.tier);
+  const changes = draftBindings
+    .map((binding) => {
+      const savedTier = savedBindings.find((current) => current.scenario === binding.scenario)?.tier;
+      return savedTier && savedTier !== binding.tier
+        ? { scenario: binding.scenario, from: savedTier, to: binding.tier }
+        : null;
+    })
+    .filter((change): change is { scenario: AdminScenarioTierBinding['scenario']; from: ModelTier; to: ModelTier } => change !== null);
+  const hasChanges = changes.length > 0;
+
+
+
+  function discard() {
+    setDraftBindings(savedBindings);
+    setError(null);
+  }
 
   function updateScenarioTier(scenario: AdminScenarioTierBinding['scenario'], tier: ModelTier) {
     setDraftBindings((current) => current.map((binding) => binding.scenario === scenario ? { ...binding, tier } : binding));
@@ -378,13 +398,32 @@ function ScenarioMappingTable({ tierViews, embeddingConfigured, scenarioTierBind
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
+      {hasChanges && canEdit ? (
+        <Alert>
+          <AlertTitle>保存前请确认这 {changes.length} 处变更</AlertTitle>
+          <AlertDescription>
+            <ul className="list-disc space-y-0.5 pl-4">
+              {changes.map((change) => (
+                <li key={change.scenario}>
+                  {CAPABILITY_LABELS[change.scenario]}：{TIER_LABEL[change.from]} → {TIER_LABEL[change.to]}
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <div className="flex flex-wrap items-center justify-end gap-3">
         {/* 校管理员看得到路由结果（它决定本校模型怎么走），但改不了——那是公司级资产。
             与其让他点了再收到「仅公司管理员可改」的报错，不如直接不给入口。 */}
         {canEdit ? (
-          <Button type="button" onClick={save} disabled={submitting || !hasChanges}>
-            {submitting ? <><Loader2 className="mr-2 size-4 animate-spin" />保存中…</> : '保存场景映射'}
-          </Button>
+          <>
+            <Button type="button" variant="outline" onClick={discard} disabled={submitting || !hasChanges}>
+              放弃修改
+            </Button>
+            <Button type="button" onClick={save} disabled={submitting || !hasChanges}>
+              {submitting ? <><Loader2 className="mr-2 size-4 animate-spin" />保存中…</> : '保存场景映射'}
+            </Button>
+          </>
         ) : (
           <p className="text-xs text-muted-foreground">场景路由映射是公司级配置，仅公司管理员可改；本校只决定各路由层绑到哪个 Provider。</p>
         )}
@@ -393,7 +432,8 @@ function ScenarioMappingTable({ tierViews, embeddingConfigured, scenarioTierBind
   );
 }
 
-function ProviderOperationsTable({ providers, modelTiers }: { providers: ProviderListItem[]; modelTiers: Record<ModelTier, AdminModelTierStatus> }) {
+function ProviderOperationsTable({ providers, modelTiers, viewerRole }: { providers: ProviderListItem[]; modelTiers: Record<ModelTier, AdminModelTierStatus>; viewerRole: ViewerRole }) {
+
   if (providers.length === 0) {
     return (
       <EmptyState
@@ -421,6 +461,10 @@ function ProviderOperationsTable({ providers, modelTiers }: { providers: Provide
           {providers.map((provider) => {
             const usedTiers = (['flash', 'advanced'] as ModelTier[]).filter((tier) => modelTiers[tier].providerId === provider.id && modelTiers[tier].modelId);
             const embeddingModels = provider.capabilities.filter((capability) => capability.capability === 'embedding');
+            // 公司级模板归公司管：校管理员只读，按钮禁用并说明原因，免得点了只换来一句 RLS 拒绝。
+            const gate = provider.schoolId || viewerRole === 'org_admin'
+              ? { canEdit: true }
+              : { canEdit: false, readOnlyReason: '公司级模板由公司管理员维护，本校账号只读' };
             return (
               <TableRow key={provider.id}>
                 <TableCell className="align-top font-medium">
@@ -461,11 +505,11 @@ function ProviderOperationsTable({ providers, modelTiers }: { providers: Provide
                 </TableCell>
                 <TableCell className="align-top">
                   <div className="flex items-center justify-end gap-0.5">
-                    <HealthCheckButton provider={provider} />
-                    <FetchModelsButton provider={provider} />
-                    <CapabilityAssignmentDialog provider={provider} />
-                    <EditProviderDialog provider={provider} />
-                    <DeleteProviderButton provider={provider} />
+                    <HealthCheckButton provider={provider} gate={gate} />
+                    <FetchModelsButton provider={provider} gate={gate} />
+                    <CapabilityAssignmentDialog provider={provider} gate={gate} />
+                    <EditProviderDialog provider={provider} gate={gate} />
+                    <DeleteProviderButton provider={provider} gate={gate} />
                   </div>
                 </TableCell>
               </TableRow>
@@ -477,7 +521,7 @@ function ProviderOperationsTable({ providers, modelTiers }: { providers: Provide
   );
 }
 
-export function ProviderCapabilityMatrix({ providers, modelTiers, scenarioTierBindings, canEditScenarioRouting = false }: { providers: ProviderListItem[]; modelTiers: Record<ModelTier, AdminModelTierStatus>; scenarioTierBindings: AdminScenarioTierBinding[]; /** 场景→tier 是公司级资产，只有 org_admin 能改（见 saveScenarioTierBindings）。 */ canEditScenarioRouting?: boolean }) {
+export function ProviderCapabilityMatrix({ providers, modelTiers, scenarioTierBindings, canEditScenarioRouting = false, viewerRole }: { providers: ProviderListItem[]; modelTiers: Record<ModelTier, AdminModelTierStatus>; scenarioTierBindings: AdminScenarioTierBinding[]; /** 场景→tier 是公司级资产，只有 org_admin 能改（见 saveScenarioTierBindings）。 */ canEditScenarioRouting?: boolean; /** 决定公司级模板是否只读。 */ viewerRole: ViewerRole }) {
   const tierViews = useMemo(() => ({
     flash: getTierView('flash', providers, modelTiers, scenarioTierBindings),
     advanced: getTierView('advanced', providers, modelTiers, scenarioTierBindings),
@@ -512,7 +556,7 @@ export function ProviderCapabilityMatrix({ providers, modelTiers, scenarioTierBi
           <h2 className="text-lg font-semibold">模型供应商</h2>
           <p className="text-sm text-muted-foreground">查看最近连接检查、已拉取模型、密钥状态和当前用途。</p>
         </div>
-        <ProviderOperationsTable providers={providers} modelTiers={modelTiers} />
+        <ProviderOperationsTable providers={providers} modelTiers={modelTiers} viewerRole={viewerRole} />
       </section>
     </div>
   );

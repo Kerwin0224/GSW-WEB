@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import { createSchoolAdmin, renameSchool, type OrgSchoolClass, type OrgSchoolUser } from '@/lib/data/org';
 
@@ -17,7 +18,8 @@ export function SchoolDetailClient({ school, users, classes }: {
   users: OrgSchoolUser[];
   classes: OrgSchoolClass[];
 }) {
-  const [feedback, setFeedback] = useState('');
+  /** 成功/失败分级：更名与建管理员都可能被数据库拒绝，一行灰字看不出是成是败。 */
+  const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
   const submitAction = (action: (formData: FormData) => Promise<{ ok: boolean; message: string }>) => {
@@ -26,7 +28,7 @@ export function SchoolDetailClient({ school, users, classes }: {
       const formData = new FormData(event.currentTarget);
       startTransition(async () => {
         const result = await action(formData);
-        setFeedback(result.message);
+        setFeedback({ ok: result.ok, message: result.message });
       });
     };
   };
@@ -37,7 +39,12 @@ export function SchoolDetailClient({ school, users, classes }: {
 
   return (
     <div className="space-y-6">
-      {feedback ? <p className="rounded-lg border border-border/60 bg-muted/40 px-4 py-3 text-sm" role="status" aria-live="polite">{feedback}</p> : null}
+      {feedback ? (
+        <Alert variant={feedback.ok ? 'default' : 'destructive'} role={feedback.ok ? 'status' : 'alert'}>
+          <AlertTitle>{feedback.ok ? '操作完成' : '操作失败'}</AlertTitle>
+          <AlertDescription>{feedback.message}</AlertDescription>
+        </Alert>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
         <Card>

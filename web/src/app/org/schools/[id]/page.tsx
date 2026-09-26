@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 
 import { ErrorState } from '@/components/workbench/state-surfaces';
+import { WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { requireProfile } from '@/lib/auth';
 import { getOrgSchoolDetail } from '@/lib/data/org';
 import { SchoolDetailClient } from './detail-client';
@@ -19,13 +20,16 @@ export default async function OrgSchoolDetailPage({ params }: { params: Promise<
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
-      <header className="space-y-2 border-b border-border/60 pb-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">公司管理 / 学校详情</p>
-        <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">{result.data.school.name}</h1>
-        <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-          在这里供给学校管理员账号（初始密码 = 工号，首次登录强制改密）；师生名册与班级的日常管理由学校管理员在本校后台完成，项目如何归类由各任课教师在自己的提示词里定义。
-        </p>
-      </header>
+      <WorkspaceHero
+        eyebrow="公司管理 / 学校详情"
+        title={result.data.school.name}
+        description="在这里供给学校管理员账号（初始密码 = 工号，首次登录强制改密）；师生名册与班级的日常管理由学校管理员在本校后台完成。"
+        metrics={[
+          { label: '状态', value: result.data.school.status === 'active' ? '运行中' : '已停用', hint: '启用/停用在总览页操作' },
+          { label: '成员账号', value: result.data.users.length, hint: '含校管理员、教师与学生' },
+          { label: '班级', value: result.data.classes.length, hint: '由校管理员维护' },
+        ]}
+      />
       <SchoolDetailClient school={result.data.school} users={result.data.users} classes={result.data.classes} />
     </div>
   );

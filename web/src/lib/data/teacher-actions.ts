@@ -675,13 +675,24 @@ export async function finalizeLearningConversation(conversationId: string, _prev
 
   // 状态真源：写会话列。此后所有读者（学生继续追问、教师队列、导出）都读这一列，
   // 不再扫 audit_records 的 JSON 推导「是否已核实」。
-  // 带 deleted_at 过滤是产品硬约束：学生已删除的会话不进入核实，也不能被标记为已核实。
-  const { error: finalizeError } = await supabase
+  //
+  // 条件更新 + 查行数，两个原因，缺一不可：
+  //   · `.is('finalized_at', null)` 让"提交核实"成为一次条件写。两个教师同时点提交时，
+  //     后到的那个拿到 0 行而不是把前一个人的时间戳和样本一起覆盖成两份。
+  //   · `.select('id')` 让 0 行可辨。RLS 静默过滤掉的 UPDATE 既不报 error 也不返回行，
+  //     而"返回 0 行"和"已更新"在只看 error 分支的代码里长得一模一样。
+  // deleted_at 过滤是产品硬约束：学生已删除的会话不进入核实，也不能被标记为已核实。
+  const { data: finalizedRows, error: finalizeError } = await supabase
     .from('conversations')
     .update({ finalized_at: now })
     .eq('id', conversation.id)
-    .is('deleted_at', null);
+    .is('finalized_at', null)
+    .is('deleted_at', null)
+    .select('id');
   if (finalizeError) return { ok: false, message: `会话核实状态写入失败：${finalizeError.message}` };
+  if (!finalizedRows || finalizedRows.length === 0) {
+    return { ok: false, message: '这个会话已被提交或已被学生删除，本次提交未生效。请刷新后查看最新状态。' };
+  }
 
   // 审计事件：记录本次提交的计数，供导出与追溯。不承担状态判定职责。
   const { error: auditEventError } = await supabase.from('audit_records').insert({

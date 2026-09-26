@@ -200,7 +200,25 @@ export async function createSchoolAdmin(formData: FormData): Promise<ActionState
   const owned = await assertSchoolInOrg(schoolId, ctx.data.organizationId);
   if (!owned.ok) return { ok: false, message: owned.message };
 
+  // 同校同工号已存在就停在这里。原因：provision_school_account 的「重导入」分支曾经
+  // 无条件 set role = p_role，于是把一个已存在的教师/学生的工号填进这个表单，
+  // 那个账号就在零提示的情况下变成了校管理员——一次静默提权。
+  // 角色变更必须显式，走用户管理页的改角色入口。
   const supabase = await createClient();
+  const { data: existing, error: lookupError } = await supabase
+    .from('profiles')
+    .select('display_name,role,status')
+    .eq('school_id', schoolId)
+    .eq('login_id', loginId)
+    .maybeSingle();
+  if (lookupError) return { ok: false, message: `工号校验失败：${lookupError.message}` };
+  if (existing) {
+    const hint = existing.role === 'admin'
+      ? '该工号已经是本校的校管理员。'
+      : `该工号已属于「${existing.display_name}」（${existing.role}${existing.status === 'disabled' ? '，已停用' : ''}）。创建校管理员不会改变已有账号的角色；如需变更，请到用户管理页显式修改。`;
+    return { ok: false, message: hint };
+  }
+
   const { error: provisionError } = await supabase.rpc('provision_school_account', {
     p_login_id: loginId,
     p_display_name: displayName,

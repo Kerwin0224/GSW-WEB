@@ -1,13 +1,15 @@
 'use client';
 
-import { useActionState, useState } from 'react';
-import { Check, Loader2, Plus, Save, X } from 'lucide-react';
+import { useActionState, useCallback, useEffect, useState } from 'react';
+import { Archive, Check, Loader2, Plus, Save, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/workbench/state-surfaces';
 import { SpaceDirectory } from '@/components/workbench/space-directory';
 import { archiveSpaceAction, saveSpaceAction, setSpaceClassAction, setSpaceStudentAction, type SpaceStudentOption, type TeacherSpace } from '@/lib/data/spaces';
@@ -33,7 +35,33 @@ const THEME_PLACEHOLDER = `只写「这个空间按什么分类」，不用管�
 export function SpacePanel({ spaces, classes, studentOptions, defaultSubject }: { spaces: TeacherSpace[]; classes: TeacherClass[]; studentOptions: SpaceStudentOption[]; defaultSubject: string }) {
   const [selectedId, setSelectedId] = useState(spaces[0]?.id ?? '');
   const [creating, setCreating] = useState(spaces.length === 0);
-  const current = spaces.find((space) => space.id === selectedId) ?? spaces[0];
+  // 新建成功后服务端不回传新空间 id（saveSpaceAction 只返回 ActionState），
+  // 而同名活跃空间被服务端保证唯一，按名字认领是唯一可靠的对齐方式。
+  const [pendingSpaceName, setPendingSpaceName] = useState<string | null>(null);
+
+  // 稳定引用：子组件的 effect 以它们为依赖，内联箭头会让 effect 每次渲染都重跑。
+  const handleCreated = useCallback((createdName: string) => {
+    setPendingSpaceName(createdName);
+    setCreating(false);
+  }, []);
+  const handleArchived = useCallback(() => {
+    setSelectedId('');
+    setPendingSpaceName(null);
+  }, []);
+
+  // 归档后这条会从列表消失，`current` 自然解析为 undefined → 走空态。
+  // 此前是 `?? spaces[0]`：静默跳到别的空间，教师看着编辑区毫无变化，以为归档没生效。
+  // selectedId 留着一个失效 id 无害：目录高亮匹配不到任何人，正是它已消失的证据。
+  const current = spaces.find((space) => space.id === selectedId)
+    ?? (pendingSpaceName ? spaces.find((space) => space.name === pendingSpaceName) : undefined);
+  // 新空间出现在列表里就立刻切过去（render 阶段收敛，避免多一次 effect 往返的空窗）。
+  if (pendingSpaceName && current) setPendingSpaceName(null);
+
+  function selectSpace(id: string) {
+    setSelectedId(id);
+    setPendingSpaceName(null);
+    setCreating(false);
+  }
 
   return (
     <Card className="gap-0 rounded-none border-x-0 border-border/70 bg-card/35 py-0 shadow-none ring-0">
@@ -52,40 +80,69 @@ export function SpacePanel({ spaces, classes, studentOptions, defaultSubject }: 
         <SpaceDirectory
           items={spaces.map((space) => ({ id: space.id, name: space.name, subject: space.subject, colorKey: space.colorKey, kind: space.kind, count: space.studentCount, hint: `${space.subject || '未设置科目'} · ${space.studentCount} 名学生` }))}
           activeId={selectedId}
-          onSelect={(id) => { setSelectedId(id); setCreating(false); }}
+          onSelect={selectSpace}
           ariaLabel="选择教师空间"
           emptyLabel="还没有空间，先为每个科目建立一个空间。"
         />
 
         {creating ? (
-          <SpaceEditor key="new" classes={classes} studentOptions={studentOptions} defaultSubject={defaultSubject} />
+          <SpaceEditor key="new" classes={classes} studentOptions={studentOptions} defaultSubject={defaultSubject} onCreated={handleCreated} />
         ) : current ? (
-          <SpaceEditor key={current.id} space={current} classes={classes} studentOptions={studentOptions} defaultSubject={defaultSubject} />
+          <SpaceEditor key={current.id} space={current} classes={classes} studentOptions={studentOptions} defaultSubject={defaultSubject} onArchived={handleArchived} />
         ) : (
-          <EmptyState title="还没有学习空间" description="从一个科目开始，写下它如何归类，再把对应学生加入。" />
+          <EmptyState
+            title={spaces.length === 0 ? '还没有学习空间' : '当前没有选中的空间'}
+            description={spaces.length === 0
+              ? '从一个科目开始，写下它如何归类，再把对应学生加入。'
+              : '从上面的目录里选一个空间继续编辑，或新建一个空间。'}
+            action={spaces.length > 0
+              ? <Button type="button" onClick={() => selectSpace(spaces[0].id)} className="cursor-pointer">选中「{spaces[0].name}」</Button>
+              : <Button type="button" onClick={() => setCreating(true)} className="cursor-pointer"><Plus className="mr-1 size-4" aria-hidden="true" />新建空间</Button>}
+          />
         )}
       </CardContent>
     </Card>
   );
 }
 
-function SpaceEditor({ space, classes, studentOptions, defaultSubject }: { space?: TeacherSpace; classes: TeacherClass[]; studentOptions: SpaceStudentOption[]; defaultSubject: string }) {
+function SpaceEditor({ space, classes, studentOptions, defaultSubject, onCreated, onArchived }: { space?: TeacherSpace; classes: TeacherClass[]; studentOptions: SpaceStudentOption[]; defaultSubject: string; onCreated?: (name: string) => void; onArchived?: () => void }) {
   const [state, action, pending] = useActionState(saveSpaceAction, idle);
   const [name, setName] = useState(space?.name ?? '');
   const [subject, setSubject] = useState(space?.subject ?? defaultSubject);
   const [theme, setTheme] = useState(space?.theme ?? '');
   const [colorKey, setColorKey] = useState<SpaceColorKey>(space?.colorKey ?? 'pine');
   const [spaceKind, setSpaceKind] = useState<SpaceKind>(space?.kind ?? 'term');
-  const [classId, setClassId] = useState(classes[0]?.classId ?? '');
+  // 默认「暂不拉班」：新建时替教师先拉一个班是不可逆的成员扩张，
+  // 得由他自己明确选，而不是被默认值顺手带出去。
+  const [classId, setClassId] = useState('');
 
   const pulledClassIds = new Set((space?.classes ?? []).map((klass) => klass.classId));
   const availableClasses = classes.filter((klass) => !pulledClassIds.has(klass.classId));
   const directStudentIds = new Set((space?.directStudents ?? []).map((student) => student.id));
   const studentOptionById = new Map(studentOptions.map((student) => [student.id, student]));
-  const availableStudents = studentOptions.filter((student) => !directStudentIds.has(student.id));
+
+  // 派生成员判定只能落在班名上：TeacherSpace 的 classes 没有成员 id，
+  // 而 SpaceStudentOption.className 是该生所在班名的「、」连接。
+  // ponytail: 跨校同名班级会误判为派生；要精确就得让数据层多返回一个 class_id。
+  const pulledClassNames = new Set((space?.classes ?? []).map((klass) => klass.className.trim()));
+  const isDerivedStudent = (student: SpaceStudentOption) => student.className.split('、').some((name) => pulledClassNames.has(name.trim()));
+  // 已经随班级进来的学生不再出现在「可以加入」里——重复添加不会多给他一份权限，
+  // 只会让教师误以为空间成员比实际多。
+  const availableStudents = studentOptions.filter((student) => !directStudentIds.has(student.id) && !isDerivedStudent(student));
+  const derivedDirectStudents = (space?.directStudents ?? []).filter((student) => {
+    const option = studentOptionById.get(student.id);
+    return option ? isDerivedStudent(option) : false;
+  });
+  const removableDirectStudents = (space?.directStudents ?? []).filter((student) => !derivedDirectStudents.some((derived) => derived.id === student.id));
   const derivedStudentCount = space?.classes.reduce((sum, klass) => sum + klass.studentCount, 0) ?? 0;
   const nameError = state.errors?.name;
   const subjectError = state.errors?.subject;
+
+  // 新建成功后把控制权交回父级去认领新空间（服务端不回传 id，见 SpacePanel 注释）。
+  // 只认 state 的变化：依赖里刻意不放 name，否则教师接着改名就会重复认领。
+  useEffect(() => {
+    if (state.ok && !space) onCreated?.(name.trim());
+  }, [state, onCreated, space, name]);
 
   return (
     <div className="grid gap-6 border-y border-border/65 bg-background/45 p-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
@@ -149,11 +206,12 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject }: { space
 
         {!space ? (
           <div className="space-y-2">
-            <Label htmlFor="space-class">先拉一个班进来（可留空，之后再拉）</Label>
+            <Label htmlFor="space-class">先拉一个班进来（默认不拉，之后也能改）</Label>
             <select id="space-class" name="class_id" value={classId} onChange={(event) => setClassId(event.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
               <option value="">暂不拉班</option>
               {classes.map((klass) => <option key={klass.classId} value={klass.classId}>{klass.className}（{klass.studentCount} 人）</option>)}
             </select>
+            <p className="text-xs leading-5 text-muted-foreground">拉班会把整班学生一次性放进空间，之后要移出得逐个处理。默认「暂不拉班」，先建好空间再决定。</p>
           </div>
         ) : null}
 
@@ -176,10 +234,10 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject }: { space
         <div className="grid grid-cols-3 divide-x border-y border-border/60 bg-card/35 text-center">
           <div className="px-2 py-3"><p className="text-lg font-semibold text-foreground">{space.studentCount}</p><p className="mt-0.5 text-[0.68rem] text-muted-foreground">可见学生</p></div>
           <div className="px-2 py-3"><p className="text-lg font-semibold text-foreground">{derivedStudentCount}</p><p className="mt-0.5 text-[0.68rem] text-muted-foreground">班级派生</p></div>
-          <div className="px-2 py-3"><p className="text-lg font-semibold text-foreground">{space.directStudents.length}</p><p className="mt-0.5 text-[0.68rem] text-muted-foreground">直接加入</p></div>
+          <div className="px-2 py-3"><p className="text-lg font-semibold text-foreground">{removableDirectStudents.length}</p><p className="mt-0.5 text-[0.68rem] text-muted-foreground">直接加入</p></div>
         </div>
       ) : null}
-      {space ? <ArchiveButton spaceId={space.id} /> : null}
+      {space ? <ArchiveButton space={space} onArchived={onArchived} /> : null}
 
       {space ? (
         <div className="space-y-3 border-t border-border/60 pt-3">
@@ -197,13 +255,26 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject }: { space
           </div>
           <div className="space-y-2 border-t border-border/50 pt-3">
             <p className="text-sm font-medium">直接加入的学生</p>
-            {space.directStudents.length === 0 ? <p className="text-xs text-muted-foreground">暂无直接加入的学生。</p> : (
-              <div className="grid gap-2">{space.directStudents.map((student) => <StudentChip key={student.id} spaceId={space.id} studentId={student.id} label={`${student.displayName}（${studentOptionById.get(student.id)?.className ?? '学生'}）`} intent="remove" />)}</div>
-            )}
+            {removableDirectStudents.length === 0 && derivedDirectStudents.length === 0
+              ? <p className="text-xs text-muted-foreground">暂无直接加入的学生。</p>
+              : <div className="grid gap-2">{removableDirectStudents.map((student) => <StudentChip key={student.id} spaceId={space.id} studentId={student.id} label={`${student.displayName}（${studentOptionById.get(student.id)?.className ?? '学生'}）`} intent="remove" />)}</div>}
+            {/* 同时被直接添加、又在已拉班级里的学生：随班级进出，给一个移除按钮会出现
+                「移出后他仍在空间里」的假失败，所以只标来源、不给直接移除。 */}
+            {derivedDirectStudents.length > 0 ? (
+              <div className="grid gap-2">
+                {derivedDirectStudents.map((student) => (
+                  <div key={student.id} className="flex min-h-11 items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/35 px-3 py-2 text-xs">
+                    <span className="truncate">{student.displayName}（{studentOptionById.get(student.id)?.className ?? '学生'}）</span>
+                    <Badge variant="outline" className="shrink-0">随班级进入</Badge>
+                  </div>
+                ))}
+                <p className="text-xs text-muted-foreground">这些学生随已拉入的班级自动进出；要让他们离开空间，请在上方移出对应班级。</p>
+              </div>
+            ) : null}
           </div>
           <div className="space-y-2">
             <p className="text-sm font-medium">可以加入的学生</p>
-            {availableStudents.length === 0 ? <p className="text-xs text-muted-foreground">任教班级学生都已直接加入。</p> : (
+            {availableStudents.length === 0 ? <p className="text-xs text-muted-foreground">任教班级学生都已在这个空间里（直接加入或随班级进入）。</p> : (
               <div className="grid gap-2">{availableStudents.map((student) => <StudentChip key={student.id} spaceId={space.id} studentId={student.id} label={`${student.displayName}（${student.className}）`} intent="add" />)}</div>
             )}
           </div>
@@ -254,16 +325,63 @@ function StudentChip({ spaceId, studentId, label, intent }: { spaceId: string; s
   );
 }
 
-function ArchiveButton({ spaceId }: { spaceId: string }) {
+/**
+ * 归档是不可撤销的成员收缩，必须先说清影响面再动手。
+ * 确认弹窗里给出学生/班级/直接成员的口径；项目与会话不会被删除（空间只支持归档，
+ * 迁移里没有 delete 策略），这句话必须写出来，否则教师会以为学习数据也没了。
+ */
+function ArchiveButton({ space, onArchived }: { space: TeacherSpace; onArchived?: () => void }) {
   const [state, action, pending] = useActionState(archiveSpaceAction, idle);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const statusId = `archive_status_${space.id}`;
+
+  const [handledState, setHandledState] = useState(state);
+  if (state !== handledState) {
+    setHandledState(state);
+    if (state.ok) setConfirmOpen(false);
+  }
+  useEffect(() => {
+    if (state.ok) onArchived?.();
+  }, [onArchived, state]);
+
+  const derivedCount = space.classes.reduce((sum, klass) => sum + klass.studentCount, 0);
+  const directCount = space.directStudents.length;
+
   return (
-    <form action={action}>
-      <input type="hidden" name="space_id" value={spaceId} />
-      <Button type="submit" variant="outline" disabled={pending} className="cursor-pointer">
-        {pending ? <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" /> : <Check className="mr-2 size-4" aria-hidden="true" />}
-        归档
+    <div className="space-y-2">
+      <Button type="button" variant="outline" onClick={() => setConfirmOpen(true)} disabled={pending} className="cursor-pointer">
+        {pending ? <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" /> : <Archive className="mr-2 size-4" aria-hidden="true" />}
+        归档空间
       </Button>
-      {state.message ? <span className={state.ok ? 'block pt-1 text-xs text-primary' : 'block pt-1 text-xs text-destructive'} role={state.ok ? 'status' : 'alert'}>{state.message}</span> : null}
-    </form>
+      {state.message ? <span id={statusId} className={state.ok ? 'block pt-1 text-xs text-primary' : 'block pt-1 text-xs text-destructive'} role={state.ok ? 'status' : 'alert'}>{state.message}</span> : null}
+
+      <Dialog open={confirmOpen} onOpenChange={(open) => { if (!pending) setConfirmOpen(open); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认归档「{space.name}」？</DialogTitle>
+            <DialogDescription>归档后学生侧立刻看不到这个空间，主题也不再生效。归档不可撤销。</DialogDescription>
+          </DialogHeader>
+          <form action={action} className="space-y-3" aria-busy={pending} aria-describedby={statusId}>
+            <input type="hidden" name="space_id" value={space.id} />
+            <ul className="space-y-1 rounded-lg border border-border/65 bg-muted/40 p-3 text-sm">
+              <li className="flex justify-between gap-3"><span className="text-muted-foreground">可见学生</span><span className="font-medium">{space.studentCount} 名</span></li>
+              <li className="flex justify-between gap-3"><span className="text-muted-foreground">其中随班级进入</span><span className="font-medium">{derivedCount} 名</span></li>
+              <li className="flex justify-between gap-3"><span className="text-muted-foreground">其中直接加入</span><span className="font-medium">{directCount} 名</span></li>
+              <li className="flex justify-between gap-3"><span className="text-muted-foreground">已拉入班级</span><span className="font-medium">{space.classes.length} 个</span></li>
+            </ul>
+            {/* 项目与会话数：数据层没有随空间返回这个口径，不能编。改成把「不会丢什么」讲清楚。 */}
+            <p className="text-xs leading-5 text-muted-foreground">空间内已沉淀的项目、会话与挑战数据不会被删除，学生和班主任仍可正常查看，只是不再挂在这个空间的主题下。</p>
+            {state.message ? <p className={state.ok ? 'rounded-lg border border-primary/30 bg-primary/10 p-2 text-sm text-primary' : 'rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive'} role={state.ok ? 'status' : 'alert'}>{state.message}</p> : null}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setConfirmOpen(false)} disabled={pending}>取消</Button>
+              <Button type="submit" variant="destructive" disabled={pending} className="cursor-pointer">
+                {pending ? <Loader2 className="mr-1.5 size-4 animate-spin" aria-hidden="true" /> : <Check className="mr-1.5 size-4" aria-hidden="true" />}
+                {pending ? '归档中...' : '确认归档'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

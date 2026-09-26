@@ -1,4 +1,5 @@
-import { AlertTriangle, ClipboardCheck, FileSearch } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, ChevronRight, ClipboardCheck, FileSearch } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,6 +43,12 @@ export default async function TeacherChatPage() {
     .map((session) => ({ classLabel: group.classLabel, projectName: project.projectName, sessionLabel: session.sessionLabel, conversationId: session.conversationId, issueLabels: session.issueLabels })))));
   const highRiskRows = rows.slice(0, 3);
 
+  // 看板这三张卡都只吃队列的第一页（pageSize 20），所以「共 N 条」必须说清是哪一段，
+  // 否则教师按 3 条疑点去核实，翻完队列却找不到第 4 条。
+  const pageCaliberNote = auditResult.ok
+    ? `以下疑点与班级卡统计自待核实队列的第一页（共 ${groups.reduce((sum, group) => sum + group.students.reduce((studentSum, student) => studentSum + student.projects.reduce((projectSum, project) => projectSum + project.sessions.length, 0), 0), 0)} 条会话）；「待核实会话」用的是不受分页影响的总数。`
+    : '';
+
   const classSummaries = groups.map((group) => {
     const sessions = group.students.flatMap((student) => student.projects.flatMap((project) => project.sessions));
     return {
@@ -55,6 +62,8 @@ export default async function TeacherChatPage() {
     if (right.risk !== left.risk) return right.risk - left.risk;
     return right.latest.localeCompare(left.latest);
   }).slice(0, 4);
+
+  const classSummaryTotal = groups.length;
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
@@ -74,17 +83,23 @@ export default async function TeacherChatPage() {
 
       {auditResult.ok ? <section>
         <Card flushHeader className="overflow-hidden border-destructive/20 bg-card/92 shadow-soft backdrop-blur-xl">
-          <CardHeader className="border-b border-destructive/15 bg-destructive/5">
+          <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 border-b border-destructive/15 bg-destructive/5">
             <CardTitle className="flex items-center gap-2 font-heading">
               <AlertTriangle className="size-5 text-destructive" aria-hidden="true" />
               需优先核实
             </CardTitle>
+            {rows.length > highRiskRows.length ? (
+              <Link href="/teacher/audit" className="inline-flex items-center gap-1 text-xs text-primary underline-offset-4 hover:underline">
+                查看全部 {rows.length} 条
+                <ChevronRight className="size-3.5" aria-hidden="true" />
+              </Link>
+            ) : null}
           </CardHeader>
           <CardContent className="space-y-3 p-5">
             {highRiskRows.length === 0 ? <EmptyState title="暂无已标记疑点" description="AI 预审可能漏判，回答仍需教师核实。" /> : null}
             {highRiskRows.map((row) => (
               // 深链到具体会话：此前指向裸 /teacher/audit，教师点进去落在未选中的列表页，等于没点。
-              <a key={row.conversationId} href={buildAuditHref({ session: row.conversationId })} className="group block rounded-lg border border-destructive/25 bg-destructive/5 p-4 shadow-soft transition-[border-color,background-color,box-shadow] duration-200 hover:border-destructive/45 hover:bg-destructive/8 hover:shadow-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Link key={row.conversationId} href={buildAuditHref({ session: row.conversationId })} className="group block rounded-lg border border-destructive/25 bg-destructive/5 p-4 shadow-soft transition-[border-color,background-color,box-shadow] duration-200 hover:border-destructive/45 hover:bg-destructive/8 hover:shadow-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate font-medium">{row.classLabel} · {row.sessionLabel}</p>
@@ -93,26 +108,36 @@ export default async function TeacherChatPage() {
                   <span className="shrink-0 rounded-md bg-destructive px-2 py-1 text-xs font-medium text-destructive-foreground">{row.issueLabels.length} 处疑点</span>
                 </div>
                 <p className="mt-3 text-xs leading-5 text-destructive/90">{row.issueLabels.join('、')}</p>
-              </a>
+              </Link>
             ))}
+            {rows.length > highRiskRows.length ? <p className="text-xs leading-5 text-muted-foreground">共 {rows.length} 条带疑点的会话，这里显示最近 {highRiskRows.length} 条。</p> : null}
           </CardContent>
         </Card>
       </section> : null}
 
       <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
         {auditResult.ok ? <Card className="border-border/70 bg-card/88 shadow-soft">
-          <CardHeader><CardTitle className="flex items-center gap-2 font-heading"><FileSearch className="size-5 text-primary" aria-hidden="true" />班级核实队列</CardTitle></CardHeader>
+          <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2 font-heading"><FileSearch className="size-5 text-primary" aria-hidden="true" />班级核实队列</CardTitle>
+            {classSummaryTotal > classSummaries.length ? (
+              <Link href="/teacher/audit" className="inline-flex items-center gap-1 text-xs text-primary underline-offset-4 hover:underline">
+                查看全部 {classSummaryTotal} 个班级
+                <ChevronRight className="size-3.5" aria-hidden="true" />
+              </Link>
+            ) : null}
+          </CardHeader>
           <CardContent className="space-y-3">
             {classSummaries.length === 0 ? <EmptyState title="暂无待核实会话" description="有待核实会话时，会按疑点数量和时间排在这里。" /> : null}
             {classSummaries.map((summary) => (
-              <a key={summary.classId} href="/teacher/audit" className="block rounded-lg border border-border/65 bg-background/78 p-4 shadow-sm transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/35 hover:bg-background/95 hover:shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Link key={summary.classId} href="/teacher/audit" className="block rounded-lg border border-border/65 bg-background/78 p-4 shadow-sm transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/35 hover:bg-background/95 hover:shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-medium">{summary.classLabel}</p>
                   <Badge variant={summary.risk > 0 ? 'destructive' : 'outline'}>{summary.risk} 条会话有疑点</Badge>
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">待核实 {summary.pending} 条会话{summary.latest ? ` · 最近学习 ${new Date(summary.latest).toLocaleString('zh-CN')}` : ''}</p>
-              </a>
+              </Link>
             ))}
+            {classSummaryTotal > classSummaries.length ? <p className="text-xs leading-5 text-muted-foreground">共 {classSummaryTotal} 个有待核实会话的班级，这里显示前 {classSummaries.length} 个。</p> : null}
           </CardContent>
         </Card> : null}
 
@@ -131,6 +156,7 @@ export default async function TeacherChatPage() {
               <p className="text-xs text-muted-foreground">待核实</p>
               <p className="mt-2 text-3xl font-semibold">{analytics.weeklyAuditCoverage.pending}</p>
             </div>
+            <p className="text-xs leading-5 text-muted-foreground sm:col-span-3">{pageCaliberNote}</p>
           </CardContent>
         </Card>
       </section>

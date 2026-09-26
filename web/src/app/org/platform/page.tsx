@@ -53,7 +53,7 @@ export default async function OrgPlatformPage() {
           description="场景路由（哪个场景走 Flash、哪个走 Advanced）是公司级资产；学校自带 Provider 后只需把模型层绑到它，映射不用改。"
           action={<ProviderConfigDialog />}
         />
-        <ProviderCapabilityMatrix providers={providers} modelTiers={modelTiers} scenarioTierBindings={scenarioTierBindings} canEditScenarioRouting />
+        <ProviderCapabilityMatrix providers={providers} modelTiers={modelTiers} scenarioTierBindings={scenarioTierBindings} canEditScenarioRouting viewerRole="org_admin" />
       </section>
 
       <section className="space-y-4">
@@ -64,7 +64,7 @@ export default async function OrgPlatformPage() {
         />
         <Card>
           <CardContent className="pt-6">
-            <McpServerList servers={servers} />
+            <McpServerList servers={servers} viewerRole="org_admin" />
           </CardContent>
         </Card>
       </section>

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { ErrorState } from '@/components/workbench/state-surfaces';
+import { WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { requireProfile } from '@/lib/auth';
 import { listOrgSchools } from '@/lib/data/org';
 import { OrgSchoolsClient } from './schools-client';
@@ -13,13 +14,17 @@ export default async function OrgHomePage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
-      <header className="space-y-2 border-b border-border/60 pb-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">公司管理</p>
-        <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">学校总览</h1>
-        <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-          公司管校、校管人：在这里创建和停用学校、供给各校管理员账号；师生与班级的日常管理由各校管理员完成。
-        </p>
-      </header>
+      <WorkspaceHero
+        eyebrow="公司管理"
+        title="学校总览"
+        description="公司管校、校管人：在这里创建和停用学校、供给各校管理员账号；师生与班级的日常管理由各校管理员完成。"
+        primaryAction={{ label: '模型与工具', href: '/org/platform', variant: 'outline' }}
+        metrics={[
+          { label: '学校', value: result.data.length, hint: '本公司名下全部学校' },
+          { label: '班级', value: result.data.reduce((sum, school) => sum + school.classCount, 0), hint: '各校班级合计' },
+          { label: '师生', value: result.data.reduce((sum, school) => sum + school.teacherCount + school.studentCount, 0), hint: '教师 + 学生' },
+        ]}
+      />
       <OrgSchoolsClient
         schools={result.data}
         organizationName="本公司"

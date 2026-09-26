@@ -67,7 +67,10 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
           title="账号筛选与导入"
           description="支持按姓名或学校账号搜索，按角色与状态筛选；导入入口复用同一套 CSV 预览与提交流程。"
           action={(
-            <UserImportDialog />
+            <UserImportDialog
+              existingUsers={users.map((user) => ({ loginId: user.loginId, displayName: user.displayName, role: user.role }))}
+              existingUsersPartial={filters.query !== '' || filters.role !== 'all' || filters.status !== 'all'}
+            />
           )}
         />
         <Card>

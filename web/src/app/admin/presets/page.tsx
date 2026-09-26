@@ -1,8 +1,11 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { AdminPromptPresetDialog } from '@/components/workbench/admin-prompt-preset-form';
+import { Badge } from '@/components/ui/badge';
+import { AdminPromptPresetDialog, PresetRowActions, type PromptPresetItem } from '@/components/workbench/admin-prompt-preset-form';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { getAdminPresets } from '@/lib/data/admin';
+
+const PRESET_STATUS_LABEL: Record<string, string> = { draft: '草稿', published: '已发布', disabled: '已停用' };
 
 export default async function AdminPresetsPage() {
   const result = await getAdminPresets();
@@ -14,9 +17,8 @@ export default async function AdminPresetsPage() {
     );
   }
 
-  const presets = result.data as Array<{ id: string; title: string; scenario: string; version: number; status: string }>;
+  const presets = result.data as PromptPresetItem[];
   const publishedCount = presets.filter((preset) => preset.status === 'published').length;
-  const presetStatusLabel: Record<string, string> = { draft: '草稿', published: '已发布', disabled: '已停用' };
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
@@ -33,7 +35,7 @@ export default async function AdminPresetsPage() {
       <section className="space-y-4">
         <SectionHeader
           title="预设列表"
-          description="没有已发布预设时，教师仍可直接使用备课问答，但没有可选教学模板。"
+          description="没有已发布预设时，教师仍可直接使用备课问答，但没有可选教学模板。发布/停用立即影响教师端。"
           action={<AdminPromptPresetDialog />}
         />
         <div className="rounded-lg border bg-card">
@@ -44,22 +46,30 @@ export default async function AdminPresetsPage() {
                 <TableHead>场景</TableHead>
                 <TableHead>版本</TableHead>
                 <TableHead>状态</TableHead>
+                <TableHead className="text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {presets.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4}>
+                  <TableCell colSpan={5}>
                     <EmptyState title="暂无 Prompt 预设" description="创建并发布后，教师可在备课问答中选用；没有预设时仍可直接提问。" />
                   </TableCell>
                 </TableRow>
               ) : (
                 presets.map((preset) => (
                   <TableRow key={preset.id}>
-                    <TableCell>{preset.title}</TableCell>
+                    <TableCell className="font-medium">{preset.title}</TableCell>
                     <TableCell>{preset.scenario}</TableCell>
                     <TableCell>v{preset.version}</TableCell>
-                    <TableCell>{presetStatusLabel[preset.status] ?? preset.status}</TableCell>
+                    <TableCell>
+                      <Badge variant={preset.status === 'published' ? 'default' : 'secondary'}>
+                        {PRESET_STATUS_LABEL[preset.status] ?? preset.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <PresetRowActions preset={preset} />
+                    </TableCell>
                   </TableRow>
                 ))
               )}

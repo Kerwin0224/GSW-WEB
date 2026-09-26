@@ -302,6 +302,21 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* 键盘焦点基线：写在 base 层 + 零特异性 :where()，永远排在 utilities 之下。
+     自绘焦点的控件（focus-visible:outline-hidden / outline-none 配 ring-*）由
+     utilities 层盖掉这条，不会叠成双环；漏写焦点样式的控件至少还留一圈可见轮廓。 */
+  :where(:focus-visible) {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  /* 触摸目标：粗指针（触屏）下把纯图标控件的命中区抬到 44px。
+     只钉在 data-slot 明确的图标按钮上，不碰业务表单控件的尺寸。 */
+  @media (pointer: coarse) {
+    [data-slot="sidebar-trigger"] {
+      min-width: 2.75rem;
+      min-height: 2.75rem;
+    }
+  }
   /* ── 宣纸底：只保留黛蓝 + 紫金两处浸色，朱砂留给真正的警示态。 ──
      装饰一律钉在视口（position: fixed），不画在 body 上：
      body 上的渐变按文档总高定位、随内容滚动，长页面会中途"换底色"，
@@ -353,6 +368,10 @@
       animation-iteration-count: 1 !important;
       scroll-behavior: auto !important;
       transition-duration: 0.01ms !important;
+      /* 延迟一并压掉：只有 duration 归零时，transition-delay 仍会让
+         焦点环、抽屉、渐变在切换瞬间"卡住"半拍再消失。 */
+      animation-delay: 0.01ms !important;
+      transition-delay: 0.01ms !important;
     }
   }
 }

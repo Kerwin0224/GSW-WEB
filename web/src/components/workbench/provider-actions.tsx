@@ -43,9 +43,15 @@ export type ProviderListItem = {
 };
 
 /**
+ * 作用域只读标记。公司级模板（schoolId === null）由公司管理员维护：
+ * 校管理员点下去只会被 RLS 拒绝，不如直接把按钮禁用并说清原因。
+ */
+export type ProviderActionGate = { canEdit: boolean; readOnlyReason?: string };
+
+/**
  * 独立的"测速"按钮 — 点击立即调用 health-check API。
  */
-export function HealthCheckButton({ provider }: { provider: ProviderListItem }) {
+export function HealthCheckButton({ provider, gate }: { provider: ProviderListItem; gate?: ProviderActionGate }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -71,7 +77,7 @@ export function HealthCheckButton({ provider }: { provider: ProviderListItem }) 
   }
 
   return (
-    <Button variant="ghost" size="icon-sm" onClick={ping} disabled={pending} title="Provider 健康检查">
+    <Button variant="ghost" size="icon-sm" onClick={ping} disabled={pending || gate?.canEdit === false} title={gate?.canEdit === false ? gate.readOnlyReason : 'Provider 健康检查'}>
       {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Activity className="size-3.5" />}
     </Button>
   );
@@ -81,7 +87,7 @@ export function HealthCheckButton({ provider }: { provider: ProviderListItem }) 
  * 独立的"拉取模型"按钮 — 点击立即调用 list-models API，成功后就地刷新页面数据，
  * 使能力配置对话框中的候选模型立即可见。
  */
-export function FetchModelsButton({ provider }: { provider: ProviderListItem }) {
+export function FetchModelsButton({ provider, gate }: { provider: ProviderListItem; gate?: ProviderActionGate }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -107,7 +113,7 @@ export function FetchModelsButton({ provider }: { provider: ProviderListItem }) 
   }
 
   return (
-    <Button variant="ghost" size="icon-sm" onClick={fetchModels} disabled={pending} title="拉取模型列表">
+    <Button variant="ghost" size="icon-sm" onClick={fetchModels} disabled={pending || gate?.canEdit === false} title={gate?.canEdit === false ? gate.readOnlyReason : '拉取模型列表'}>
       {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
     </Button>
   );
@@ -117,7 +123,7 @@ export function FetchModelsButton({ provider }: { provider: ProviderListItem }) 
  * 配置能力 Dialog — 把 capability 与 modelId 关联起来。
  * 模型可从 api_models 选择，也可手动输入自定义。
  */
-export function CapabilityAssignmentDialog({ provider }: { provider: ProviderListItem }) {
+export function CapabilityAssignmentDialog({ provider, gate }: { provider: ProviderListItem; gate?: ProviderActionGate }) {
   const [open, setOpen] = useState(false);
   const [modelId, setModelId] = useState(provider.capabilities.find((capability) => capability.capability === EMBEDDING_CAPABILITY)?.modelId ?? '');
   const [submitting, startTransition] = useTransition();
@@ -145,7 +151,7 @@ export function CapabilityAssignmentDialog({ provider }: { provider: ProviderLis
       open={open}
       onOpenChange={setOpen}
       trigger={
-        <Button variant="ghost" size="icon-sm" title="配置 Embedding 能力">
+        <Button variant="ghost" size="icon-sm" disabled={gate?.canEdit === false} title={gate?.canEdit === false ? gate.readOnlyReason : '配置 Embedding 能力'}>
           <SlidersHorizontal className="size-3.5" />
         </Button>
       }
@@ -203,7 +209,7 @@ export function CapabilityAssignmentDialog({ provider }: { provider: ProviderLis
 /**
  * 编辑 Provider 基础信息 Dialog。
  */
-export function EditProviderDialog({ provider }: { provider: ProviderListItem }) {
+export function EditProviderDialog({ provider, gate }: { provider: ProviderListItem; gate?: ProviderActionGate }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(provider.name);
   const [providerType, setProviderType] = useState<ProviderProtocol>(toProviderProtocol(provider.providerType));
@@ -236,7 +242,7 @@ export function EditProviderDialog({ provider }: { provider: ProviderListItem })
       open={open}
       onOpenChange={setOpen}
       trigger={
-        <Button variant="ghost" size="icon-sm" title="编辑">
+        <Button variant="ghost" size="icon-sm" disabled={gate?.canEdit === false} title={gate?.canEdit === false ? gate.readOnlyReason : '编辑'}>
           <Pencil className="size-3.5" />
         </Button>
       }
@@ -309,7 +315,7 @@ export function EditProviderDialog({ provider }: { provider: ProviderListItem })
 /**
  * 删除按钮（带二次确认）。
  */
-export function DeleteProviderButton({ provider }: { provider: ProviderListItem }) {
+export function DeleteProviderButton({ provider, gate }: { provider: ProviderListItem; gate?: ProviderActionGate }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
@@ -330,7 +336,7 @@ export function DeleteProviderButton({ provider }: { provider: ProviderListItem 
       open={open}
       onOpenChange={setOpen}
       trigger={
-        <Button variant="ghost" size="icon-sm" disabled={pending} title="删除">
+        <Button variant="ghost" size="icon-sm" disabled={pending || gate?.canEdit === false} title={gate?.canEdit === false ? gate.readOnlyReason : '删除'}>
           {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
         </Button>
       }

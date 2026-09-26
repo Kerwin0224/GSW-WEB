@@ -29,7 +29,7 @@ export default async function TeacherChatPage({ searchParams }: { searchParams?:
   const initialConversation = conversationResult?.ok ? conversationResult.data ?? undefined : undefined;
 
   return (
-    <div className="mx-auto flex min-h-[calc(100svh-4rem)] max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
+    <div className="mx-auto flex min-h-[calc(100svh-3.5rem)] max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:h-[calc(100svh-3.5rem)] lg:overflow-hidden lg:px-8">
       <Card className="relative flex min-h-0 flex-1 overflow-hidden border-primary/20 bg-card/92 shadow-ink backdrop-blur-xl">
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-accent to-destructive/70" />
         <CardContent className="flex min-h-0 flex-1 p-0 pt-1">

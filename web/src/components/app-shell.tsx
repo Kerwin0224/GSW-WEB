@@ -90,8 +90,12 @@ export function AppShell({ role, displayName, loginId, avatarKey = 'ink', breadc
     </>
   );
 
+  // 头部不再 sticky：外壳本身锁死 h-svh（见下方 <main>），页面滚动只发生在
+  // #workspace-main 这一个容器里。sticky 叠在这套结构上是纯装饰，还会让
+  // overflow-hidden 祖先把 sticky 的参考滚动容器变成永不滚动的外壳，等于失效。
+  // 同理不再需要 backdrop-blur：没有内容会滚到头部底下去磨砂。
   const header = (
-    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border/60 bg-background/82 px-4 backdrop-blur-xl sm:px-6">
+    <header className="relative z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border/60 bg-background px-4 sm:px-6">
       {chrome === 'sidebar' ? (
         <SidebarTrigger className="-ml-1 min-h-11 min-w-11 cursor-pointer rounded-lg md:hidden" aria-label="打开导航菜单" />
       ) : chrome === 'none' ? (
@@ -121,7 +125,7 @@ export function AppShell({ role, displayName, loginId, avatarKey = 'ink', breadc
           {visibleBreadcrumbs.map((seg, i) => (
             <span key={seg.href ?? seg.label} className="flex min-w-0 items-center gap-2">
               <BreadcrumbItem className="min-w-0">
-                {seg.href ? <BreadcrumbLink href={seg.href} className="truncate transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{seg.label}</BreadcrumbLink> : <BreadcrumbPage className="truncate font-medium">{seg.label}</BreadcrumbPage>}
+                {seg.href ? <BreadcrumbLink render={<Link href={seg.href} />} className="truncate transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{seg.label}</BreadcrumbLink> : <BreadcrumbPage className="truncate font-medium">{seg.label}</BreadcrumbPage>}
               </BreadcrumbItem>
               {i < visibleBreadcrumbs.length - 1 && <BreadcrumbSeparator className="shrink-0" />}
             </span>
@@ -192,16 +196,18 @@ export function AppShell({ role, displayName, loginId, avatarKey = 'ink', breadc
   // top 与 none 都走无侧边栏的裸框架：只有 sidebar 才需要 SidebarProvider + AppSidebar。
   if (chrome !== 'sidebar') {
     return (
-      <div data-role={role} className="flex min-h-svh flex-col">
+      <div data-role={role} className="flex h-svh flex-col overflow-hidden">
         <a
           href="#workspace-main"
-          className="sr-only fixed left-4 top-4 z-50 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-ink focus:not-sr-only focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          className="sr-only fixed left-4 top-4 z-50 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground focus:not-sr-only focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
         >
           跳到主要内容
         </a>
         {header}
         {errorBanner}
-        <div id="workspace-main" className="flex flex-1 flex-col min-h-0" tabIndex={-1}>{children}</div>
+        {/* 唯一滚动容器：外框锁 h-svh 后，滚动只在这里发生，
+            页面自己再叠一层 overflow 也不会出现双滚动条或整页白边。 */}
+        <div id="workspace-main" className="flex min-h-0 flex-1 flex-col overflow-y-auto" tabIndex={-1}>{children}</div>
       </div>
     );
   }
@@ -209,16 +215,18 @@ export function AppShell({ role, displayName, loginId, avatarKey = 'ink', breadc
   return (
     <SidebarProvider defaultOpen style={{ '--sidebar-width-icon': '4rem' } as React.CSSProperties}>
       <AppSidebar role={role} />
-      <main data-role={role} className="relative flex min-h-svh min-w-0 flex-1 flex-col overflow-hidden bg-background">
+      <main data-role={role} className="relative flex h-svh min-w-0 flex-1 flex-col overflow-hidden bg-background">
         <a
           href="#workspace-main"
-          className="sr-only fixed left-4 top-4 z-50 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-ink focus:not-sr-only focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          className="sr-only fixed left-4 top-4 z-50 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground focus:not-sr-only focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
         >
           跳到主要内容
         </a>
         {header}
         {errorBanner}
-        <div id="workspace-main" className="flex-1 scroll-mt-20" tabIndex={-1}>{children}</div>
+        {/* 唯一滚动容器：header 固定 h-14，其余全部交给这里，页面高度公式
+            （calc(100svh - 3.5rem)）与 h-svh - h-14 恒等，不会留白也不会双滚动。 */}
+        <div id="workspace-main" className="min-h-0 flex-1 overflow-y-auto" tabIndex={-1}>{children}</div>
       </main>
     </SidebarProvider>
   );

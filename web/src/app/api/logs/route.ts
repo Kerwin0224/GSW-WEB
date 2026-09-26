@@ -32,14 +32,22 @@ export async function POST(request: Request) {
   const userId = session.sub;
   const role = session.role;
 
-  const contentLength = Number(request.headers.get('content-length') ?? '0');
-  if (Number.isFinite(contentLength) && contentLength > MAX_CLIENT_LOG_BYTES) {
+  // 体积上限按**实际读到的字节**判，不按 content-length 请求头：
+  // 那个头是客户端自己填的，缺省或撒谎时限制形同虚设，
+  // 于是任何持有 cookie 的人都能往这个入口灌任意大的 body。
+  let raw: string;
+  try {
+    raw = await request.text();
+  } catch {
+    return Response.json({ ok: false, requestId }, { status: 400 });
+  }
+  if (Buffer.byteLength(raw, 'utf8') > MAX_CLIENT_LOG_BYTES) {
     return Response.json({ ok: false, requestId }, { status: 413 });
   }
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = JSON.parse(raw);
   } catch {
     await writeLogEvent({ level: 'warn', area: 'api', event: 'client_log_invalid_json', requestId, route: '/api/logs', method: 'POST', status: 400, context: { user_id: userId } });
     return Response.json({ ok: false, requestId }, { status: 400 });

@@ -3,6 +3,7 @@ import 'server-only';
 import { z } from 'zod';
 
 import { createClient } from '@/lib/supabase/server';
+import { assertAllowedProviderBaseUrl } from '@/lib/provider-endpoint-policy';
 import { resolveEnvSecret } from './common';
 
 /**
@@ -35,7 +36,13 @@ export type ProviderCredentialsResult =
  */
 export async function resolveProviderCredentials(parsed: ProviderRequest): Promise<ProviderCredentialsResult> {
   if (!('providerId' in parsed)) {
-    return { ok: true, credentials: { providerId: null, baseUrl: parsed.baseUrl, apiKey: parsed.apiKey, providerType: parsed.providerType } };
+    // 临时模式（"添加 Provider 前先试试"）的 baseUrl 是请求方现给的，
+    // 与已保存的 baseUrl 走同一道闸门：否则这里就是一个能带密钥打任意主机的 SSRF 口子。
+    try {
+      return { ok: true, credentials: { providerId: null, baseUrl: assertAllowedProviderBaseUrl(parsed.baseUrl), apiKey: parsed.apiKey, providerType: parsed.providerType } };
+    } catch (error) {
+      return { ok: false, status: 400, message: error instanceof Error ? error.message : 'Base URL 不合法' };
+    }
   }
 
   const supabase = await createClient();
@@ -46,6 +53,12 @@ export async function resolveProviderCredentials(parsed: ProviderRequest): Promi
     .maybeSingle();
   if (error || !cfg) return { ok: false, status: 404, message: 'Provider 不存在' };
   if (!cfg.base_url) return { ok: false, status: 400, message: 'Provider 未配置 baseUrl' };
+  // 已存量的 base_url 可能是收紧前写进来的环回/私网地址，用之前先补一道闸。
+  try {
+    assertAllowedProviderBaseUrl(cfg.base_url);
+  } catch (error) {
+    return { ok: false, status: 400, message: error instanceof Error ? `Provider 的 baseUrl 不被允许：${error.message}` : 'Provider 的 baseUrl 不被允许' };
+  }
   const apiKey = resolveEnvSecret(cfg.secret_ref);
   if (!apiKey) return { ok: false, status: 400, message: 'Provider API Key 解密失败' };
 

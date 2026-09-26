@@ -1,7 +1,7 @@
 'use client';
 
-import type { ReactNode, RefObject } from 'react';
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { useState, type ReactNode, type RefObject } from 'react';
+import { ChevronLeft, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 import { useSidebarCollapse } from '@/hooks/use-sidebar-collapse';
 import { cn } from '@/lib/utils';
@@ -33,6 +33,8 @@ export function ChatWorkspace({
   footer,
   scrollRef,
   mobileComposerFirst = false,
+  mobileSelectionActive,
+  backToQueueLabel = '返回列表',
 }: {
   /** 折叠状态的 localStorage key；两端各记各的。 */
   storageKey: string;
@@ -56,8 +58,30 @@ export function ChatWorkspace({
   footer?: ReactNode;
   scrollRef?: RefObject<HTMLDivElement | null>;
   mobileComposerFirst?: boolean;
+  /**
+   * 移动端「队列 ↔ 详情」二选一。桌面端（lg 以上）永远并排，这个开关只影响窄屏。
+   *
+   * 之前两端在窄屏都是「侧栏在上、详情在下」纵向堆叠：教师在手机上核实会话时，
+   * 点开会话后队列仍占着半屏，通读要滚很久才看见底部提交条。
+   */
+  mobileSelectionActive?: boolean;
+  /** 详情态下回到队列的按钮文案。 */
+  backToQueueLabel?: string;
 }) {
   const { collapsed, toggle } = useSidebarCollapse(storageKey);
+
+  // 只记「用户是否手动退回队列」；选中态一变就重置，
+  // 否则上一条会话点过的「返回队列」会漏到下一条上。
+  const [showQueue, setShowQueue] = useState(false);
+  const [lastSelection, setLastSelection] = useState(mobileSelectionActive);
+  if (mobileSelectionActive !== lastSelection) {
+    setLastSelection(mobileSelectionActive);
+    setShowQueue(false);
+  }
+  // 不传 mobileSelectionActive = 保持原来的纵向堆叠（学生端就是这个形态）。
+  // 这个开关必须是 opt-in 的：默认 false 会让窄屏下的学生端主区直接消失。
+  const paneMode = mobileSelectionActive !== undefined;
+  const detailOnly = paneMode && mobileSelectionActive && !showQueue;
 
   return (
     <div
@@ -75,6 +99,7 @@ export function ChatWorkspace({
         className={cn(
           'order-2 border-t border-border/60 bg-card/72 backdrop-blur-xl transition-all duration-300 lg:order-1 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-t-0',
           collapsed ? 'lg:w-[3.5rem] lg:p-1.5' : 'lg:w-auto lg:p-3',
+          detailOnly && 'hidden lg:block',
         )}
         aria-label={sidebarLabel}
       >
@@ -96,7 +121,20 @@ export function ChatWorkspace({
         </div>
       </aside>
 
-      <section className="order-1 flex min-h-0 min-w-0 flex-col lg:order-2 lg:h-full" aria-label={mainLabel ?? sidebarLabel}>
+      <section className={cn('order-1 min-h-0 min-w-0 flex-col lg:order-2 lg:h-full', paneMode ? (detailOnly ? 'flex' : 'hidden lg:flex') : 'flex')} aria-label={mainLabel ?? sidebarLabel}>
+        {/* 返回队列只在窄屏的详情态出现；桌面端队列常驻，不需要这个出口。 */}
+        {detailOnly ? (
+          <div className="shrink-0 border-b border-border/60 px-4 py-2 sm:px-6 lg:hidden">
+            <button
+              type="button"
+              onClick={() => setShowQueue(true)}
+              className="flex min-h-10 cursor-pointer items-center gap-1 rounded-lg px-1 text-sm text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronLeft className="size-4" aria-hidden="true" />
+              {backToQueueLabel}
+            </button>
+          </div>
+        ) : null}
         <div className="shrink-0 border-b border-border/60 bg-card/92 px-4 py-4 backdrop-blur sm:px-6 sm:py-5">
           <div className="mx-auto max-w-3xl space-y-1.5">{header}</div>
         </div>
@@ -111,7 +149,8 @@ export function ChatWorkspace({
         {footer ? (
           <div
             className={cn(
-              'border-t border-border/60 bg-card/92 p-4 backdrop-blur sm:px-6',
+              // 窄屏下滚动发生在外壳的 #workspace-main，动作条必须 sticky 才不会随长会话滚走。
+              'sticky bottom-0 z-20 border-t border-border/60 bg-card/92 p-4 backdrop-blur sm:px-6 lg:static',
               mobileComposerFirst ? 'order-2 lg:order-3' : 'order-3',
             )}
           >

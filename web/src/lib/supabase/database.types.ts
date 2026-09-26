@@ -189,6 +189,14 @@ export interface Database {
         Args: { query_embedding: Vector; match_count?: number; match_threshold?: number; project_id?: string | null };
         Returns: { id: string; document_id: string; owner_id: string; class_id: string | null; project_id: string | null; chunk_index: number; content: string; metadata: Json; document_title: string; source_uri: string | null; similarity: number }[];
       };
+      /**
+       * 学生迁班，一个事务：删旧 membership + 插新 membership + 迁移
+       * projects / conversations.class_id。返回被改动的行数。
+       */
+      transfer_student_to_class: {
+        Args: { p_profile_id: string; p_class_id: string };
+        Returns: number;
+      };
       match_conversation_document_chunks: {
         Args: { query_embedding: Vector; conversation_id: string; match_count?: number; match_threshold?: number };
         Returns: { id: string; document_id: string; owner_id: string; class_id: string | null; project_id: string | null; conversation_id: string | null; chunk_index: number; content: string; metadata: Json; document_title: string; source_uri: string | null; similarity: number }[];

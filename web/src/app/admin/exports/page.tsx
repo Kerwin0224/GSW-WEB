@@ -4,6 +4,7 @@ import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { SectionHeader, WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { getAdminExports } from '@/lib/data/admin';
 import DatasetExportClient from './dataset-export-client';
+import { BatchDownloadButton } from './batch-download-button';
 
 export default async function AdminExportsPage() {
   const result = await getAdminExports();
@@ -50,19 +51,21 @@ export default async function AdminExportsPage() {
                 <TableHead>记录数</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>创建时间</TableHead>
+                <TableHead className="text-right">下载</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {history.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5}>
+                  <TableCell colSpan={6}>
                     <EmptyState title="暂无导出记录" description="完成首次数据集导出后，历史记录将显示在这里。" />
                   </TableCell>
                 </TableRow>
               ) : (
                 history.map((batch) => (
                   <TableRow key={batch.id}>
-                    <TableCell className="font-mono text-xs">{batch.id.slice(0, 8)}</TableCell>
+                    {/* 完整批次 ID：下载链接与排查都要用它，截断成 8 位后无法定位。 */}
+                    <TableCell className="font-mono text-xs"><span className="break-all">{batch.id}</span></TableCell>
                     <TableCell>
                       <Badge variant="outline">{batch.export_type.toUpperCase()}</Badge>
                     </TableCell>
@@ -81,6 +84,11 @@ export default async function AdminExportsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>{new Date(batch.created_at).toLocaleString('zh-CN')}</TableCell>
+                    <TableCell className="text-right">
+                      {batch.status === 'ready'
+                        ? <BatchDownloadButton batchId={batch.id} />
+                        : <span className="text-xs text-muted-foreground">无可下载文件</span>}
+                    </TableCell>
                   </TableRow>
                 ))
               )}

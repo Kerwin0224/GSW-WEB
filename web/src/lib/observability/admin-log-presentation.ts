@@ -1,5 +1,15 @@
 import type { LogEvent } from './log-event';
 
+export const LOG_LEVEL_OPTIONS = [
+  { value: 'all', label: '全部级别' },
+  { value: 'debug', label: '调试记录' },
+  { value: 'info', label: '普通记录' },
+  { value: 'warn', label: '需关注' },
+  { value: 'error', label: '错误' },
+] as const;
+
+export type LogLevelFilter = LogEvent['level'] | 'all';
+
 export const LOG_FUNCTION_OPTIONS = [
   { value: 'all', label: '全部功能' },
   { value: 'account_access', label: '账号与登录' },
@@ -14,11 +24,16 @@ export const LOG_FUNCTION_OPTIONS = [
 
 export type LogFunctionFilter = (typeof LOG_FUNCTION_OPTIONS)[number]['value'];
 export type LogFunctionKey = Exclude<LogFunctionFilter, 'all'>;
+
+/** 日志读取通道。文件回落不是生产通道，UI 必须把它标出来。 */
+export type LogSource = 'database' | 'file';
+
 export type LogExecutionResult = 'started' | 'succeeded' | 'not_completed' | 'failed' | 'attention' | 'recorded';
-export type LogResultFilter = 'all' | LogExecutionResult;
+export type LogResultFilter = 'all' | LogExecutionResult | 'pending';
 
 export const LOG_RESULT_OPTIONS = [
   { value: 'all', label: '全部结果' },
+  { value: 'pending', label: '待处理（失败/未完成/需关注）' },
   { value: 'failed', label: '失败' },
   { value: 'not_completed', label: '未完成' },
   { value: 'attention', label: '需关注' },
@@ -26,6 +41,131 @@ export const LOG_RESULT_OPTIONS = [
   { value: 'succeeded', label: '已完成' },
   { value: 'recorded', label: '仅记录' },
 ] as const satisfies readonly { readonly value: LogResultFilter; readonly label: string }[];
+
+/** 时间范围是服务端过滤条件，不是"取最近 N 条"：窗口之外的事件也要能被检索到。 */
+export const LOG_TIME_RANGE_OPTIONS = [
+  { value: '1h', label: '最近 1 小时', windowMs: 60 * 60 * 1000 },
+  { value: '24h', label: '最近 24 小时', windowMs: 24 * 60 * 60 * 1000 },
+  { value: '7d', label: '最近 7 天', windowMs: 7 * 24 * 60 * 60 * 1000 },
+  { value: 'all', label: '全部时间', windowMs: null },
+] as const satisfies readonly { readonly value: string; readonly label: string; readonly windowMs: number | null }[];
+
+export type LogTimeRange = (typeof LOG_TIME_RANGE_OPTIONS)[number]['value'];
+
+const RANGE_WINDOWS: Readonly<Record<LogTimeRange, number | null>> = Object.fromEntries(
+  LOG_TIME_RANGE_OPTIONS.map((option) => [option.value, option.windowMs]),
+) as Readonly<Record<LogTimeRange, number | null>>;
+
+export type AdminLogQuery = {
+  readonly range: LogTimeRange;
+  readonly level: LogLevelFilter;
+  readonly functionKey: LogFunctionFilter;
+  readonly result: LogResultFilter;
+  readonly search: string;
+  readonly traceId: string;
+  readonly userId: string;
+};
+
+export const DEFAULT_LOG_QUERY: AdminLogQuery = {
+  range: '24h',
+  level: 'all',
+  functionKey: 'all',
+  result: 'all',
+  search: '',
+  traceId: '',
+  userId: '',
+};
+
+const LOG_QUERY_PARAM_NAMES: Readonly<Record<keyof AdminLogQuery, string>> = {
+  range: 'range',
+  level: 'level',
+  functionKey: 'function',
+  result: 'result',
+  search: 'q',
+  traceId: 'trace_id',
+  userId: 'user_id',
+};
+
+const LOG_QUERY_ALLOWED_VALUES: Readonly<Record<'range' | 'level' | 'functionKey' | 'result', readonly string[]>> = {
+  range: LOG_TIME_RANGE_OPTIONS.map((option) => option.value),
+  level: LOG_LEVEL_OPTIONS.map((option) => option.value),
+  functionKey: LOG_FUNCTION_OPTIONS.map((option) => option.value),
+  result: LOG_RESULT_OPTIONS.map((option) => option.value),
+};
+
+/** 数组取首个、空白归零：URL 里的重复参数不该让筛选行为取决于谁先到。 */
+function firstParamValue(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return typeof raw === 'string' ? raw.trim() : '';
+}
+
+function pickAllowedParam<T extends string>(value: string, allowed: readonly string[], fallback: T): T {
+  return (allowed.includes(value) ? value : fallback) as T;
+}
+
+/**
+ * URL → 筛选。全部筛选条件都走 URL，服务端只认这份解析结果：
+ * 刷新、前进后退、把链接发给同事，看到的都是同一个口径。
+ */
+export function parseAdminLogQuery(params: Record<string, string | string[] | undefined>): AdminLogQuery {
+  return {
+    range: pickAllowedParam(
+      firstParamValue(params.range),
+      LOG_QUERY_ALLOWED_VALUES.range,
+      DEFAULT_LOG_QUERY.range,
+    ),
+    level: pickAllowedParam(
+      firstParamValue(params.level),
+      LOG_QUERY_ALLOWED_VALUES.level,
+      DEFAULT_LOG_QUERY.level,
+    ),
+    functionKey: pickAllowedParam(
+      firstParamValue(params.function),
+      LOG_QUERY_ALLOWED_VALUES.functionKey,
+      DEFAULT_LOG_QUERY.functionKey,
+    ),
+    result: pickAllowedParam(
+      firstParamValue(params.result),
+      LOG_QUERY_ALLOWED_VALUES.result,
+      DEFAULT_LOG_QUERY.result,
+    ),
+    search: firstParamValue(params.q),
+    traceId: firstParamValue(params.trace_id),
+    userId: firstParamValue(params.user_id),
+  };
+}
+
+/** 时间范围 → 服务端 created_at 下界；全部时间不设下界。 */
+export function logRangeStartIso(range: LogTimeRange, now: Date = new Date()): string | undefined {
+  const windowMs = RANGE_WINDOWS[range];
+  return windowMs === null ? undefined : new Date(now.getTime() - windowMs).toISOString();
+}
+
+export function buildAdminLogHref(query: AdminLogQuery, overrides: Partial<AdminLogQuery> = {}, page?: number): string {
+  const merged = { ...query, ...overrides };
+  const params = new URLSearchParams();
+  for (const [key, paramName] of Object.entries(LOG_QUERY_PARAM_NAMES) as [keyof AdminLogQuery, string][]) {
+    const value = merged[key];
+    // 哨兵是 DEFAULT_LOG_QUERY 而不是 'all'：'all' 在时间范围里是"全部时间"这个真实取值。
+    if (value && value !== DEFAULT_LOG_QUERY[key]) params.set(paramName, value);
+  }
+  if (page && page > 1) params.set('page', String(page));
+  return `/admin/logs${params.size ? `?${params.toString()}` : ''}`;
+}
+
+/** 顶部四个快捷视图：每个视图就是一个 URL，切视图不丢其它筛选。 */
+export type LogQuickView = {
+  readonly id: string;
+  readonly label: string;
+  readonly overrides: Partial<AdminLogQuery>;
+};
+
+export const LOG_QUICK_VIEWS: readonly LogQuickView[] = [
+  { id: 'pending', label: '待处理', overrides: { result: 'pending', level: 'all' } },
+  { id: 'failed', label: '失败', overrides: { result: 'failed', level: 'all' } },
+  { id: 'warning', label: '警告', overrides: { result: 'all', level: 'warn' } },
+  { id: 'recent', label: '最近事件', overrides: { result: 'all', level: 'all' } },
+];
 
 type PresentableLogEvent = Required<Pick<LogEvent, 'timestamp'>> & LogEvent;
 
@@ -49,6 +189,23 @@ export type PresentedLogEvent = {
   readonly message?: string;
   readonly digest?: string;
   readonly context?: Readonly<Record<string, unknown>>;
+};
+
+/**
+ * 一次执行 = 同一 requestId 的 started/completed/failed 合并后的单位。
+ * 管理员看的是"发生了什么操作、结果如何"，不是同一操作的 N 条生命周期流水。
+ */
+export type PresentedLogExecution = {
+  /** 最严重的一条事件：列表行、筛选、计数都以它为准。 */
+  readonly primary: PresentedLogEvent;
+  /** 同一请求的全部记录，时间正序。 */
+  readonly events: readonly PresentedLogEvent[];
+  readonly mergedCount: number;
+  readonly level: LogEvent['level'];
+  readonly startedAt: string;
+  readonly lastAt: string;
+  /** 交接用的生命周期轨迹，格式 `HH:mm:ss 开始 · 结果`。 */
+  readonly timeline: readonly string[];
 };
 
 type FunctionDefinition = {
@@ -91,6 +248,25 @@ const RESULT_LABELS: Readonly<Record<LogExecutionResult, string>> = {
   attention: '需关注',
   recorded: '已记录',
 };
+
+/** 结果严重度：合并同一请求的多条记录时取最高的一条作为结论。 */
+const RESULT_SEVERITY: Readonly<Record<LogExecutionResult, number>> = {
+  failed: 5,
+  not_completed: 4,
+  attention: 3,
+  succeeded: 2,
+  recorded: 1,
+  started: 0,
+};
+
+const LEVEL_SEVERITY: Readonly<Record<LogEvent['level'], number>> = {
+  error: 3,
+  warn: 2,
+  info: 1,
+  debug: 0,
+};
+
+export const PENDING_RESULTS: readonly LogExecutionResult[] = ['failed', 'not_completed', 'attention'];
 
 const EVENT_SUFFIXES = ['_started', '_completed', '_failed'] as const;
 const REPORT_REDACTION_PATTERN = /password|secret|token|cookie|authorization|apikey|api_key|user_?id|profile_?id|login_?id/i;
@@ -213,6 +389,57 @@ export function presentLogEvent(event: PresentableLogEvent): PresentedLogEvent {
   };
 }
 
+/** 单条日志事件的稳定标识：同一请求的不同生命周期记录要能被区分开。 */
+export function logEventIdentity(event: PresentedLogEvent): string {
+  return `${event.timestamp}-${event.eventCode}-${event.requestId ?? ''}-${event.digest ?? ''}`;
+}
+
+export function logEventClock(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return timestamp;
+  return date.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+/**
+ * 把同一 requestId 的 started/completed/failed 合并成一次执行。
+ * 没有 requestId 的事件（客户端上报、单点 warn）各自算一次执行，不做猜测性合并。
+ * 输出按最近一次记录时间倒序，与输入的时间倒序一致。
+ */
+export function mergePresentedLogExecutions(
+  events: readonly PresentedLogEvent[],
+): readonly PresentedLogExecution[] {
+  const groups = new Map<string, PresentedLogEvent[]>();
+  for (const event of events) {
+    const key = event.requestId ? `rid:${event.requestId}` : `evt:${logEventIdentity(event)}`;
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(event);
+    else groups.set(key, [event]);
+  }
+
+  const executions: PresentedLogExecution[] = [];
+  for (const bucket of groups.values()) {
+    const ordered = [...bucket].sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+    const primary = ordered.reduce((worst, candidate) => (
+      RESULT_SEVERITY[candidate.result] > RESULT_SEVERITY[worst.result] ? candidate : worst
+    ));
+    const level = ordered.reduce(
+      (worst, candidate) => (LEVEL_SEVERITY[candidate.level] > LEVEL_SEVERITY[worst] ? candidate.level : worst),
+      ordered[0].level,
+    );
+    executions.push({
+      primary,
+      events: ordered,
+      mergedCount: ordered.length,
+      level,
+      startedAt: ordered[0].timestamp,
+      lastAt: ordered[ordered.length - 1].timestamp,
+      timeline: ordered.map((event) => `${logEventClock(event.timestamp)} ${event.eventCode} · ${RESULT_LABELS[event.result]}`),
+    });
+  }
+
+  return executions.sort((left, right) => right.lastAt.localeCompare(left.lastAt));
+}
+
 export function filterPresentedLogEvents(
   events: readonly PresentedLogEvent[],
   functionalArea: LogFunctionFilter,
@@ -220,11 +447,50 @@ export function filterPresentedLogEvents(
 ): readonly PresentedLogEvent[] {
   return events.filter((event) => (
     (functionalArea === 'all' || event.functionKey === functionalArea)
-    && (result === 'all' || event.result === result)
+    && matchesResultFilter(event.result, result)
   ));
 }
 
-export function buildDeveloperReport(event: PresentedLogEvent): string {
+export function filterPresentedLogExecutions(
+  executions: readonly PresentedLogExecution[],
+  functionalArea: LogFunctionFilter,
+  result: LogResultFilter = 'all',
+): readonly PresentedLogExecution[] {
+  return executions.filter((execution) => (
+    (functionalArea === 'all' || execution.primary.functionKey === functionalArea)
+    && matchesResultFilter(execution.primary.result, result)
+  ));
+}
+
+function matchesResultFilter(value: LogExecutionResult, result: LogResultFilter): boolean {
+  if (result === 'all') return true;
+  if (result === 'pending') return PENDING_RESULTS.includes(value);
+  return value === result;
+}
+
+export type AdminLogSummary = {
+  readonly executions: number;
+  readonly pending: number;
+  readonly failed: number;
+  readonly warning: number;
+  readonly lastAt?: string;
+};
+
+/** 摘要统计的输入是"除结果筛选外"的执行集合，这样切到失败视图时待处理数不塌成 0。 */
+export function summarizeLogExecutions(executions: readonly PresentedLogExecution[]): AdminLogSummary {
+  return {
+    executions: executions.length,
+    pending: executions.filter((execution) => PENDING_RESULTS.includes(execution.primary.result)).length,
+    failed: executions.filter((execution) => execution.primary.result === 'failed').length,
+    warning: executions.filter((execution) => execution.level === 'warn').length,
+    lastAt: executions[0]?.lastAt,
+  };
+}
+
+export function buildDeveloperReport(
+  event: PresentedLogEvent,
+  lifecycle?: readonly string[],
+): string {
   const lines = [
     '运行日志技术交接报告',
     `时间: ${event.timestamp}`,
@@ -233,11 +499,13 @@ export function buildDeveloperReport(event: PresentedLogEvent): string {
     `影响对象: ${event.affectedUsers}`,
     `事件代码: ${event.eventCode}`,
     event.route ? `请求: ${event.method ?? 'UNKNOWN'} ${redactReportText(event.route)}${event.status === undefined ? '' : ` -> ${event.status}`}` : undefined,
-    event.requestId ? `请求 ID: ${event.requestId}` : undefined,
-    event.traceId ? `Trace ID: ${event.traceId}` : undefined,
+    // 交接时 request_id 是唯一可回查的主键，trace_id 只作补充。
+    event.requestId ? `请求 ID（主键）: ${event.requestId}` : undefined,
+    event.traceId ? `Trace ID（补充）: ${event.traceId}` : undefined,
     event.durationMs === undefined ? undefined : `耗时: ${event.durationMs} ms`,
     event.message ? `错误摘要: ${redactReportText(event.message)}` : undefined,
     event.digest ? `错误摘要标识: ${event.digest}` : undefined,
+    lifecycle && lifecycle.length > 1 ? `生命周期（${lifecycle.length} 条）:\n${lifecycle.join('\n')}` : undefined,
     event.context ? `上下文（已脱敏）:\n${JSON.stringify(redactReportValue(event.context), null, 2)}` : undefined,
   ];
   return lines.filter((line): line is string => line !== undefined).join('\n');

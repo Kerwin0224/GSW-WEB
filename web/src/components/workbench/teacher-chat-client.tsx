@@ -110,6 +110,7 @@ export function TeacherChatClient({
   initialConversation?: TeacherConversationInitial;
   providerBlocked?: string;
 }) {
+  const router = useRouter();
   const [input, setInput] = useState('');
   const [conversationId, setConversationId] = useState(initialConversation?.id ?? '');
   const [sessions, setSessions] = useState(initialSessions);
@@ -149,16 +150,29 @@ export function TeacherChatClient({
   const recentPresets = useMemo(() => presets.slice(0, 5), [presets]);
   const currentSession = sessions.find((session) => session.id === conversationId);
   const currentSessionTitle = conversationId ? currentSession?.title ?? initialConversation?.title ?? '当前会话' : '新会话';
+  const [sessionQuery, setSessionQuery] = useState('');
+  const [showAllSessions, setShowAllSessions] = useState(false);
+  // 服务端只回最近 12 条，这里默认只铺开 5 条，剩下的交给「更多」，
+  // 免得历史一多就把模板卡和输入框全挤出屏幕。
+  const visibleSessions = useMemo(() => {
+    const normalized = sessionQuery.trim().toLocaleLowerCase('zh-CN');
+    const matched = normalized ? sessions.filter((session) => session.title.toLocaleLowerCase('zh-CN').includes(normalized)) : sessions;
+    return showAllSessions || normalized ? matched : matched.slice(0, 5);
+  }, [sessionQuery, sessions, showAllSessions]);
 
   useEffect(() => {
     if (messages.length === 0) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
+  // URL 同步只做「新建出来的会话」这一种情况：新会话页本身就是一次 push 进来的，
+  // 把当前条目 replace 成带 id 的地址，后退键才不会退回到这个空白页。
+  // 显式切换会话走 SessionRow 的 next/link（push），后退键因此能回到上一条会话——
+  // 此前这里对所有 conversationId 都 replaceState，等于把教师刚点过来的那条历史抹掉了。
   useEffect(() => {
-    const nextUrl = conversationId ? `/teacher/chat?conversationId=${conversationId}` : '/teacher/chat';
-    window.history.replaceState(null, '', nextUrl);
-  }, [conversationId]);
+    if (!conversationId || conversationId === initialConversation?.id) return;
+    window.history.replaceState(null, '', `/teacher/chat?conversationId=${conversationId}`);
+  }, [conversationId, initialConversation?.id]);
 
   const applyPreset = (preset: Preset) => {
     if (input.trim()) {
@@ -182,6 +196,9 @@ export function TeacherChatClient({
 
   const openNewConversation = () => {
     if (busy) return;
+    // 走 router.push 而不是本地清状态：新会话是一次真实的导航，
+    // 后退键才能回到刚才那条会话；只 setState 的话后退会直接跳出这个页面。
+    if (conversationId) router.push('/teacher/chat');
     setConversationId('');
     setInput('');
     setUploadStatus('');
@@ -279,13 +296,18 @@ export function TeacherChatClient({
           </section>
 
           <section className="rounded-2xl border border-border/65 bg-card/86 p-3 shadow-soft">
-            <div className="mb-3 flex items-start justify-between gap-3 px-1">
-              <div>
-                <p className="font-heading text-lg">历史会话</p>
-                <p className="mt-1 text-xs text-muted-foreground">支持续问、回看与删除。</p>
-              </div>
-              <Badge variant="outline">{sessions.length}</Badge>
+            <div className="mb-3 flex items-center justify-between gap-2 px-1">
+              <label htmlFor="teacher-session-search" className="sr-only">搜索历史会话</label>
+              <input
+                id="teacher-session-search"
+                value={sessionQuery}
+                onChange={(event) => setSessionQuery(event.target.value)}
+                placeholder="搜索历史会话标题"
+                className="min-h-10 min-w-0 flex-1 rounded-lg border border-border/65 bg-background/78 px-3 text-sm outline-none placeholder:text-muted-foreground/70 focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <Badge variant="outline" className="shrink-0">{sessions.length}</Badge>
             </div>
+            {sessionQuery ? <p className="mb-2 px-1 text-xs text-muted-foreground" role="status">匹配 {visibleSessions.length} 条历史会话。</p> : null}
             <button
               type="button"
               onClick={openNewConversation}
@@ -297,18 +319,31 @@ export function TeacherChatClient({
             </button>
             {sessions.length === 0 ? (
               <div className="rounded-xl border border-dashed bg-background/50 px-3 py-4 text-xs text-muted-foreground">暂无历史会话。</div>
+            ) : visibleSessions.length === 0 ? (
+              <div className="rounded-xl border border-dashed bg-background/50 px-3 py-4 text-xs text-muted-foreground">没有匹配「{sessionQuery}」的历史会话。</div>
             ) : (
-              <div className="space-y-1 rounded-xl border bg-background/60 p-2">
-                {sessions.map((session) => (
-                  <SessionRow
-                    key={session.id}
-                    session={session}
-                    current={session.id === conversationId}
-                    href={`/teacher/chat?conversationId=${session.id}`}
-                    onDelete={() => { setDeleteTarget(session); setDeleteError(''); }}
-                  />
-                ))}
-              </div>
+              <>
+                {/* 生成中不允许切会话：切换会重挂载整个客户端，正在流式输出的那条回答会被丢掉。
+                    inert 同时断掉指针与 Tab，比只加 pointer-events-none 更难被绕过。 */}
+                <div className="space-y-1 rounded-xl border bg-background/60 p-2" inert={busy || undefined}>
+                  {visibleSessions.map((session) => (
+                    <SessionRow
+                      key={session.id}
+                      session={session}
+                      current={session.id === conversationId}
+                      href={`/teacher/chat?conversationId=${session.id}`}
+                      onDelete={() => { setDeleteTarget(session); setDeleteError(''); }}
+                    />
+                  ))}
+                </div>
+                {busy ? <p className="mt-2 px-1 text-xs text-muted-foreground" role="status">正在回答，暂不能切换或删除历史会话。</p> : null}
+                {!sessionQuery && !showAllSessions && sessions.length > 5 ? (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setShowAllSessions(true)} className="mt-2 w-full cursor-pointer text-xs">
+                    更多（还有 {sessions.length - 5} 条）
+                  </Button>
+                ) : null}
+                <p className="mt-2 px-1 text-xs text-muted-foreground">这里只加载最近 12 条会话，更早的记录不在列表里。</p>
+              </>
             )}
           </section>
 

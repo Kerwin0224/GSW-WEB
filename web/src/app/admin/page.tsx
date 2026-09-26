@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Activity, AlertTriangle, CheckCircle2, Cpu, School, ShieldCheck, Users } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -8,7 +9,20 @@ import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { WorkspaceHero } from '@/components/workbench/workspace-hero';
 import { requireProfile } from '@/lib/auth';
 import { getAdminDashboard } from '@/lib/data/admin';
-import { AppLogReadError, getLogFileStatus, readRecentAppEvents } from '@/lib/observability/server-log-store';
+import {
+  buildAdminLogHref,
+  logEventIdentity,
+  logRangeStartIso,
+  mergePresentedLogExecutions,
+  parseAdminLogQuery,
+  presentLogEvent,
+} from '@/lib/observability/admin-log-presentation';
+import { AppLogReadError, countLogEvents, getLogFileStatus, readRecentAppEvents } from '@/lib/observability/server-log-store';
+
+const DASHBOARD_LOG_QUERY = parseAdminLogQuery({});
+const DASHBOARD_ERROR_WINDOW = logRangeStartIso('24h');
+const DASHBOARD_LOG_HREF = buildAdminLogHref(DASHBOARD_LOG_QUERY);
+const DASHBOARD_ERROR_HREF = buildAdminLogHref(DASHBOARD_LOG_QUERY, { level: 'error' });
 
 export default async function AdminDashboard() {
   // 页面侧守卫。本页虽然直读服务端日志（readRecentAppEvents / getLogFileStatus 自身无角色
@@ -19,16 +33,17 @@ export default async function AdminDashboard() {
   // 「管理看板加载失败」。真正会因软导航漏日志的是 admin/logs——那条数据路径上没有任何 requireRole。
   await requireProfile('admin');
 
-  const [result, logStatus, logLoadState] = await Promise.all([
+  const [result, logStatus, logLoadState, errorCount] = await Promise.all([
     getAdminDashboard(),
     getLogFileStatus(),
-    readRecentAppEvents(6).then(
-      (events) => ({ kind: 'loaded', events } as const),
+    readRecentAppEvents(6, { since: DASHBOARD_ERROR_WINDOW }).then(
+      (read) => ({ kind: 'loaded', ...read } as const),
       (error: unknown) => {
         if (error instanceof AppLogReadError) return { kind: 'unavailable' } as const;
         throw error;
       },
     ),
+    countLogEvents({ level: 'error', since: DASHBOARD_ERROR_WINDOW }),
   ]);
 
   if (!result.ok) {
@@ -39,8 +54,15 @@ export default async function AdminDashboard() {
     );
   }
 
-  const logEvents = logLoadState.kind === 'loaded' ? logLoadState.events : [];
+  // 最近日志按"一次执行"呈现：同一请求的 started/completed/failed 合并成一条，
+  // 概览上不该看到一次失败占了三行。
+  const logEvents = logLoadState.kind === 'loaded'
+    ? mergePresentedLogExecutions(logLoadState.events.map(presentLogEvent))
+    : [];
   const logsAvailable = logLoadState.kind === 'loaded';
+  const logSourceLabel = logLoadState.kind === 'loaded' && logLoadState.source === 'file'
+    ? '本机文件回落通道（source=file，租户边界不适用）'
+    : '数据库通道';
   const { users, classes, readyCaps, mcp, exports } = result.data;
   const capabilityLabels = {
     student_chat: '学生提问回答',
@@ -63,14 +85,11 @@ export default async function AdminDashboard() {
     { label: '启用账号', value: users.filter((user) => user.status === 'active').length, hint: '当前可以登录' },
     { label: '账号构成', value: `师 ${teacherCount} · 生 ${studentCount}`, hint: '按角色统计' },
   ];
+  // 错误计数只在顶部概览出现一次：这个数字是"近 24 小时错误事件"的真实计数，
+  // 入口在下方最近日志卡片里，再放一份只会让人以为是另一个口径。
   const aiOpsItems = [
     { label: '可路由能力', value: readyCaps.size, hint: '已配置模型路由，连接需另行检查' },
     { label: '外部工具', value: mcp.length, hint: '已启用的 MCP 服务' },
-    {
-      label: '技术错误',
-      value: logsAvailable ? logEvents.filter((event) => event.level === 'error').length : '不可用',
-      hint: logsAvailable ? '近期错误事件' : '运行日志读取失败',
-    },
     { label: '教学样本', value: exports.reduce((sum, batch) => sum + batch.record_count, 0), hint: '可导出的确认/修订样本' },
   ];
 
@@ -85,9 +104,11 @@ export default async function AdminDashboard() {
           { label: '账号', value: users.length, hint: '教师、学生与管理员' },
           { label: '班级', value: classes.length, hint: '教学范围' },
           {
-            label: '日志事件',
-            value: logsAvailable ? logEvents.length : '不可用',
-            hint: logsAvailable ? '最近写入的技术事件' : '运行日志读取失败',
+            label: '近 24 小时错误',
+            value: errorCount.count,
+            hint: errorCount.source === 'file'
+              ? '错误事件计数，来自本机文件回落通道'
+              : '数据库通道内 24 小时的错误事件计数',
           },
         ]}
       />
@@ -109,7 +130,7 @@ export default async function AdminDashboard() {
                 ? `缺少路由：${studentMissing.map((capability) => capabilityLabels[capability]).join('、')}。`
                 : '学生提问、提问类型判断和项目归属都可路由。'}
             </p>
-            <Button nativeButton={false} render={<a href="/admin/providers">检查 Provider 能力</a>} variant="outline" className="rounded-lg" />
+            <Button nativeButton={false} render={<Link href="/admin/providers">检查 Provider 能力</Link>} variant="outline" className="rounded-lg" />
           </CardContent>
         </Card>
 
@@ -129,7 +150,7 @@ export default async function AdminDashboard() {
                 ? `缺少路由：${teacherMissing.map((capability) => capabilityLabels[capability]).join('、')}。`
                 : '备课问答、挑战生成和挑战评阅都可路由。'}
             </p>
-            <Button nativeButton={false} render={<a href="/admin/providers">补齐模型能力</a>} variant="outline" className="rounded-lg" />
+            <Button nativeButton={false} render={<Link href="/admin/providers">补齐模型能力</Link>} variant="outline" className="rounded-lg" />
           </CardContent>
         </Card>
 
@@ -162,10 +183,10 @@ export default async function AdminDashboard() {
               {!logsAvailable
                 ? '运行日志暂时无法读取，请稍后重试或前往运行日志页查看故障说明。'
                 : hasTraceRecords
-                ? `当前可查看 ${logEvents.length} 条近期事件和 ${exports.length} 个导出批次。`
-                : '暂无日志和导出记录。系统开始使用后，这里会出现可追溯的事件。'}
+                ? `最近 24 小时可查看 ${logEvents.length} 次执行记录（${logSourceLabel}），另有 ${exports.length} 个导出批次。`
+                : '最近 24 小时暂无日志和导出记录。系统开始使用后，这里会出现可追溯的事件。'}
             </p>
-            <Button nativeButton={false} render={<a href="/admin/logs">查看运行日志</a>} variant="outline" className="rounded-lg" />
+            <Button nativeButton={false} render={<Link href={DASHBOARD_LOG_HREF}>查看运行日志</Link>} variant="outline" className="rounded-lg" />
           </CardContent>
         </Card>
       </section>
@@ -217,7 +238,7 @@ export default async function AdminDashboard() {
                 学校账号
               </CardTitle>
               <div className="flex gap-2">
-                <Button nativeButton={false} render={<a href="/admin/users"><Users className="mr-2 size-4" />用户管理</a>} variant="outline" />
+                <Button nativeButton={false} render={<Link href="/admin/users"><Users className="mr-2 size-4" />用户管理</Link>} variant="outline" />
               </div>
             </div>
           </CardHeader>          <CardContent>
@@ -257,15 +278,25 @@ export default async function AdminDashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">最近 24 小时 · {logSourceLabel}</p>
+                <Button nativeButton={false} render={<Link href={DASHBOARD_ERROR_HREF}>查看全部错误</Link>} variant="ghost" size="sm" className="min-h-9">
+                  查看全部错误
+                </Button>
+              </div>
               {logEvents.length === 0 ? <p className="text-sm text-muted-foreground">暂无日志。使用登录、模型调用或导出功能后会自动记录。</p> : null}
-              {logEvents.slice(0, 4).map((event) => (
-                <a key={`${event.timestamp}-${event.event}-${event.requestId ?? ''}`} href="/admin/logs" className="group block rounded-lg border border-border/65 bg-background/78 p-4 shadow-soft backdrop-blur transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/35 hover:bg-primary/6 hover:shadow-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              {logEvents.slice(0, 4).map((execution) => (
+                <Link
+                  key={logEventIdentity(execution.primary)}
+                  href={buildAdminLogHref(DASHBOARD_LOG_QUERY, { search: execution.primary.eventCode })}
+                  className="group block rounded-lg border border-border/65 bg-background/78 p-4 shadow-soft backdrop-blur transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/35 hover:bg-primary/6 hover:shadow-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium">{event.event}</span>
-                    <Badge variant={event.level === 'error' ? 'destructive' : 'outline'}>{event.level}</Badge>
+                    <span className="text-sm font-medium">{execution.primary.functionLabel}</span>
+                    <Badge variant={execution.level === 'error' ? 'destructive' : 'outline'}>{execution.primary.resultLabel}</Badge>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{event.timestamp}</p>
-                </a>
+                  <p className="mt-1 text-xs text-muted-foreground">{execution.primary.eventCode} · {execution.lastAt}</p>
+                </Link>
               ))}
             </CardContent>
           </Card>

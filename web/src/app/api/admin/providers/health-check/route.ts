@@ -1,5 +1,5 @@
 import { withApiLogging } from '@/lib/observability/with-api-logging';
-import { requireRole } from '@/lib/data/common';
+import { requireAnyRole } from '@/lib/data/common';
 import { saveProviderHealthCheck } from '@/lib/data/admin';
 import { providerModelsRequest, toProviderProtocol } from '@/lib/provider-protocol';
 import { providerRequestSchema, resolveProviderCredentials } from '@/lib/data/provider-credentials';
@@ -12,7 +12,10 @@ export const maxDuration = 30;
  */
 export async function POST(req: Request) {
   return withApiLogging(req, { area: 'api', event: 'provider_health_check', route: '/api/admin/providers/health-check' }, async () => {
-    const role = await requireRole('admin');
+    // 与 getAdminProviders / saveProviderHealthCheck 同口径：公司级模板归 org_admin，
+    // 各校自带归校 admin。此前这里只放行 'admin'，org_admin 在自己的 Provider 列表里
+    // 点测速拿到的是 403。
+    const role = await requireAnyRole(['admin', 'org_admin']);
     if (!role.ok) return Response.json({ error: role.message }, { status: role.reason === 'forbidden' ? 403 : 401 });
 
     let body: unknown;
@@ -51,7 +54,9 @@ export async function POST(req: Request) {
     const latencyMs = Date.now() - startedAt;
 
     if (providerId) {
-      await saveProviderHealthCheck(providerId, { healthy, latencyMs, message });
+      // 写回失败要当失败报出去：否则列表里永远停在 unchecked，管理员以为没点过。
+      const saved = await saveProviderHealthCheck(providerId, { healthy, latencyMs, message });
+      if (!saved.ok) return Response.json({ healthy, status, latencyMs, message, error: saved.message }, { status: 409 });
     }
 
     return Response.json({ healthy, status, latencyMs, message });
