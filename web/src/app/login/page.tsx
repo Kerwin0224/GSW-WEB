@@ -120,23 +120,24 @@ export default function LoginPage() {
               <span className="font-heading text-xl text-foreground">文韵智途</span>
             </div>
 
-            {/* 登录页的主视觉是课文本身，不是标语：楷体加朱丝栏就是产品里
-                "引文"的写法，先让人看到它长什么样，再让人登录。 */}
-            <figure className="border-l-2 border-rule pl-4">
-              <blockquote className="font-kai text-2xl leading-relaxed text-foreground sm:text-3xl lg:text-4xl">
-                不积跬步，无以至千里
-              </blockquote>
-              <figcaption className="mt-2 text-xs text-muted-foreground">《劝学》· 荀子</figcaption>
-            </figure>
-
+            {/* 定位写在前面：这是多租户的 AI 学习与教学平台，古诗文只是当前的主要教学场景，
+                不能让学科词占据定位位（CONTEXT.md：具体学科词只出现在教师自己写的归类口径里）。
+                楷体加朱丝栏的引文随后出现，作为"内容长什么样"的示例，而不是产品定义。 */}
             <div className="space-y-3">
               <h1 className="text-balance font-heading text-2xl leading-snug tracking-tight sm:text-3xl">
-                古文学习工作台
+                AI 学习与教学平台
               </h1>
               <p className="max-w-md text-base leading-7 text-muted-foreground">
-                学生向 AI 提问、逐句追问并接受挑战练习；教师核验每一次回答；学校管理员维护模型、账号与运行状态。
+                学生向 AI 提问并接受挑战练习；教师核验每一次回答、查看班级学情；学校管理员维护模型、账号与运行状态。
               </p>
             </div>
+
+            <figure className="border-l-2 border-rule pl-4">
+              <blockquote className="font-kai text-xl leading-relaxed text-foreground/90 sm:text-2xl">
+                不积跬步，无以至千里
+              </blockquote>
+              <figcaption className="mt-1.5 text-xs text-muted-foreground">篇目示例 ·《劝学》荀子</figcaption>
+            </figure>
           </div>
 
         </section>
