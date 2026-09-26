@@ -55,6 +55,10 @@ revoke execute on function public.provision_school_account(text, text, text, uui
 --   /school_id/school_name/organization_id/organization_name）。
 -- 列不够时 PostgREST 不报错，只是少返回——zod 直接把每次登录判成 500。
 -- 这里按 v3 的完整形状重定义，返回列一只不加不减。
+-- CREATE OR REPLACE **不能改已有函数的返回类型**（42P13）。171000 里那版只返回 5 列，
+-- 这里要换成 11 列，所以必须先 drop。
+drop function if exists public.authenticate_school_account_v4(text, text, text, uuid);
+
 create or replace function public.authenticate_school_account_v4(
   p_login_id text,
   p_password text,
