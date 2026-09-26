@@ -15,15 +15,18 @@ alter table public.class_memberships
 drop index if exists public.class_memberships_one_student_class_idx;
 
 -- 防御历史脏行：若库里已有同学生多行，只保留最早一行为主班。
+-- uuid 没有 min()/max() 聚合，取「最早一行」要写成 order by + limit 1。
 update public.class_memberships cm
    set is_primary = false
  where cm.role = 'student'
    and cm.is_primary
    and cm.id <> (
-     select min(m.id)
+     select m.id
        from public.class_memberships m
       where m.profile_id = cm.profile_id
         and m.role = 'student'
+      order by m.created_at, m.id
+      limit 1
    );
 
 create unique index if not exists class_memberships_primary_student_idx
