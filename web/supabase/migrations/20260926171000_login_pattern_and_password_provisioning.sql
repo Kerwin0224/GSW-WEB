@@ -155,7 +155,7 @@ stable
 security definer
 set search_path to 'public', 'extensions'
 as $$
-  select p.id, p.display_name, p.role, p.school_id, p.organization_id
+  select p.id, p.display_name, p.role::public.app_role, p.school_id, p.organization_id
   from public.profiles p
   left join public.schools s on s.id = p.school_id
   left join public.organizations o on o.id = p.organization_id

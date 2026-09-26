@@ -79,7 +79,7 @@ stable
 security definer
 set search_path to 'public', 'extensions'
 as $$
-  select p.id, p.login_id, p.role, p.display_name, p.avatar_key,
+  select p.id, p.login_id, p.role::public.app_role, p.display_name, p.avatar_key,
          p.session_version, p.must_change_password,
          p.school_id, s.name, p.organization_id, o.name
   from public.profiles p
