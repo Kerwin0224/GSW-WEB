@@ -73,7 +73,7 @@ export function ChatWorkspace({
       <aside
         ref={sidebarRef}
         className={cn(
-          'order-2 border-t border-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--primary)_8%,transparent),transparent_18%),color-mix(in_oklch,var(--card)_92%,transparent)] shadow-soft backdrop-blur-xl transition-all duration-300 lg:order-1 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-t-0',
+          'order-2 border-t border-border/60 bg-card/72 backdrop-blur-xl transition-all duration-300 lg:order-1 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-t-0',
           collapsed ? 'lg:w-[3.5rem] lg:p-1.5' : 'lg:w-auto lg:p-3',
         )}
         aria-label={sidebarLabel}
@@ -97,7 +97,7 @@ export function ChatWorkspace({
       </aside>
 
       <section className="order-1 flex min-h-0 min-w-0 flex-col lg:order-2 lg:h-full" aria-label={mainLabel ?? sidebarLabel}>
-        <div className="shrink-0 border-b border-border/60 bg-card/92 px-4 py-4 shadow-soft backdrop-blur sm:px-6 sm:py-5">
+        <div className="shrink-0 border-b border-border/60 bg-card/92 px-4 py-4 backdrop-blur sm:px-6 sm:py-5">
           <div className="mx-auto max-w-3xl space-y-1.5">{header}</div>
         </div>
 

@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
-import { BookOpen, ChevronDown, FolderOpen, Loader2, Plus, Sparkles, Swords } from 'lucide-react';
+import { BookOpen, ChevronDown, FolderOpen, LibraryBig, Loader2, Plus, Sparkles, Swords } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { AIMessageList, type MessageEditState } from '@/components/workbench/ai-message-list';
 import { ChatWorkspace } from '@/components/workbench/chat-workspace';
 import { ThinkingIndicator } from '@/components/workbench/thinking-indicator';
@@ -72,6 +73,8 @@ export function StudentChatClient({
   activeSpaceId?: string;
 }) {
   const router = useRouter();
+  const [spaceSheetOpen, setSpaceSheetOpen] = useState(false);
+  const [isSwitchingSpace, startSpaceSwitch] = useTransition();
   const [input, setInput] = useState('');
   const [conversationId, setConversationId] = useState(initialConversation?.id ?? '');
   const [uploading, setUploading] = useState(false);
@@ -465,18 +468,22 @@ export function StudentChatClient({
   };
 
   const switchSpace = useCallback((nextSpaceId: string) => {
+    setSpaceSheetOpen(false);
     const params = new URLSearchParams(window.location.search);
     if (nextSpaceId) params.set('spaceId', nextSpaceId);
     else params.delete('spaceId');
-    // 切空间就是切换项目与会话的完整作用域，回到该空间的空白入口。
     params.delete('conversationId');
     params.delete('projectId');
     const query = params.toString();
-    window.location.href = query ? `/student?${query}` : '/student';
-  }, []);
+    startSpaceSwitch(() => {
+      router.push(query ? `/student?${query}` : '/student', { scroll: false });
+    });
+  }, [router]);
 
   const blocked = conversationLocked ? finalizedConversationBlockedReason : providerBlocked;
-  const activeSpaceName = spaces.find((space) => space.id === activeSpaceId)?.name ?? '未归类空间';
+  const activeSpace = spaces.find((space) => space.id === activeSpaceId);
+  const activeSpaceName = activeSpace?.name ?? '未归类空间';
+  const spaceDirectoryItems = spaces.map((space) => ({ id: space.id, name: space.name, subject: space.subject, colorKey: space.colorKey, kind: space.kind }));
 
   return (
     <>
@@ -500,7 +507,7 @@ export function StudentChatClient({
       )}
       sidebar={(<>
           {spaces.length > 0 ? (
-            <section className="space-y-3">
+            <section className="hidden space-y-3 lg:block">
               <div className="flex items-end justify-between gap-3 px-1">
                 <div>
                   <p className="font-heading text-lg">学习空间</p>
@@ -509,14 +516,15 @@ export function StudentChatClient({
                 <Badge variant="outline">{spaces.length} 个空间</Badge>
               </div>
               <SpaceDirectory
-                items={spaces.map((space) => ({ id: space.id, name: space.name, subject: space.subject, colorKey: space.colorKey, kind: space.kind }))}
+                items={spaceDirectoryItems}
                 activeId={activeSpaceId}
                 onSelect={switchSpace}
                 ariaLabel="选择学习空间"
+                pending={isSwitchingSpace}
               />
             </section>
           ) : null}
-          <section className="rounded-2xl border border-border/65 bg-card/86 p-3 shadow-soft">
+          <section className="border-y border-border/70 bg-transparent px-1 py-4">
             <div className="mb-3 flex items-start justify-between gap-3 px-1">
               <div>
                 <p className="font-heading text-lg">{activeSpaceName} · 项目</p>
@@ -595,7 +603,7 @@ export function StudentChatClient({
             )}
           </section>
 
-          <section className="rounded-2xl border border-border/65 bg-card/86 p-3 shadow-soft">
+          <section className="border-y border-border/70 bg-transparent px-1 py-4">
             <div className="mb-3 flex items-start justify-between gap-3 px-1">
               <div>
                 <p className="font-heading text-lg">{activeSpaceName} · 未归项目会话</p>
@@ -624,14 +632,27 @@ export function StudentChatClient({
         </>)}
       header={(
         <>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
+                <span className="text-muted-foreground">当前空间</span>
+                <span className="truncate font-medium text-foreground">{activeSpaceName}</span>
+                {activeSpace ? <Badge variant="outline">{activeSpace.kind === 'topic' ? '专题' : '学期'}</Badge> : null}
+              </div>
+              {spaces.length > 0 ? (
+                <Button type="button" variant="outline" size="sm" className="lg:hidden" onClick={() => setSpaceSheetOpen(true)}>
+                  {isSwitchingSpace ? <Loader2 className="mr-1.5 size-4 animate-spin" aria-hidden="true" /> : <LibraryBig className="mr-1.5 size-4" aria-hidden="true" />}
+                  切换空间
+                </Button>
+              ) : null}
+            </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <h2 className="font-heading text-xl tracking-tight sm:text-2xl">{inProjectContext ? projectDisplayName : conversationId ? '其他会话' : '从一个学习问题开始'}</h2>
+              <h2 className="font-heading text-xl tracking-tight sm:text-2xl">{inProjectContext ? projectDisplayName : conversationId ? initialConversation?.title ?? '当前会话' : '从一个学习问题开始'}</h2>
               <Badge className="border-primary/25 bg-primary/8 text-primary" variant="outline"><Sparkles className="mr-1 size-3" />{conversationLocked ? '教师已审核' : '学习提问'}</Badge>
             </div>
             <p className="text-sm leading-6 text-muted-foreground">
               {conversationLocked
                 ? '这条会话已完成教师核实，只能回看，不能继续追问。'
-                : inProjectContext ? '新问题会直接归入当前项目。' : conversationId ? '继续追问会保留在这条会话中；也可以从项目或空白入口另开会话。' : '直接提问即可；问题聚焦在哪个学习主题上，系统会把它归入对应项目。'}
+                : inProjectContext ? `新问题会归入当前空间中的《${activeProject?.name ?? '当前项目'}》。` : conversationId ? '继续追问会保留在当前会话和当前空间中。' : `在${activeSpaceName}里提出问题，系统会按这个空间的归类口径创建项目。`}
             </p>
         </>
       )}
@@ -717,6 +738,24 @@ export function StudentChatClient({
         />
       )}
     />
+      <Sheet open={spaceSheetOpen} onOpenChange={setSpaceSheetOpen}>
+        <SheetContent side="left" className="w-[min(24rem,92vw)] gap-0 p-0">
+          <SheetHeader className="border-b border-border/60 px-4 py-4">
+            <SheetTitle>选择学习空间</SheetTitle>
+            <SheetDescription>切换后，项目、会话和挑战都会进入这个空间。</SheetDescription>
+          </SheetHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            <SpaceDirectory
+              items={spaceDirectoryItems}
+              activeId={activeSpaceId}
+              onSelect={switchSpace}
+              ariaLabel="移动端选择学习空间"
+              listClassName="max-h-none"
+              pending={isSwitchingSpace}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
       <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}>
         <DialogContent>
           <DialogHeader>

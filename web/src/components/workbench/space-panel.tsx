@@ -83,6 +83,9 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject }: { space
   const directStudentIds = new Set((space?.directStudents ?? []).map((student) => student.id));
   const studentOptionById = new Map(studentOptions.map((student) => [student.id, student]));
   const availableStudents = studentOptions.filter((student) => !directStudentIds.has(student.id));
+  const derivedStudentCount = space?.classes.reduce((sum, klass) => sum + klass.studentCount, 0) ?? 0;
+  const nameError = state.errors?.name;
+  const subjectError = state.errors?.subject;
 
   return (
     <div className="grid gap-6 border-y border-border/65 bg-background/45 p-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
@@ -110,12 +113,14 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject }: { space
         </fieldset>
         <div className="space-y-2">
           <Label htmlFor="space-name">空间名称</Label>
-          <Input id="space-name" name="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：基础巩固空间" maxLength={40} />
+          <Input id="space-name" name="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：基础巩固空间" maxLength={40} aria-invalid={Boolean(nameError)} aria-describedby={nameError ? 'space-name-error' : undefined} />
+          {nameError ? <p id="space-name-error" className="text-xs text-destructive">{nameError}</p> : null}
         </div>
         <div className="space-y-2">
           <Label htmlFor="space-subject">空间科目</Label>
-          <Input id="space-subject" name="subject" value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="例如：语文" maxLength={40} />
-          <p className="text-xs text-muted-foreground">科目会展示给学生；留空时显示“未设置科目”。</p>
+          <Input id="space-subject" name="subject" value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="例如：语文" maxLength={40} aria-invalid={Boolean(subjectError)} aria-describedby={subjectError ? 'space-subject-error' : 'space-subject-help'} />
+          <p id="space-subject-help" className="text-xs text-muted-foreground">科目用于空间目录分组，必须填写。</p>
+          {subjectError ? <p id="space-subject-error" className="text-xs text-destructive">{subjectError}</p> : null}
         </div>
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">空间书脊色</legend>
@@ -156,10 +161,10 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject }: { space
           <p className={state.ok ? 'rounded-lg border border-primary/30 bg-primary/10 p-2 text-sm text-primary' : 'rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive'} role={state.ok ? 'status' : 'alert'}>{state.message}</p>
         ) : null}
 
-        <div className="flex flex-wrap gap-2">
+        <div className="sticky bottom-0 -mx-5 flex flex-wrap gap-2 border-t border-border/60 bg-background/92 px-5 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:static lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:backdrop-blur-none">
           <Button type="submit" disabled={pending || !name.trim() || !subject.trim()} className="cursor-pointer">
             {pending ? <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" /> : <Save className="mr-2 size-4" aria-hidden="true" />}
-            {space ? '保存' : '创建空间'}
+            {space ? '保存空间' : '创建空间'}
           </Button>
         </div>
       </form>
@@ -167,6 +172,13 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject }: { space
       <div className="space-y-4 p-5 sm:p-6">
 
       {!space ? <div className="rounded-lg border border-dashed border-border/70 bg-background/55 p-4 text-sm leading-6 text-muted-foreground">空间创建后，这里会显示任教班级和可以直接加入的学生。现在先写清空间身份和归类主题。</div> : null}
+      {space ? (
+        <div className="grid grid-cols-3 divide-x border-y border-border/60 bg-card/35 text-center">
+          <div className="px-2 py-3"><p className="text-lg font-semibold text-foreground">{space.studentCount}</p><p className="mt-0.5 text-[0.68rem] text-muted-foreground">可见学生</p></div>
+          <div className="px-2 py-3"><p className="text-lg font-semibold text-foreground">{derivedStudentCount}</p><p className="mt-0.5 text-[0.68rem] text-muted-foreground">班级派生</p></div>
+          <div className="px-2 py-3"><p className="text-lg font-semibold text-foreground">{space.directStudents.length}</p><p className="mt-0.5 text-[0.68rem] text-muted-foreground">直接加入</p></div>
+        </div>
+      ) : null}
       {space ? <ArchiveButton spaceId={space.id} /> : null}
 
       {space ? (
