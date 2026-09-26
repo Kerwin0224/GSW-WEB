@@ -296,7 +296,9 @@ begin
   set consumed_at = now(), consumed_by = v_user
   where token_hash = v_invite.token_hash;
 
-  return query select v_org, v_school, v_user, v_password;
+  -- 显式转型：RETURNS TABLE 的 OUT 参数与函数体里的同名标识符会参与类型推断，
+  -- 不写清楚就是 42P13「return type mismatch in function declared to return record」。
+  return query select v_org::uuid, v_school::uuid, v_user::uuid, v_password::text;
 end;
 $$;
 
