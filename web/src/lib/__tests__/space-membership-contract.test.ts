@@ -101,6 +101,9 @@ test('空间拥有项目与会话作用域，且两者必须一致', () => {
   assert.match(newestFunctionBody('validate_project_space_contract'), /project space % is not in the owner school/, '项目空间必须与学生同校');
   assert.match(newestFunctionBody('validate_conversation_space_contract'), /conversation space % must match project space %/, '会话空间必须与项目空间一致');
   assert.doesNotMatch(text, /alter table public\.conversations\s+add column[^;]*class_id/i, '空间不能替换会话的行政班归属');
+  assert.match(text, /add column if not exists space_kind/i, '空间必须区分学期与专题类型');
+  assert.match(text, /spaces_kind_check check \(space_kind in \('term', 'topic'\)\)/, '空间类型只允许学期或专题');
+  assert.match(text, /create_space_v3/, '新建空间必须支持空间类型参数');
   assert.doesNotMatch(text, /drop index if exists public\.class_memberships_one_student_class_idx/);
 });
 

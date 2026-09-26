@@ -23,7 +23,7 @@ import { ThinkingIndicator } from '@/components/workbench/thinking-indicator';
 import { ChatComposer } from '@/components/workbench/chat-composer';
 import { EmptyState, ErrorState } from '@/components/workbench/state-surfaces';
 import { SessionRow } from '@/components/workbench/session-row';
-import { SpaceTabs } from '@/components/workbench/space-tabs';
+import { SpaceDirectory } from '@/components/workbench/space-directory';
 import type { DailyArchiveSummary, ProjectSummary, StudentConversationInitial } from '@/lib/data/student';
 import type { StudentSpace } from '@/lib/data/spaces';
 import {
@@ -508,8 +508,8 @@ export function StudentChatClient({
                 </div>
                 <Badge variant="outline">{spaces.length} 个空间</Badge>
               </div>
-              <SpaceTabs
-                items={spaces.map((space) => ({ id: space.id, name: space.name, subject: space.subject, colorKey: space.colorKey }))}
+              <SpaceDirectory
+                items={spaces.map((space) => ({ id: space.id, name: space.name, subject: space.subject, colorKey: space.colorKey, kind: space.kind }))}
                 activeId={activeSpaceId}
                 onSelect={switchSpace}
                 ariaLabel="选择学习空间"

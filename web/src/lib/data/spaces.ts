@@ -15,7 +15,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { createClient } from '@/lib/supabase/server';
-import type { SpaceColorKey } from '@/lib/supabase/database.types';
+import type { SpaceColorKey, SpaceKind } from '@/lib/supabase/database.types';
 import { SPACE_COLOR_KEYS } from '@/lib/space-colors';
 import { fail, ok, requireRole, type ActionState, type DataResult } from './common';
 
@@ -30,13 +30,14 @@ export type TeacherSpace = {
   theme: string;
   subject: string | null;
   colorKey: SpaceColorKey;
+  kind: SpaceKind;
   classes: SpaceClassSummary[];
   directStudents: SpaceStudentSummary[];
   studentCount: number;
 };
 
 /** 学生视角：空间名称、科目和颜色都足够渲染切换器。 */
-export type StudentSpace = { id: string; name: string; subject: string | null; colorKey: SpaceColorKey };
+export type StudentSpace = { id: string; name: string; subject: string | null; colorKey: SpaceColorKey; kind: SpaceKind };
 
 function revalidateSpaceSurfaces() {
   revalidatePath('/teacher');
@@ -51,7 +52,7 @@ export async function listTeacherSpaces(): Promise<DataResult<TeacherSpace[]>> {
 
   const { data: spaces, error } = await supabase
     .from('spaces')
-    .select('id,name,theme,subject,color_key,space_classes(class_id,classes(name)),space_members(student_id)')
+    .select('id,name,theme,subject,color_key,space_kind,space_classes(class_id,classes(name)),space_members(student_id)')
     .eq('owner_id', role.data.id)
     .eq('status', 'active')
     .order('created_at', { ascending: true });
@@ -63,6 +64,7 @@ export async function listTeacherSpaces(): Promise<DataResult<TeacherSpace[]>> {
     theme: string;
     subject: string | null;
     color_key: SpaceColorKey;
+    space_kind: SpaceKind;
     space_classes: Array<{ class_id: string; classes: { name: string | null } | Array<{ name: string | null }> | null }> | null;
     space_members: Array<{ student_id: string }> | null;
   };
@@ -120,6 +122,7 @@ export async function listTeacherSpaces(): Promise<DataResult<TeacherSpace[]>> {
       theme: row.theme,
       subject: row.subject,
       colorKey: row.color_key,
+      kind: row.space_kind,
       classes,
       directStudents,
       studentCount: classes.reduce((sum, klass) => sum + klass.studentCount, 0) + extraDirectStudents.length,
@@ -176,11 +179,11 @@ export async function listStudentSpaces(): Promise<DataResult<StudentSpace[]>> {
 
   const { data, error } = await supabase
     .from('spaces')
-    .select('id,name,subject,color_key')
+    .select('id,name,subject,color_key,space_kind')
     .eq('status', 'active')
     .order('created_at', { ascending: true });
   if (error) return fail('error', `空间加载失败：${error.message}`);
-  return ok((data ?? []).map((space) => ({ id: space.id, name: space.name, subject: space.subject, colorKey: space.color_key })));
+  return ok((data ?? []).map((space) => ({ id: space.id, name: space.name, subject: space.subject, colorKey: space.color_key, kind: space.space_kind })));
 }
 
 /**
@@ -195,15 +198,17 @@ export async function saveSpaceAction(_previous: ActionState, formData: FormData
   const theme = String(formData.get('theme') ?? '').trim();
   const subject = String(formData.get('subject') ?? '').trim();
   const colorKey = String(formData.get('color_key') ?? 'pine').trim();
+  const spaceKind = String(formData.get('space_kind') ?? 'term').trim() as SpaceKind;
   const classId = String(formData.get('class_id') ?? '').trim();
   if (!name) return { ok: false, message: '请填写空间名称。', errors: { name: '空间名称不能为空。' } };
   if (!subject) return { ok: false, message: '请填写空间科目。', errors: { subject: '空间科目不能为空。' } };
   if (subject.length > 40) return { ok: false, message: '科目名称不能超过 40 个字符。', errors: { subject: '科目名称过长。' } };
   if (!SPACE_COLOR_KEYS.includes(colorKey as SpaceColorKey)) return { ok: false, message: '请选择有效的空间颜色。' };
+  if (spaceKind !== 'term' && spaceKind !== 'topic') return { ok: false, message: '请选择有效的空间类型。' };
 
   const supabase = await createClient();
   if (spaceId) {
-    const { error } = await supabase.from('spaces').update({ name, theme, subject: subject || null, color_key: colorKey as SpaceColorKey }).eq('id', spaceId);
+    const { error } = await supabase.from('spaces').update({ name, theme, subject: subject || null, color_key: colorKey as SpaceColorKey, space_kind: spaceKind }).eq('id', spaceId);
     if (error) return { ok: false, message: `空间保存失败：${error.message}` };
     revalidateSpaceSurfaces();
     return { ok: true, message: '空间已保存。' };
@@ -219,12 +224,13 @@ export async function saveSpaceAction(_previous: ActionState, formData: FormData
   if (existingError) return { ok: false, message: `空间查重失败：${existingError.message}` };
   if (existing) return { ok: false, message: `已存在同名空间「${name}」。换个名字，或直接编辑它。`, errors: { name: '空间名称重复。' } };
 
-  const { error } = await supabase.rpc('create_space_v2', {
+  const { error } = await supabase.rpc('create_space_v3', {
     p_name: name,
     p_theme: theme,
     p_class_id: classId || null,
     p_subject: subject || null,
     p_color_key: colorKey as SpaceColorKey,
+    p_space_kind: spaceKind,
   });
   if (error) return { ok: false, message: `空间保存失败：${error.message}` };
 

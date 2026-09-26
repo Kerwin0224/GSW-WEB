@@ -9,12 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { EmptyState } from '@/components/workbench/state-surfaces';
-import { SpaceTabs } from '@/components/workbench/space-tabs';
+import { SpaceDirectory } from '@/components/workbench/space-directory';
 import { archiveSpaceAction, saveSpaceAction, setSpaceClassAction, setSpaceStudentAction, type SpaceStudentOption, type TeacherSpace } from '@/lib/data/spaces';
 import type { TeacherClass } from '@/lib/data/teacher';
 import type { ActionState } from '@/lib/data/common';
 import { SPACE_COLOR_KEYS, SPACE_COLOR_LABELS, SPACE_COLOR_VALUES } from '@/lib/space-colors';
-import type { SpaceColorKey } from '@/lib/supabase/database.types';
+import type { SpaceColorKey, SpaceKind } from '@/lib/supabase/database.types';
 import { cn } from '@/lib/utils';
 
 const idle: ActionState = { ok: false, message: '' };
@@ -49,8 +49,8 @@ export function SpacePanel({ spaces, classes, studentOptions, defaultSubject }: 
         </div>
       </CardHeader>
       <CardContent className="space-y-5 px-5 py-5 sm:px-6">
-        <SpaceTabs
-          items={spaces.map((space) => ({ id: space.id, name: space.name, subject: space.subject, colorKey: space.colorKey, count: space.studentCount, hint: `${space.subject || '未设置科目'} · ${space.studentCount} 名学生` }))}
+        <SpaceDirectory
+          items={spaces.map((space) => ({ id: space.id, name: space.name, subject: space.subject, colorKey: space.colorKey, kind: space.kind, count: space.studentCount, hint: `${space.subject || '未设置科目'} · ${space.studentCount} 名学生` }))}
           activeId={selectedId}
           onSelect={(id) => { setSelectedId(id); setCreating(false); }}
           ariaLabel="选择教师空间"
@@ -75,6 +75,7 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject }: { space
   const [subject, setSubject] = useState(space?.subject ?? defaultSubject);
   const [theme, setTheme] = useState(space?.theme ?? '');
   const [colorKey, setColorKey] = useState<SpaceColorKey>(space?.colorKey ?? 'pine');
+  const [spaceKind, setSpaceKind] = useState<SpaceKind>(space?.kind ?? 'term');
   const [classId, setClassId] = useState(classes[0]?.classId ?? '');
 
   const pulledClassIds = new Set((space?.classes ?? []).map((klass) => klass.classId));
@@ -88,6 +89,25 @@ function SpaceEditor({ space, classes, studentOptions, defaultSubject }: { space
       <div className="space-y-4 p-5 sm:p-6 lg:border-r lg:border-border/60">
       <form action={action} className="space-y-3">
         {space ? <input type="hidden" name="space_id" value={space.id} /> : null}
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">空间类型</legend>
+          <div role="radiogroup" aria-label="空间类型" className="grid grid-cols-2 gap-2">
+            {([['term', '学期空间', '本学期主要内容都放在这里'], ['topic', '专题空间', '专题阶段单独让学生提问']] as const).map(([value, label, description]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={spaceKind === value}
+                onClick={() => setSpaceKind(value)}
+                className={cn('min-h-16 cursor-pointer border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', spaceKind === value ? 'border-primary/60 bg-primary/8' : 'border-border/60 bg-background/60 hover:bg-muted/50')}
+              >
+                <span className="block text-sm font-medium">{label}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">{description}</span>
+              </button>
+            ))}
+          </div>
+          <input type="hidden" name="space_kind" value={spaceKind} />
+        </fieldset>
         <div className="space-y-2">
           <Label htmlFor="space-name">空间名称</Label>
           <Input id="space-name" name="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：基础巩固空间" maxLength={40} />

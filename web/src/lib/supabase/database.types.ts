@@ -5,6 +5,7 @@ export const APP_ROLES = ['org_admin', 'admin', 'teacher', 'student'] as const;
 export type AppRole = (typeof APP_ROLES)[number];
 export type AvatarKey = 'ink' | 'pine' | 'cinnabar' | 'moon' | 'bamboo' | 'plum';
 export type SpaceColorKey = 'ink' | 'pine' | 'cinnabar' | 'moon' | 'bamboo' | 'plum';
+export type SpaceKind = 'term' | 'topic';
 export type ModelTier = 'flash' | 'advanced';
 export type ProviderCapability =
   | 'student_chat'
@@ -63,8 +64,8 @@ export interface Database {
        * school_id 不可变、owner 必须是同校教师，两条都由触发器钉住，不靠应用层自觉。
        */
       spaces: {
-        Row: { id: string; school_id: string; owner_id: string; name: string; theme: string; subject: string | null; color_key: SpaceColorKey; status: 'active' | 'archived'; created_at: string; updated_at: string };
-        Insert: { id?: string; school_id: string; owner_id: string; name: string; theme?: string; subject?: string | null; color_key?: SpaceColorKey; status?: 'active' | 'archived' };
+        Row: { id: string; school_id: string; owner_id: string; name: string; theme: string; subject: string | null; color_key: SpaceColorKey; space_kind: SpaceKind; status: 'active' | 'archived'; created_at: string; updated_at: string };
+        Insert: { id?: string; school_id: string; owner_id: string; name: string; theme?: string; subject?: string | null; color_key?: SpaceColorKey; space_kind?: SpaceKind; status?: 'active' | 'archived' };
         Update: Partial<Database['public']['Tables']['spaces']['Insert']>;
       };
       /** 直接加入空间的学生；班级成员仍由 space_classes 派生。 */
@@ -160,6 +161,10 @@ export interface Database {
       /** 建空间 + 写主题/科目/颜色 + 拉一个班；同名活跃空间幂等复用。 */
       create_space_v2: {
         Args: { p_name: string; p_theme: string; p_class_id?: string | null; p_subject?: string | null; p_color_key?: SpaceColorKey };
+        Returns: string;
+      };
+      create_space_v3: {
+        Args: { p_name: string; p_theme: string; p_class_id?: string | null; p_subject?: string | null; p_color_key?: SpaceColorKey; p_space_kind?: SpaceKind };
         Returns: string;
       };
       /** 再拉一个班。返回新增边数：0 表示本来就在。 */
