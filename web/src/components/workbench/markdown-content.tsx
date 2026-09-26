@@ -308,7 +308,7 @@ export function MarkdownContent({ content, className, highlights = [], ...props 
           return <Heading key={index} className="mt-4 font-heading text-base font-semibold leading-7 first:mt-0">{renderInline(tokenizeInline(block.text), `h-${index}`, normalizedHighlights)}</Heading>;
         }
         if (block.kind === 'paragraph') return <p key={index}>{renderInline(tokenizeInline(block.text), `p-${index}`, normalizedHighlights)}</p>;
-        if (block.kind === 'blockquote') return <blockquote key={index} className="border-l-4 border-primary/35 bg-primary/5 py-2 pl-3 text-muted-foreground">{renderInline(tokenizeInline(block.text), `bq-${index}`, normalizedHighlights)}</blockquote>;
+        if (block.kind === 'blockquote') return <blockquote key={index} className="border-l-2 border-rule py-0.5 pl-3 font-kai text-[15px] leading-8 text-foreground/85">{renderInline(tokenizeInline(block.text), `bq-${index}`, normalizedHighlights)}</blockquote>;
         if (block.kind === 'unordered') return <ul key={index} className="ml-5 list-disc space-y-1">{block.items.map((item, itemIndex) => <li key={itemIndex}>{renderInline(tokenizeInline(item), `ul-${index}-${itemIndex}`, normalizedHighlights)}</li>)}</ul>;
         if (block.kind === 'ordered') return <ol key={index} className="ml-5 list-decimal space-y-1">{block.items.map((item, itemIndex) => <li key={itemIndex}>{renderInline(tokenizeInline(item), `ol-${index}-${itemIndex}`, normalizedHighlights)}</li>)}</ol>;
         if (block.kind === 'code') return <pre key={index} className="overflow-x-auto rounded-lg border bg-muted/70 p-3 text-xs leading-6"><code>{block.text}</code></pre>;

@@ -110,7 +110,7 @@ export function AIMessageList({
         const isEditing = isUser && edit?.messageId === message.id;
         return (
           <article key={message.id} className={cn('group/message flex gap-3', isUser && 'flex-row-reverse')}>
-            <div className={cn('mt-1 flex size-9 shrink-0 items-center justify-center rounded-lg shadow-sm ring-1', isUser ? 'bg-primary text-primary-foreground ring-primary/25' : 'bg-accent/18 text-foreground ring-accent/25')}>
+            <div className={cn('mt-1 flex size-9 shrink-0 items-center justify-center rounded-lg ring-1', isUser ? 'bg-primary text-primary-foreground ring-primary/25' : 'bg-accent/18 text-foreground ring-accent/25')}>
               {isUser ? <User className="size-4" aria-hidden="true" /> : <Bot className="size-4" aria-hidden="true" />}
             </div>
             <div className={cn('max-w-[84%] space-y-2', isUser && 'items-end text-right')}>
@@ -145,12 +145,21 @@ export function AIMessageList({
                     </div>
                   </div>
                 </div>
-              ) : (
-                <Card className={cn('px-4 py-3 text-left shadow-soft', isUser ? 'border-primary/20 bg-primary text-primary-foreground ring-primary/20' : 'border-border/60 bg-card/92', !isUser && assistantCardClassName)}>
+              ) : isUser ? (
+                /* 提问是学生自己的话：黛蓝实块，和回答在底色上就分得开。 */
+                <Card className="border-0 bg-primary px-4 py-3 text-left text-primary-foreground">
                   <div className="space-y-2 text-sm">
-                    {keyedParts(message.parts ?? []).map(({ key, part }) => <AIMessagePart key={`${message.id}-${key}`} part={part} markdown={!isUser} />)}
+                    {keyedParts(message.parts ?? []).map(({ key, part }) => <AIMessagePart key={`${message.id}-${key}`} part={part} />)}
                   </div>
                 </Card>
+              ) : (
+                /* 回答是纸上的一段话，不装进卡片：卡片会把里面引用的原文压成又一层底。
+                   引文靠楷体与朱丝栏自己站住（见 MarkdownContent 的 blockquote）。 */
+                <div className={cn('px-0.5 py-0.5 text-left', assistantCardClassName)}>
+                  <div className="space-y-2 text-sm">
+                    {keyedParts(message.parts ?? []).map(({ key, part }) => <AIMessagePart key={`${message.id}-${key}`} part={part} markdown />)}
+                  </div>
+                </div>
               )}
               {isUser && canEditUserMessage && !isEditing && onEditStart ? (
                 <button

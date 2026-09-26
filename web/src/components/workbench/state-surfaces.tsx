@@ -17,7 +17,7 @@ export function EmptyState({ title, description, action, className }: SurfacePro
     <Card className={cn('overflow-hidden border-dashed border-primary/25 bg-card/86 shadow-soft backdrop-blur', className)}>
       <CardContent className="relative flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
         <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
-        <span className="flex size-16 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/20 shadow-sm">
+        <span className="flex size-16 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/20">
           <Inbox className="size-7" aria-hidden="true" />
         </span>
         <div className="space-y-1.5">

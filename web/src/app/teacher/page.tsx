@@ -129,7 +129,7 @@ export default async function TeacherChatPage() {
           <CardContent className="space-y-3">
             {classSummaries.length === 0 ? <EmptyState title="暂无待核实会话" description="有待核实会话时，会按疑点数量和时间排在这里。" /> : null}
             {classSummaries.map((summary) => (
-              <Link key={summary.classId} href="/teacher/audit" className="block rounded-lg border border-border/65 bg-background/78 p-4 shadow-sm transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/35 hover:bg-background/95 hover:shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Link key={summary.classId} href="/teacher/audit" className="block rounded-lg border border-border/65 bg-background/78 p-4 transition-[border-color,background-color] duration-200 hover:border-primary/35 hover:bg-background/95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-medium">{summary.classLabel}</p>
                   <Badge variant={summary.risk > 0 ? 'destructive' : 'outline'}>{summary.risk} 条会话有疑点</Badge>

@@ -120,13 +120,21 @@ export default function LoginPage() {
               <span className="font-heading text-xl text-foreground">文韵智途</span>
             </div>
 
-            <div className="space-y-5">
-              <h1 className="text-balance font-heading text-3xl leading-tight tracking-tight sm:text-4xl lg:text-5xl xl:text-6xl">
-                读懂一篇，
-                <span className="text-primary lg:block">学深一步。</span>
+            {/* 登录页的主视觉是课文本身，不是标语：楷体加朱丝栏就是产品里
+                "引文"的写法，先让人看到它长什么样，再让人登录。 */}
+            <figure className="border-l-2 border-rule pl-4">
+              <blockquote className="font-kai text-2xl leading-relaxed text-foreground sm:text-3xl lg:text-4xl">
+                不积跬步，无以至千里
+              </blockquote>
+              <figcaption className="mt-2 text-xs text-muted-foreground">《劝学》· 荀子</figcaption>
+            </figure>
+
+            <div className="space-y-3">
+              <h1 className="text-balance font-heading text-2xl leading-snug tracking-tight sm:text-3xl">
+                古文学习工作台
               </h1>
               <p className="max-w-md text-base leading-7 text-muted-foreground">
-                AI 学习与教学平台，让提问、练习和备课更有依据。
+                学生向 AI 提问、逐句追问并接受挑战练习；教师核验每一次回答；学校管理员维护模型、账号与运行状态。
               </p>
             </div>
           </div>

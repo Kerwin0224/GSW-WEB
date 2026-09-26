@@ -117,7 +117,7 @@ export function OrgSchoolsClient({ schools, organizationName, operatorName }: {
                     {school.status === 'active' ? '停用学校' : '启用学校'}
                   </Button>
                   <Link href={`/org/schools/${school.id}`} className="text-sm font-medium text-primary hover:underline">
-                    进入学校详情 →
+                    查看这所学校
                   </Link>
                 </div>
               </CardContent>

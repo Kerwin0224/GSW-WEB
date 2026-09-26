@@ -22,7 +22,7 @@ function levelCellCopy(row: ProjectBloomMatrixRow, level: BloomLevel) {
       label: '已通过',
       ariaLabel: `《${row.name}》L${level} ${info.name} 已通过挑战`,
       icon: CheckCircle2,
-      className: 'border-transparent shadow-sm',
+      className: 'border-transparent',
       style: { backgroundColor: `var(--bloom-${level})`, color: `var(--bloom-${level}-fg)` },
     };
   }

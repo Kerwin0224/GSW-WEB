@@ -229,7 +229,7 @@ function TierAssignmentDialog({ tierView, providers }: { tierView: TierView; pro
 function ModelTierCard({ tierView, providers }: { tierView: TierView; providers: ProviderListItem[] }) {
   const copy = TIER_COPY[tierView.tier];
   return (
-    <Card className={`overflow-hidden border shadow-sm bg-gradient-to-br ${copy.tone}`}>
+    <Card className={`overflow-hidden border bg-gradient-to-br ${copy.tone}`}>
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2">

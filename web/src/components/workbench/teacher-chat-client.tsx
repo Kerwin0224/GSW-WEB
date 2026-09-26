@@ -369,7 +369,7 @@ export function TeacherChatClient({
                       key={preset.id}
                       type="button"
                       onClick={() => applyPreset(preset)}
-                      className="cursor-pointer rounded-xl border border-border/65 bg-background/78 p-3 text-left shadow-sm transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/35 hover:bg-primary/6 hover:shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="cursor-pointer rounded-lg border border-border/65 bg-background/78 p-3 text-left transition-[border-color,background-color] duration-200 hover:border-primary/35 hover:bg-primary/6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       <span className="flex items-center justify-between gap-2">
                         <span className="font-medium">{preset.title}</span>

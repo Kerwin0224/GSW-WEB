@@ -58,14 +58,21 @@
   --color-bloom-6: var(--bloom-6);
   --color-bloom-foreground: var(--bloom-foreground);
 
-  /* Radius scale */
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  /* 朱丝栏：古籍版面的竖向界线，这里只用于把"原文"和"AI 的话"分开。 */
+  --color-rule: var(--rule);
+  /* 楷体只属于引文：课文与 AI 的话在字形上就分得开。 */
+  --font-kai: var(--font-kai-family);
+
+  /* Radius scale — 收成三档：标签/界线 2px，一切面 6px，浮层 8px。
+     xl 及以上不再逐级放大：145 处 rounded-lg 与 20 处 rounded-xl 做的是同一件事，
+     差别只是"更圆"，那正是卡片套件的观感来源。 */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 6px;
+  --radius-2xl: 8px;
+  --radius-3xl: 8px;
+  --radius-4xl: 8px;
 
   /* Shadow tokens */
   --shadow-soft: var(--shadow-soft);
@@ -74,9 +81,12 @@
 
 :root {
   /* ── 文韵智途 · 浅色主题 ── */
-  --radius: 0.5rem;
+  --radius: 0.375rem;
+  /* 只剩两种阴影：soft 浮层、ink 登录品牌。内容面一律无阴影，用发丝边框。 */
   --shadow-soft: 0 12px 34px -28px rgb(26 26 46 / 0.36), 0 1px 0 rgb(255 255 255 / 0.72) inset;
   --shadow-ink: 0 22px 58px -42px rgb(26 26 46 / 0.5), 0 10px 26px -24px rgb(74 111 165 / 0.38);
+  --rule: oklch(0.567 0.154 19.1 / 0.55); /* 朱砂稀释 — 引文竖界线 */
+  --font-kai-family: "Kaiti SC", "STKaiti", "KaiTi", "楷体", "TW-Kai", var(--font-heading-family);
 
   --background: oklch(0.979 0.009 93.6); /* #FAF8F1 — 米白宣纸 */
   --foreground: oklch(0.297 0.000 89.9); /* #2D2D2D — 墨色 */
@@ -152,7 +162,6 @@
   --font-heading: var(--font-heading-family);
   --font-mono: var(--font-geist-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
 }
-
 .dark {
   /* ── 文韵智途 · 深色主题 ── */
   --background: oklch(0.228 0.038 282.9); /* #1A1A2E — 墨灰 */
@@ -179,6 +188,7 @@
   /* 亮朱 */
   --destructive: oklch(0.652 0.160 17.9); /* #E0606A */
   --destructive-foreground: oklch(0.228 0.038 282.9); /* #1A1A2E — 4.91:1 on destructive */
+  --rule: oklch(0.652 0.160 17.9 / 0.6); /* 亮朱稀释 — 深底上界线要更亮才立得住 */
 
   --border: oklch(0.340 0.030 282.9);
   --input: oklch(0.340 0.030 282.9);
@@ -258,6 +268,7 @@
     --bloom-5: #C04851;
     --bloom-6: #B7A57A;
     --bloom-foreground: #1A1A2E;
+    --rule: #C048518C;
   }
 
   .dark {
@@ -295,6 +306,7 @@
     --bloom-5: #E0606A;
     --bloom-6: #D4C49A;
     --bloom-foreground: #1A1A2E;
+    --rule: #E0606A99;
   }
 }
 
@@ -317,16 +329,14 @@
       min-height: 2.75rem;
     }
   }
-  /* ── 宣纸底：只保留黛蓝 + 紫金两处浸色，朱砂留给真正的警示态。 ──
+  /* ── 宣纸底：只保留黛蓝 + 紫金两处浸色，朱砂留给引文界线与警示态。 ──
      装饰一律钉在视口（position: fixed），不画在 body 上：
-     body 上的渐变按文档总高定位、随内容滚动，长页面会中途"换底色"，
-     和固定层错位成拼接感。滚动时整页色调必须恒定。 */
+     body 上的渐变按文档总高定位、随内容滚动，长页面会中途"换底色"。 */
   body {
     @apply min-h-svh bg-background text-foreground font-sans;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  /* 浸色 + 顶部微光 + 四角晕影，合成一层固定底。 */
   body::before {
     content: "";
     position: fixed;
@@ -334,24 +344,8 @@
     pointer-events: none;
     z-index: -1;
     background:
-      radial-gradient(ellipse 42rem 28rem at 6% -4%, rgb(74 111 165 / 0.10), transparent 70%),
-      radial-gradient(ellipse 36rem 24rem at 96% 10%, rgb(183 165 122 / 0.12), transparent 70%),
-      linear-gradient(180deg, rgb(255 255 255 / 0.32), transparent 20rem),
-      radial-gradient(ellipse 90% 70% at 50% 50%, transparent 40%, rgb(45 45 45 / 0.05) 100%);
-  }
-  /* 细网格：压暗到 0.22，只在首屏淡出，让内容区有呼吸感。 */
-  body::after {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: -1;
-    opacity: 0.22;
-    background-image:
-      linear-gradient(90deg, rgb(74 111 165 / 0.05) 1px, transparent 1px),
-      linear-gradient(0deg, rgb(183 165 122 / 0.05) 1px, transparent 1px);
-    background-size: 56px 56px;
-    mask-image: linear-gradient(to bottom, black, transparent 60%);
+      radial-gradient(ellipse 42rem 28rem at 6% -4%, rgb(74 111 165 / 0.09), transparent 70%),
+      radial-gradient(ellipse 36rem 24rem at 96% 10%, rgb(183 165 122 / 0.10), transparent 70%);
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-heading text-balance;

@@ -114,7 +114,7 @@ export function McpServerList({ servers, viewerRole }: { servers: ServerRow[]; v
                   // 公司级模板归公司管：校管理员只读，按钮直接禁用而不是点了再报错。
                   const canEdit = Boolean(server.school_id) || viewerRole === 'org_admin';
                   return (
-                    <Card key={server.id} className="border-border/70 bg-card/95 shadow-soft transition-shadow duration-200 hover:shadow-lg">
+                    <Card key={server.id} className="border-border/70 bg-card/95 transition-colors duration-200 hover:border-primary/35">
                       <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0 space-y-2">
                           <div className="flex flex-wrap items-center gap-2">

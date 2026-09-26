@@ -53,7 +53,9 @@ export function WorkspaceHero({
         ) : null}
       </div>
       {metrics.length > 0 ? (
-        <dl className="grid grid-cols-1 gap-4 rounded-lg border border-border/70 bg-card p-4 sm:grid-cols-3 sm:gap-6 sm:p-5">
+        /* 指标是"并排读数"，不是四张卡片：界格竖线分栏，桌面四栏以内自动换行。
+           视觉结构承担分组，于是整块不需要边框、底色和阴影。 */
+        <dl className="grid grid-cols-1 gap-y-4 sm:grid-cols-2 sm:gap-x-0 sm:[&>*:not(:first-child)]:border-l sm:[&>*:not(:first-child)]:border-border/60 sm:[&>*:not(:first-child)]:pl-6 lg:grid-cols-3">
           {metrics.map((metric) => (
             <div key={metric.label} className="min-w-0 space-y-1">
               <dt className="text-sm text-muted-foreground">{metric.label}</dt>
@@ -82,7 +84,7 @@ export function SectionHeader({
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div className="space-y-2">
-        {eyebrow ? <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">{eyebrow}</p> : null}
+        {eyebrow ? <p className="text-xs font-medium text-muted-foreground">{eyebrow}</p> : null}
         <h2 className="font-sans text-lg font-semibold tracking-tight sm:text-xl">{title}</h2>
         {description ? <p className="max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
       </div>

@@ -11,7 +11,7 @@ export function BloomBadge({ level, className }: { level: number; className?: st
   const info = BLOOM_LEVEL_INFO[safeLevel];
   return (
     <Badge
-      className={cn('font-heading tracking-wider border-2 border-current/20 shadow-sm', className)}
+      className={cn('font-heading tracking-wider border-2 border-current/20', className)}
       style={{ backgroundColor: `var(--bloom-${safeLevel})`, color: `var(--bloom-${safeLevel}-fg)` }}
       title={`L${safeLevel} ${info.name}：${info.hint}`}
       aria-label={`布鲁姆 L${safeLevel} ${info.name}，${info.hint}`}
