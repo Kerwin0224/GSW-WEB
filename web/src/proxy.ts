@@ -5,7 +5,7 @@ import { CWB_SESSION_COOKIE, parseSessionToken } from '@/lib/session';
 // 必须 import type：proxy 跑在 Edge runtime，值导入会把 database.types.ts 拖进 edge bundle。
 import type { AppRole } from '@/lib/supabase/database.types';
 
-const publicPaths = ['/login', '/api/auth'];
+const publicPaths = ['/login', '/signup', '/api/auth'];
 
 function isPublic(pathname: string) {
   return publicPaths.some((path) => pathname.startsWith(path));
