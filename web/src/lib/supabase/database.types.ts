@@ -55,8 +55,8 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['classes']['Insert']>;
       };
       class_memberships: {
-        Row: { id: string; class_id: string; profile_id: string; role: 'teacher' | 'student'; created_at: string };
-        Insert: { id?: string; class_id: string; profile_id: string; role: 'teacher' | 'student' };
+        Row: { id: string; class_id: string; profile_id: string; role: 'teacher' | 'student'; is_primary: boolean; created_at: string };
+        Insert: { id?: string; class_id: string; profile_id: string; role: 'teacher' | 'student'; is_primary?: boolean };
         Update: Partial<Database['public']['Tables']['class_memberships']['Insert']>;
       };
       /**
@@ -111,13 +111,13 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['prompt_presets']['Insert']>;
       };
       projects: {
-        Row: { id: string; owner_id: string; class_id: string | null; space_id: string | null; name: string; subtitle: string | null; classification_state: 'pending' | 'classified' | 'failed' | 'manual'; highest_bloom_level: number | null; created_at: string; updated_at: string };
-        Insert: { id?: string; owner_id: string; class_id?: string | null; space_id?: string | null; name: string; subtitle?: string | null; classification_state?: 'pending' | 'classified' | 'failed' | 'manual'; highest_bloom_level?: number | null };
+        Row: { id: string; owner_id: string; class_id: string | null; space_id: string | null; school_id: string | null; name: string; subtitle: string | null; classification_state: 'pending' | 'classified' | 'failed' | 'manual'; highest_bloom_level: number | null; created_at: string; updated_at: string };
+        Insert: { id?: string; owner_id: string; class_id?: string | null; space_id?: string | null; school_id?: string | null; name: string; subtitle?: string | null; classification_state?: 'pending' | 'classified' | 'failed' | 'manual'; highest_bloom_level?: number | null };
         Update: Partial<Database['public']['Tables']['projects']['Insert']>;
       };
       conversations: {
-        Row: { id: string; owner_id: string; class_id: string | null; project_id: string | null; space_id: string | null; source: InteractionSource; prompt_preset_id: string | null; title: string | null; deleted_at: string | null; finalized_at: string | null; created_at: string; updated_at: string };
-        Insert: { id?: string; owner_id: string; class_id?: string | null; project_id?: string | null; space_id?: string | null; source: InteractionSource; prompt_preset_id?: string | null; title?: string | null };
+        Row: { id: string; owner_id: string; class_id: string | null; project_id: string | null; space_id: string | null; school_id: string | null; source: InteractionSource; prompt_preset_id: string | null; title: string | null; deleted_at: string | null; finalized_at: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; owner_id: string; class_id?: string | null; project_id?: string | null; space_id?: string | null; school_id?: string | null; source: InteractionSource; prompt_preset_id?: string | null; title?: string | null };
         Update: Partial<Database['public']['Tables']['conversations']['Insert']>;
       };
       conversation_messages: {
@@ -136,8 +136,8 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['document_chunks']['Insert']>;
       };
       practice_records: {
-        Row: { id: string; student_id: string; project_id: string; target_bloom_level: number; prompt: string | null; answer: string | null; feedback: string | null; achieved: boolean | null; evaluation_state: 'pending' | 'evaluated' | 'failed' | 'blocked'; created_at: string };
-        Insert: { id?: string; student_id: string; project_id: string; target_bloom_level: number; prompt?: string | null; answer?: string | null; feedback?: string | null; achieved?: boolean | null; evaluation_state?: 'pending' | 'evaluated' | 'failed' | 'blocked' };
+        Row: { id: string; student_id: string; project_id: string; target_bloom_level: number; prompt: string | null; answer: string | null; feedback: string | null; achieved: boolean | null; evaluation_state: 'pending' | 'evaluated' | 'failed' | 'blocked'; school_id: string | null; class_id: string | null; space_id: string | null; created_at: string };
+        Insert: { id?: string; student_id: string; project_id: string; target_bloom_level: number; prompt?: string | null; answer?: string | null; feedback?: string | null; achieved?: boolean | null; evaluation_state?: 'pending' | 'evaluated' | 'failed' | 'blocked'; school_id?: string | null; class_id?: string | null; space_id?: string | null };
         Update: Partial<Database['public']['Tables']['practice_records']['Insert']>;
       };
       app_log_events: {
@@ -146,8 +146,8 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['app_log_events']['Insert']>;
       };
       audit_records: {
-        Row: { id: string; source_message_id: string; source_conversation_id: string; auditor_id: string | null; class_id: string; kind: AuditKind; status: AuditStatus; quality: string | null; prompt: string; original_answer: string | null; corrected_answer: string | null; chosen_answer: string | null; rejected_answer: string | null; rationale: string | null; metadata: Json; exported_at: string | null; created_at: string; updated_at: string };
-        Insert: { id?: string; source_message_id: string; source_conversation_id: string; auditor_id?: string | null; class_id: string; kind: AuditKind; status?: AuditStatus; quality?: string | null; prompt: string; original_answer?: string | null; corrected_answer?: string | null; chosen_answer?: string | null; rejected_answer?: string | null; rationale?: string | null; metadata?: Json; exported_at?: string | null };
+        Row: { id: string; source_message_id: string; source_conversation_id: string; auditor_id: string | null; class_id: string | null; school_id: string | null; space_id: string | null; kind: AuditKind; status: AuditStatus; quality: string | null; prompt: string; original_answer: string | null; corrected_answer: string | null; chosen_answer: string | null; rejected_answer: string | null; rationale: string | null; metadata: Json; exported_at: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; source_message_id: string; source_conversation_id: string; auditor_id?: string | null; class_id?: string | null; school_id?: string | null; space_id?: string | null; kind: AuditKind; status?: AuditStatus; quality?: string | null; prompt: string; original_answer?: string | null; corrected_answer?: string | null; chosen_answer?: string | null; rejected_answer?: string | null; rationale?: string | null; metadata?: Json; exported_at?: string | null };
         Update: Partial<Database['public']['Tables']['audit_records']['Insert']>;
       };
       export_batches: {
@@ -194,6 +194,19 @@ export interface Database {
        * projects / conversations.class_id。返回被改动的行数。
        */
       transfer_student_to_class: {
+        Args: { p_profile_id: string; p_class_id: string };
+        Returns: number;
+      };
+      /**
+       * 增量加入一个班级：不删旧关系、不改历史。返回 1=新插入，2=已在此班并提升为主班，
+       * 0=已在此班且未提升主班（幂等重放，不是失败）。
+       */
+      add_class_membership: {
+        Args: { p_profile_id: string; p_class_id: string; p_is_primary?: boolean };
+        Returns: number;
+      };
+      /** 移除单个班级关系（不再是「移出即清空全部」），返回删除行数。 */
+      remove_class_membership: {
         Args: { p_profile_id: string; p_class_id: string };
         Returns: number;
       };

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
@@ -9,7 +11,79 @@ import { test } from 'node:test';
  * 这个文件把「谓词必须在」变成可执行的断言。改动那些函数时它会拦住你。
  */
 
-import { migrationFiles, newestFunctionBody, newestPolicy } from './migration-source.ts';
+import { allMigrationsText, migrationFiles, newestFunctionBody, newestPolicy } from './migration-source.ts';
+
+const teacherSource = readFileSync(resolve(new URL('.', import.meta.url).pathname, '..', 'data', 'teacher.ts'), 'utf8');
+
+/** 切出 teacher.ts 里某个顶层函数的函数体。 */
+function teacherFunction(name: string) {
+  const start = teacherSource.indexOf(`function ${name}(`);
+  assert.ok(start >= 0, `应能找到 ${name}`);
+  const end = teacherSource.indexOf('\n}\n', start);
+  return teacherSource.slice(start, end < 0 ? teacherSource.length : end);
+}
+
+test('教师教学作用域是「任教班级 ∪ 自己拥有的空间」', () => {
+  const scope = teacherFunction('getTeacherScope');
+  assert.match(scope, /from\('class_memberships'\)[\s\S]*?eq\('role', 'teacher'\)/, '任教班级那一路必须还在');
+  assert.match(scope, /from\('spaces'\)[\s\S]*?eq\('owner_id', teacherId\)/, '空间那一路按 owner_id 取');
+
+  // 三处判定必须共用同一份并集语义，漏改一处就是「列表看得到、点进去打不开」或统计少算。
+  for (const name of ['getTeacherAuditQueue', 'getTeacherAuditSession', 'getTeacherAnalytics']) {
+    const body = teacherSource.slice(teacherSource.indexOf(`export async function ${name}(`));
+    assert.match(body.slice(0, body.indexOf('\nexport ')), /getTeacherScope\(role\.data\.id\)/, `${name} 必须走同一个作用域 helper`);
+  }
+  const session = teacherSource.slice(teacherSource.indexOf('export async function getTeacherAuditSession('));
+  assert.match(session, /inTeacherScope\(scope, row\.class_id, row\.space_id\)/, '详情页必须按班级或空间判定，不能只判 class_id');
+  const analytics = teacherSource.slice(teacherSource.indexOf('export async function getTeacherAnalytics('));
+  assert.match(analytics, /inTeacherScope\(scope, conversation\.class_id, conversation\.space_id\)/, '统计里的近 7 天与已/待核实必须同一并集判定');
+});
+
+test('教师作用域过滤器在两个集合都为空时不生成非法片段', () => {
+  const filter = teacherFunction('buildScopeFilter');
+  assert.match(filter, /class_id\.in\.\(/, '必须包含 class_id 一段');
+  assert.match(filter, /space_id\.in\.\(/, '必须包含 space_id 一段');
+  // `.in.()` 是 PostgREST 语法错误（400）：空集合绝不能进串里，两边都空要返回 null 让调用方短路。
+  assert.match(filter, /classIds\.length > 0/, 'class_id 段必须先判非空');
+  assert.match(filter, /spaceIds\.length > 0/, 'space_id 段必须先判非空');
+  assert.match(filter, /: null;/, '两边都空时必须返回 null，而不是空串或 `in.()`');
+
+  const queue = teacherSource.slice(teacherSource.indexOf('export async function getTeacherAuditQueue('));
+  assert.match(queue, /if \(!scopeFilter\) return ok\(emptyPage\)/, '队列在空作用域时必须短路成空页，而不是发必然 400 的请求');
+  // 两级 count 共用 countScoped 一个 builder，行查询是另一个：两处都要吃并集过滤器，
+  // 漏一处就变成「列表有行、角标是 0」或反之。
+  const countScoped = queue.slice(queue.indexOf('const countScoped ='), queue.indexOf('const scopedQuery ='));
+  assert.match(countScoped, /\.or\(scopeFilter\)/, '两级 count 必须也按并集过滤');
+  const scopedQuery = queue.slice(queue.indexOf('const scopedQuery ='), queue.indexOf('const range ='));
+  assert.match(scopedQuery, /\.or\(scopeFilter\)/, '行查询必须按并集过滤');
+  assert.doesNotMatch(queue.slice(0, queue.indexOf('const range =')), /\.in\('class_id'/, '不能再只按 class_id 过滤');
+});
+
+test('多重班级归属的两个 RPC 都存在且契约明确', () => {
+  const add = newestFunctionBody('add_class_membership');
+  assert.match(add, /security invoker/, 'invoker：RLS 仍是防线');
+  assert.doesNotMatch(add, /delete from public\.class_memberships/, '增量加入不得删旧关系');
+  assert.doesNotMatch(add, /update public\.conversations/, '增量加入不得改写历史归属');
+  assert.match(add, /return 0;/, '已在此班且未提升主班必须返回 0 而不是抛错（幂等重放）');
+
+  const remove = newestFunctionBody('remove_class_membership');
+  assert.match(remove, /delete from public\.class_memberships\s+where profile_id = p_profile_id/, '只删这一个班的关系');
+  assert.doesNotMatch(remove, /update public\.(conversations|projects)/, '移除单个班级关系不得改写历史归属');
+
+  const admin = readFileSync(resolve(new URL('.', import.meta.url).pathname, '..', 'data', 'admin.ts'), 'utf8');
+  assert.match(admin, /rpc\('add_class_membership'/, 'addClassMember 的「加入」分支必须走 RPC');
+  assert.match(admin, /rpc\('transfer_student_to_class'/, '「迁班」分支仍走原有 RPC');
+  // 0 行对「加入」是幂等成功，对「迁班」是没落库——两者都不能静默报成功。
+  assert.match(admin, /if \(affected === 0\) return actionResult\(true/, '加入分支必须单独解释 0 行');
+  assert.match(admin, /transferCount < 1\) return actionResult\(false/, '迁班分支必须检查命中行数');
+});
+
+test('`create or replace` 之外没有给返回整数的函数换签名', () => {
+  const add = newestFunctionBody('add_class_membership');
+  assert.match(add, /returns integer/, '返回行数而不是 void，调用方才判得出 0 行');
+  assert.match(allMigrationsText(), /grant execute on function public\.add_class_membership\(uuid, uuid, boolean\) to anon/, 'app role 必须能调用');
+  assert.match(allMigrationsText(), /grant execute on function public\.remove_class_membership\(uuid, uuid\) to anon/, 'app role 必须能调用');
+});
 
 test('能力解析 RPC 按校过滤，本校优先、回退公司级', () => {
   const sql = newestFunctionBody('get_provider_capability_provider');

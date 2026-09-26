@@ -104,7 +104,11 @@ test('空间拥有项目与会话作用域，且两者必须一致', () => {
   assert.match(text, /add column if not exists space_kind/i, '空间必须区分学期与专题类型');
   assert.match(text, /spaces_kind_check check \(space_kind in \('term', 'topic'\)\)/, '空间类型只允许学期或专题');
   assert.match(text, /create_space_v3/, '新建空间必须支持空间类型参数');
-  assert.doesNotMatch(text, /drop index if exists public\.class_memberships_one_student_class_idx/);
+  // 「一个学生只能属于一个班」的旧全局唯一索引已被 20260926110000 删掉：
+  // 走读、选课、「行政班 + 一对一」并行在这套 schema 里必须成立。
+  // 留下来的不变量是「至多一个**主班**」，由部分唯一索引保证。
+  assert.match(text, /drop index if exists public\.class_memberships_one_student_class_idx/, '全局唯一索引必须删掉');
+  assert.match(allMigrationsText(), /create unique index if not exists class_memberships_primary_student_idx\s+on public\.class_memberships \(profile_id\)\s+where role = 'student' and is_primary/, '主班必须仍然唯一');
 });
 
 test('空间支持直接学生成员，且成员可见性仍走 is_my_space', () => {

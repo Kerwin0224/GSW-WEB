@@ -55,6 +55,7 @@ type QueueConversationRow = {
   id: string;
   title: string | null;
   class_id: string | null;
+  space_id: string | null;
   project_id: string | null;
   updated_at: string;
   finalized_at: string | null;
@@ -158,11 +159,41 @@ function parsePreReview(
   return { issues, reviewedMessageIds };
 }
 
-async function getTeacherClassIds(teacherId: string) {
+/** 教学作用域：任教班级 ∪ 自己拥有的空间。 */
+type TeacherScope = { classIds: string[]; spaceIds: string[] };
+
+async function getTeacherScope(teacherId: string) {
   const supabase = await createClient();
-  const { data, error } = await supabase.from('class_memberships').select('class_id').eq('profile_id', teacherId).eq('role', 'teacher');
-  if (error) return { ok: false as const, message: `教师班级范围加载失败：${error.message}` };
-  return { ok: true as const, classIds: (data ?? []).map((row) => row.class_id) };
+  const [classes, spaces] = await Promise.all([
+    supabase.from('class_memberships').select('class_id').eq('profile_id', teacherId).eq('role', 'teacher'),
+    supabase.from('spaces').select('id').eq('owner_id', teacherId),
+  ]);
+  if (classes.error) return { ok: false as const, message: `教师任教班级加载失败：${classes.error.message}` };
+  if (spaces.error) return { ok: false as const, message: `教师空间加载失败：${spaces.error.message}` };
+  return {
+    ok: true as const,
+    classIds: (classes.data ?? []).map((row) => row.class_id),
+    spaceIds: (spaces.data ?? []).map((row) => row.id),
+  };
+}
+
+/**
+ * 并集过滤器，形如 `class_id.in.(a,b),space_id.in.(x,y)`。
+ *
+ * 空集合绝不能进串里：`.in.()` 是语法错误，PostgREST 直接 400，
+ * 于是「教师没任教任何班」会变成一条必然失败的查询而不是空结果。
+ * 两边都空返回 null，调用方据此短路，不发请求。
+ */
+function buildScopeFilter(scope: TeacherScope) {
+  const parts: string[] = [];
+  if (scope.classIds.length > 0) parts.push(`class_id.in.(${scope.classIds.join(',')})`);
+  if (scope.spaceIds.length > 0) parts.push(`space_id.in.(${scope.spaceIds.join(',')})`);
+  return parts.length > 0 ? parts.join(',') : null;
+}
+
+/** 行级判定：会话落在任教班级或自己拥有的空间里就算在范围内。class_id 可空，不能只判班级。 */
+function inTeacherScope(scope: TeacherScope, classId: string | null, spaceId: string | null) {
+  return (classId !== null && scope.classIds.includes(classId)) || (spaceId !== null && scope.spaceIds.includes(spaceId));
 }
 
 export async function getTeacherWorkspace(): Promise<DataResult<TeacherWorkspace>> {
@@ -352,13 +383,17 @@ export async function getTeacherAuditQueue(options: TeacherAuditQueueOptions = {
   const role = await requireRole('teacher');
   if (!role.ok) return role;
 
-  const classScope = await getTeacherClassIds(role.data.id);
-  if (!classScope.ok) return fail('error', classScope.message);
+  const scope = await getTeacherScope(role.data.id);
+  if (!scope.ok) return fail('error', scope.message);
 
   const page = Math.max(1, options.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, options.pageSize ?? 20));
   const status: TeacherAuditQueueStatus = options.status ?? 'pending';
   const emptyPage = { groups: [], total: 0, pendingTotal: 0, finalizedTotal: 0, page, pageSize, status };
+
+  // 两个作用域都空就是没有任何可见范围：`.in.()` 会 400，直接短路成空页。
+  const scopeFilter = buildScopeFilter(scope);
+  if (!scopeFilter) return ok(emptyPage);
 
   const supabase = await createClient();
   // pending / 不过滤两个分支就够：已核实数 = 不过滤 - pending，两者恰好构成同一批会话的划分。
@@ -367,7 +402,7 @@ export async function getTeacherAuditQueue(options: TeacherAuditQueueOptions = {
     const query = supabase
       .from('conversations')
       .select('id', { count: 'exact', head: true })
-      .in('class_id', classScope.classIds)
+      .or(scopeFilter)
       .eq('source', 'student_chat')
       .is('deleted_at', null)
       .not('project_id', 'is', null);
@@ -376,8 +411,8 @@ export async function getTeacherAuditQueue(options: TeacherAuditQueueOptions = {
 
   const scopedQuery = supabase
     .from('conversations')
-    .select('id,title,class_id,project_id,updated_at,finalized_at,profiles(display_name),projects(name),classes(name)', { count: 'exact' })
-    .in('class_id', classScope.classIds)
+    .select('id,title,class_id,space_id,project_id,updated_at,finalized_at,profiles(display_name),projects(name),classes(name)', { count: 'exact' })
+    .or(scopeFilter)
     .eq('source', 'student_chat')
     .is('deleted_at', null)
     .not('project_id', 'is', null)
@@ -450,7 +485,7 @@ export async function getTeacherAuditQueue(options: TeacherAuditQueueOptions = {
     const summary = summarizePreReview(latestPreReviewByConversation.get(row.id), assistantCount, auditBlocked);
     return [{
       classId: row.class_id,
-      classLabel: firstJoined(row.classes)?.name?.trim() || '未命名班级',
+      classLabel: firstJoined(row.classes)?.name?.trim() || '未分班',
       studentName: firstJoined(row.profiles)?.display_name?.trim() || '未命名学生',
       projectName: firstJoined(row.projects)?.name?.trim() || '未关联项目',
       session: {
@@ -477,14 +512,14 @@ export async function getTeacherAuditSession(conversationId: string): Promise<Da
   const role = await requireRole('teacher');
   if (!role.ok) return role;
 
-  const classScope = await getTeacherClassIds(role.data.id);
-  if (!classScope.ok) return fail('error', classScope.message);
-  if (classScope.classIds.length === 0) return ok(null);
+  const scope = await getTeacherScope(role.data.id);
+  if (!scope.ok) return fail('error', scope.message);
+  if (scope.classIds.length === 0 && scope.spaceIds.length === 0) return ok(null);
 
   const supabase = await createClient();
   const { data: conversationRow, error: conversationError } = await supabase
     .from('conversations')
-    .select('id,title,class_id,updated_at,finalized_at,profiles(display_name),projects(name),classes(name)')
+    .select('id,title,class_id,space_id,updated_at,finalized_at,profiles(display_name),projects(name),classes(name)')
     .eq('id', conversationId)
     .eq('source', 'student_chat')
     .is('deleted_at', null)
@@ -492,7 +527,7 @@ export async function getTeacherAuditSession(conversationId: string): Promise<Da
   if (conversationError) return fail('error', `会话加载失败：${conversationError.message}`);
 
   const row = conversationRow as QueueConversationRow | null;
-  if (!row || !row.class_id || !classScope.classIds.includes(row.class_id)) return ok(null);
+  if (!row || !inTeacherScope(scope, row.class_id, row.space_id)) return ok(null);
 
   const [transcriptResult, auditResult, auditCap] = await Promise.all([
     supabase
@@ -569,7 +604,7 @@ export async function getTeacherAuditSession(conversationId: string): Promise<Da
   return ok({
     conversationId: row.id,
     classId: row.class_id,
-    classLabel: firstJoined(row.classes)?.name?.trim() || '未命名班级',
+    classLabel: firstJoined(row.classes)?.name?.trim() || '未分班',
     studentName: firstJoined(row.profiles)?.display_name?.trim() || '未命名学生',
     projectName: firstJoined(row.projects)?.name?.trim() || '未关联项目',
     sessionLabel: row.title?.trim() || `会话 ${row.id.slice(0, 8)}`,
@@ -593,8 +628,8 @@ export async function getTeacherAnalytics(): Promise<DataResult<TeacherAnalytics
   const role = await requireRole('teacher');
   if (!role.ok) return role;
 
-  const classScope = await getTeacherClassIds(role.data.id);
-  if (!classScope.ok) return fail('error', classScope.message);
+  const scope = await getTeacherScope(role.data.id);
+  if (!scope.ok) return fail('error', scope.message);
 
   const supabase = await createClient();
   const weekStart = new Date();
@@ -605,7 +640,7 @@ export async function getTeacherAnalytics(): Promise<DataResult<TeacherAnalytics
     supabase.from('class_memberships').select('id', { count: 'exact', head: true }).eq('profile_id', role.data.id).eq('role', 'teacher'),
     supabase
       .from('conversation_messages')
-      .select('id,conversation_id,created_at,conversations!inner(class_id,project_id,source,deleted_at),audit_records(kind,status,corrected_answer,chosen_answer,created_at,updated_at)')
+      .select('id,conversation_id,created_at,conversations!inner(class_id,space_id,project_id,source,deleted_at),audit_records(kind,status,corrected_answer,chosen_answer,created_at,updated_at)')
       .eq('role', 'assistant')
       .is('conversations.deleted_at', null)
       .order('created_at', { ascending: false })
@@ -620,12 +655,12 @@ export async function getTeacherAnalytics(): Promise<DataResult<TeacherAnalytics
     conversation_id: string;
     created_at: string;
     audit_records?: ReviewAuditRow[];
-    conversations?: { class_id: string | null; project_id: string | null; source: string; deleted_at: string | null } | Array<{ class_id: string | null; project_id: string | null; source: string; deleted_at: string | null }>;
+    conversations?: { class_id: string | null; space_id: string | null; project_id: string | null; source: string; deleted_at: string | null } | Array<{ class_id: string | null; space_id: string | null; project_id: string | null; source: string; deleted_at: string | null }>;
   }>).filter((row) => {
     const conversation = firstJoined(row.conversations);
     return Boolean(
-      conversation?.class_id
-      && classScope.classIds.includes(conversation.class_id)
+      conversation
+      && inTeacherScope(scope, conversation.class_id, conversation.space_id)
       && conversation.source === 'student_chat'
       && conversation.project_id
       && conversation.deleted_at === null,

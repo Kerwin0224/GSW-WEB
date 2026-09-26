@@ -51,9 +51,19 @@ export function normalizeProjectSubtitle(value?: string | null): string | null {
 }
 
 /**
- * 首行是否可信为一行标题：小模型不守协议时会把整段回答当首行输出，
- * 散文特征（句读）或超长都不可信，必须拒绝，否则会把整句话建成垃圾项目。
+ * 首行是否可信为一行标题。
+ *
+ * 曾经用散文特征判定（含 。！？；，、… 即不可信），那等于假设主题名都是中文
+ * 篇章：数学的「导数、积分综合」、化学的「碱金属：钠与钾」都含顿号或冒号，
+ * 会被判为不是标题 → 首问静默落进日常会话归档 → 不生成认知层级、不进挑战
+ * 依据、不出现在学习记录矩阵里。判据改为与文体无关的三条：够短、无空白、
+ * 不是多句话——句读只在**成句**（句末有句号/问号/叹号）时才说明模型把整段话
+ * 当标题吐了出来。
  */
 export function looksLikeTitleLine(value: string): boolean {
-  return value.length <= 40 && !/[。！？；，、…]/.test(value);
+  const text = value.trim();
+  if (!text || text.length > 40) return false;
+  if (/[。！？!?]/.test(text)) return false;
+  if (/\s/.test(text)) return false;
+  return !/[:：]$/.test(text);
 }

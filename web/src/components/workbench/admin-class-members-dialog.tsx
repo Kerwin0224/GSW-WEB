@@ -126,6 +126,8 @@ function MemberList({ members, roleLabel, onRemove, disabledMemberId }: {
 
 function AddMemberForm({ klass, users, memberRole }: { klass: AdminClassListItem; users: AdminUserListItem[]; memberRole: 'teacher' | 'student' }) {
   const roleLabel = memberRole === 'teacher' ? '教师' : '学生';
+  // 学生的两种入班方式数据后果完全不同（迁班会改写全部历史归属），必须让管理员显式选，默认迁班。
+  const [membershipMode, setMembershipMode] = useState<'transfer' | 'add'>('transfer');
   const [selectedId, setSelectedId] = useState('');
   const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
   const [pending, startTransition] = useTransition();
@@ -146,6 +148,7 @@ function AddMemberForm({ klass, users, memberRole }: { klass: AdminClassListItem
     formData.set('class_id', klass.id);
     formData.set('role', memberRole);
     formData.set('profile_id', selectedId);
+    if (memberRole === 'student') formData.set('membership_mode', membershipMode);
     startTransition(async () => {
       const result: AdminActionState = await addClassMember(formData);
       if (result && !result.ok) {
@@ -171,9 +174,31 @@ function AddMemberForm({ klass, users, memberRole }: { klass: AdminClassListItem
         {candidates.length > 0 ? <p className="text-xs text-muted-foreground">共 {candidates.length} 个启用中的{roleLabel}账号可选。</p> : null}
       </div>
       {memberRole === 'student' ? (
-        <p className="rounded-lg border border-primary/20 bg-primary/5 p-2 text-xs text-primary">
-          学生会从原班级迁入当前班级；其历史项目和未删除的学习会话也会归入新班级，供新班教师核实。
-        </p>
+        <div className="space-y-2">
+          <Label>入班方式</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { value: 'transfer' as const, label: '迁班' },
+              { value: 'add' as const, label: '加入' },
+            ]).map((option) => (
+              <Button
+                key={option.value}
+                type="button"
+                size="sm"
+                variant={membershipMode === option.value ? 'default' : 'outline'}
+                aria-pressed={membershipMode === option.value}
+                onClick={() => setMembershipMode(option.value)}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
+          <p className="rounded-lg border border-primary/20 bg-primary/5 p-2 text-xs text-primary">
+            {membershipMode === 'transfer'
+              ? '迁班：学生会离开原班级，历史项目与未删除的学习会话一并改归本班，供本班教师核实完整学习记录。'
+              : '加入：学生在保留原班级的同时归属本班，历史项目与会话仍归原班级不变。'}
+          </p>
+        </div>
       ) : (
         <p className="text-xs text-muted-foreground">教师可以负责多个班级；重复加入同一班级会被忽略。</p>
       )}

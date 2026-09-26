@@ -451,8 +451,13 @@ export async function addClassMember(formData: FormData): Promise<AdminActionSta
   const classId = String(formData.get('class_id') ?? '').trim();
   const profileId = String(formData.get('profile_id') ?? '').trim();
   const membershipRole = String(formData.get('role') ?? '').trim();
+  // 缺省仍是迁班：它会改写历史归属，只有管理员明确选了「加入」才走增量。
+  const membershipMode = String(formData.get('membership_mode') ?? 'transfer').trim() || 'transfer';
   if (!classId || !profileId || !['teacher', 'student'].includes(membershipRole)) {
     return actionResult(false, '参数不完整：请选择班级与成员。');
+  }
+  if (membershipRole === 'student' && !['transfer', 'add'].includes(membershipMode)) {
+    return actionResult(false, '参数不完整：学生入班方式只能是「迁班」或「加入」。');
   }
   const supabase = await createClient();
   const targetRole = membershipRole as 'teacher' | 'student';
@@ -470,6 +475,24 @@ export async function addClassMember(formData: FormData): Promise<AdminActionSta
   if (targetProfile.status !== 'active') return actionResult(false, `「${targetProfile.display_name}」已停用，请先启用再分配班级。`);
 
   if (targetRole === 'student') {
+    if (membershipMode === 'add') {
+      // 增量加入：走班、选课、「行政班 + 一对一」并行都走这里。旧关系与历史归属一概不动。
+      const { data: touched, error: addError } = await supabase.rpc('add_class_membership', {
+        p_profile_id: profileId,
+        p_class_id: classId,
+        p_is_primary: false,
+      });
+      if (addError) return actionResult(false, `加入班级失败：${addError.message}`);
+      const affected = Number(touched);
+      if (!Number.isFinite(affected) || affected < 0) return actionResult(false, '加入班级失败：数据库未返回可核对的变更行数，请刷新后重试。');
+      revalidatePath('/admin/classes');
+      revalidatePath('/admin/users');
+      revalidatePath('/admin');
+      // 0 = 已经在这个班里（幂等重放），不是失败。
+      if (affected === 0) return actionResult(true, `「${targetProfile.display_name}」已经在这个班里，历史项目与会话仍归原班级。`);
+      return actionResult(true, `「${targetProfile.display_name}」已加入「${targetClass.name}」，历史项目与会话仍归原班级。`);
+    }
+
     // 迁班 = 删旧关系 + 插新关系 + 同步 projects/conversations.class_id，一个事务。
     // 应用层那四步每步一个请求，中途失败就是「不属于任何班、历史还指着旧班」的半迁移态。
     const { data: touched, error: transferError } = await supabase.rpc('transfer_student_to_class', {
@@ -480,7 +503,10 @@ export async function addClassMember(formData: FormData): Promise<AdminActionSta
     revalidatePath('/admin/classes');
     revalidatePath('/admin/users');
     revalidatePath('/admin');
-    const synced = Math.max(Number(touched ?? 0) - 1, 0);
+    const transferCount = Number(touched);
+    // RPC 至少会插一条新关系，返回 0 或非数说明这次调用没真正落库，不能报成功。
+    if (!Number.isFinite(transferCount) || transferCount < 1) return actionResult(false, '学生迁班失败：数据库未返回可核对的变更行数，请刷新后确认后再重试。');
+    const synced = transferCount - 1;
     return actionResult(true, `「${targetProfile.display_name}」已迁入「${targetClass.name}」${synced > 0 ? `，并同步了 ${synced} 条历史项目/会话。` : '。'}`);
   }
 

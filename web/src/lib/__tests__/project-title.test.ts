@@ -51,10 +51,17 @@ test('normalizeProjectSubtitle：去空白，空值归一为 null', () => {
   assert.equal(normalizeProjectSubtitle(null), null);
 });
 
-test('looksLikeTitleLine：句读或超长视为散文，不可信为标题', () => {
+test('looksLikeTitleLine：成句、超长或带空白才判为不可信', () => {
   assert.equal(looksLikeTitleLine('出塞'), true);
   assert.equal(looksLikeTitleLine('这句诗运用了互文的手法。'), false);
   assert.equal(looksLikeTitleLine('甲'.repeat(41)), false);
+  // 顿号与冒号是理科主题名的常态（导数、积分综合 / 碱金属：钠与钾）。
+  // 旧判据把它们当散文特征，会让理科首问静默落进日常会话归档——不进认知层级、
+  // 不进挑战依据、不出现在学习记录矩阵里。判据必须与文体无关。
+  assert.equal(looksLikeTitleLine('导数、积分综合'), true);
+  assert.equal(looksLikeTitleLine('碱金属：钠与钾'), true);
+  assert.equal(looksLikeTitleLine('Unit 3: Photosynthesis'), false, '带空白说明是多行输出');
+  assert.equal(looksLikeTitleLine('光合作用原理：'), false, '以冒号结尾说明后面还有内容');
 });
 
 // ─── 契约：这条规则只能有一份实现 ────────────────────────────────────────────
