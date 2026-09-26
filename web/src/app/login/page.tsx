@@ -215,10 +215,7 @@ export default function LoginPage() {
                       登录中…
                     </>
                   ) : (
-                    <>
-                      登录
-                      <ArrowRight className="ml-2 size-5" aria-hidden="true" />
-                    </>
+                    <>登录</>
                   )}
                 </Button>
               </form>
