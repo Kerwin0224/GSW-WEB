@@ -178,30 +178,41 @@ $$;
 
 grant execute on function public.teacher_space_ids() to anon, authenticated, service_role;
 
--- 跨校空间的读：空间所属公司对本公司账号可见
+-- 跨校空间的读：空间所属公司对本公司账号可见。
+-- 同样提供按列形式，供会话/项目等已有稳定 id 的上下文直接调用；
+-- spaces 自身的 SELECT 策略不用它（理由见该策略上方注释）。
+create or replace function public.can_read_space_row(
+  p_space_id uuid,
+  p_owner_id uuid,
+  p_school_id uuid,
+  p_organization_id uuid
+)
+returns boolean
+language sql stable security definer
+set search_path to 'public'
+as $$
+  select public.can_manage_space_row(p_owner_id, p_school_id)
+    or (p_organization_id is not null and p_organization_id = (
+         select me.organization_id from public.profiles me
+          where me.id = public.current_app_user_id()))
+    or (p_school_id is null and public.is_org_admin())
+    or public.teacher_can_access_space(p_space_id)
+    or exists (select 1 from public.space_members sm
+                where sm.space_id = p_space_id
+                  and sm.student_id = public.current_app_user_id())
+$$;
+
 create or replace function public.can_read_space(p_space_id uuid)
 returns boolean
 language sql stable security definer
 set search_path to 'public'
 as $$
-  select exists (
-    select 1 from public.spaces s
-     where s.id = p_space_id
-       and (
-         s.owner_id = public.current_app_user_id()
-         or (s.school_id is not null and s.school_id = public.current_school_id())
-         or (s.school_id is null and public.is_org_admin())
-         or (s.organization_id is not null and s.organization_id = (
-              select me.organization_id from public.profiles me
-               where me.id = public.current_app_user_id()))
-         or public.teacher_can_access_space(s.id)
-         or exists (select 1 from public.space_members sm
-                     where sm.space_id = s.id
-                       and sm.student_id = public.current_app_user_id())
-       )
-  )
+  select public.can_read_space_row(s.id, s.owner_id, s.school_id, s.organization_id)
+    from public.spaces s
+   where s.id = p_space_id
 $$;
 
+grant execute on function public.can_read_space_row(uuid, uuid, uuid, uuid) to anon, authenticated, service_role;
 grant execute on function public.can_read_space(uuid) to anon, authenticated, service_role;
 
 -- ── 5. 空间创建 RPC：放开「必须属于某校」 ────────────────────────────────
@@ -292,9 +303,24 @@ $$;
 grant execute on function public.create_space_v3(text, text, uuid, text, text, text) to anon, authenticated, service_role;
 
 -- ── 6. 空间目录可见性：协作空间要能被协作者读到 ──────────────────────────
+-- 策略必须用**按列形式**：INSERT / UPDATE ... RETURNING（Supabase JS 的
+-- .insert().select() 就是这个形状）会对新行求值 SELECT 策略，函数若按 id 回查
+-- spaces 表，用的是语句开始时的快照，看不到正在插入的那行 → 合法插入被判越权。
+-- owner / 学校 / 公司三项全部走列参数；只有协作边与成员边去查**别的表**，
+-- 那两张表在插入前已存在，不受这个快照限制。
 drop policy if exists "spaces_select" on public.spaces;
 create policy "spaces_select" on public.spaces for select
-  using (public.can_read_space(id));
+  using (
+    public.can_manage_space_row(owner_id, school_id)
+    or (organization_id is not null and organization_id = (
+         select me.organization_id from public.profiles me
+          where me.id = public.current_app_user_id()))
+    or (school_id is null and public.is_org_admin())
+    or exists (select 1 from public.space_collaborators sc
+                where sc.space_id = id and sc.profile_id = public.current_app_user_id())
+    or exists (select 1 from public.space_members sm
+                where sm.space_id = id and sm.student_id = public.current_app_user_id())
+  );
 
 do $$
 begin
@@ -311,8 +337,12 @@ begin
   ) then
     raise exception 'spaces.school_id must be nullable (cross-school / company-level spaces)';
   end if;
-  if (select count(*) from public.spaces where organization_id is null) > 0 then
-    raise exception 'every space must carry an organization anchor';
+  if exists (
+    select 1 from public.spaces
+     where organization_id is null
+       and school_id is not null
+  ) then
+    raise exception 'a space anchored to a school must also carry its organization';
   end if;
   if (select count(*) from public.schools where login_id_pattern is null) > 0 then
     raise exception 'every school must carry a login_id_pattern';

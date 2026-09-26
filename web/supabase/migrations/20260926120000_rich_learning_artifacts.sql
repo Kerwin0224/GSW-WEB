@@ -153,14 +153,9 @@ alter table public.practice_records
 alter table public.practice_records
   add column if not exists rubric_notes jsonb not null default '[]'::jsonb;
 
--- 硬上限移出列定义：题面 800 字符 / 作答 4000 字符是应用层的字符串长度校验，
--- 结构化多段（题干 + 材料 + 要求）以后走 parts，不再靠单字段硬顶。
-alter table public.practice_records
-  add constraint practice_records_answer_present check (
-    nullif(trim(coalesce(answer, '')), '') is not null
-    or jsonb_array_length(submission_parts) > 0
-  ) not valid;
-alter table public.practice_records validate constraint practice_records_answer_present;
+-- 刻意**不加**「必须有答案或有附件」的 CHECK：待作答的挑战本来就还没有答案，
+-- 库里已有一批这样的行，加了约束就要么 VALIDATE 失败、要么对新行误杀。
+-- 作答非空由应用层的 zod 校验负责，这条约束是多余的第二份真源。
 
 -- ── 4. 检索资料挂上空间 ─────────────────────────────────────────────────
 -- 空间已是学习数据的一级作用域，附件这条链没跟上：一份上传到某空间会话的资料，
