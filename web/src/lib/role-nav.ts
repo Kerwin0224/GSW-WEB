@@ -82,6 +82,8 @@ const adminNavGroups: RoleNavGroup[] = [
       { icon: FileText, label: 'Prompt 预设', href: '/admin/presets', description: '系统提示词与教师模板' },
       { icon: Download, label: 'SFT / DPO 导出', href: '/admin/exports', description: '导出已核实的训练样本' },
       { icon: Activity, label: '运行日志', href: '/admin/logs', description: '请求追踪与故障诊断', primary: true },
+      { icon: Activity, label: '用量与成本', href: '/admin/usage', description: '各校调用量与 token 消耗' },
+      { icon: ShieldCheck, label: '预审评价维度', href: '/admin/review-dimensions', description: '决定 AI 预审看什么' },
     ],
   },
 ];
